@@ -16,8 +16,8 @@ Branch: `feature/ledger-income-expenses` | Delivery: un commit por corte (mínim
 
 | ID | Corte | S# | Ruta | Estado | Commit |
 |----|-------|----|------|--------|--------|
-| T1 | Corte 1a — Monorepo scaffold + tooling (pnpm workspaces, apps/api NestJS, apps/web React+Vite, vitest, lint, typecheck) + docker-compose PostgreSQL + test de arquitectura | S1, S2, S5 | inline | pending | — |
-| T2 | Corte 1b — shared-kernel TDD: Money, CurrencyCode (escala ISO 4217: 0/2/3), BusinessDate (día local + zona IANA), Result | S1, S5 | inline | pending | — |
+| T1 | Corte 1a — Monorepo scaffold + tooling (pnpm workspaces, apps/api NestJS, apps/web React+Vite, vitest, lint, typecheck) + docker-compose PostgreSQL + test de arquitectura | S1, S2, S5 | inline | done | c4bee38 |
+| T2 | Corte 1b — shared-kernel TDD: Money, CurrencyCode (escala ISO 4217: 0/2/3), BusinessDate (día local + zona IANA), Result | S1, S5 | inline | done | pending commit |
 | T3 | Corte 1c — ledger domain TDD: Transaction (type, amount>0, currency, business date, concept, category, status), TransactionRevision, invariantes INV-TRX-01..05 | S1, S5 | inline | pending | — |
 | T4 | Corte 2 — Alta + listado manual vertical: Prisma repo (workspace_id, idempotency key, categorías semilla + "Sin categorizar"), API `/api/v1/transactions` POST/GET con contexto de workspace de servidor (adaptador identidad determinista), web form RHF+Zod+MUI + tabla por moneda | S1, S2, S5, S6 | inline | pending | — |
 | T5 | Corte 3 — Edición, anulación y revisiones con trazabilidad | S1, S5 | inline | pending | — |
@@ -31,3 +31,5 @@ Branch: `feature/ledger-income-expenses` | Delivery: un commit por corte (mínim
 - L3: "proceder, considerar hacer al menos un commit en cada corte."
 - Arquitectura confirmada al usuario: Monolito Modular + Clean/Hexagonal (Ports & Adapters) + Screaming Architecture; DDD (bounded contexts, aggregates, shared kernel); SOLID aplicado (SRP use cases, OCP/LSP puertos sustituibles, ISP puertos segregados, DIP); patrones Repository+DataMapper, Factory methods con invariantes, Result pattern, Unit of Work transaccional, Idempotency key; TDD Red-Green-Refactor con test de arquitectura. No se escribió código hasta confirmación del usuario (L3).
 - Engram mirror: topic `odd/ledger-income-expenses/tasks`.
+- T1 done (c4bee38): pnpm monorepo (apps/api NestJS+vitest+dependency-cruiser, apps/web React+Vite), docker-compose Postgres (18 layout), eslint flat, tsc strict. Verificado: typecheck, lint, depcruise 0 violaciones, `pg_isready` OK. Nota: imagen postgres quedó `postgres:alpine` (18.x) — volumen montado en /var/lib/postgresql.
+- T2 done: shared-kernel/domain con Result, DomainError, CurrencyCode (tabla ISO 4217 exponentes 0/2/3/4, default 2), Money (bigint minor units, escala por moneda, toDecimalString canónico, mismatch de moneda lanza DomainError), BusinessDate (YYYY-MM-DD + IANA tz). 61 tests verdes; depcruise 0 violaciones.
