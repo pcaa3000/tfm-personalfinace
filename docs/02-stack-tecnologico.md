@@ -1,27 +1,28 @@
 # Stack tecnológico recomendado
 
-La propuesta utiliza TypeScript en web y API, PostgreSQL como fuente de verdad y adaptadores sustituibles para identidad, archivos, OCR y voz. El objetivo no es acumular herramientas: es entregar un TFM reproducible con límites suficientes para evolucionar sin reescribir el dominio.
+La propuesta utiliza TypeScript en web y API, PostgreSQL como fuente de verdad y adaptadores sustituibles para identidad, archivos, OCR y voz. El objetivo no es acumular herramientas: es entregar un TFM reproducible, desplegable en **capa gratuita (free tier)** para menos de 20 usuarios, con límites suficientes para escalar a **AWS** en una segunda etapa sin reescribir el dominio.
 
 ## Decisión
 
-- **Frontend:** React y Vite como aplicación estática desplegable de forma independiente.
-- **Backend:** NestJS sobre Node.js LTS como API REST y proceso worker.
-- **Arquitectura:** monolito modular con dominio y casos de uso libres de frameworks.
-- **Persistencia:** PostgreSQL; Prisma solo dentro de adaptadores.
-- **Asincronía:** BullMQ y Redis persistente, coordinados con un outbox en PostgreSQL.
-- **Archivos:** almacenamiento privado compatible con S3; MinIO para desarrollo.
-- **Identidad:** OpenID Connect; Keycloak como referencia sustituible.
+- **Frontend:** React y Vite como PWA estática desplegable de forma independiente, con cola local offline sobre IndexedDB.
+- **Backend:** NestJS sobre Node.js LTS; API REST y worker comparten **un solo proceso** en el MVP (módulos separados, mismo despliegue).
+- **Arquitectura:** monolito modular con Clean Architecture y principios SOLID; dominio y casos de uso libres de frameworks.
+- **Persistencia:** PostgreSQL gestionado por Supabase; Prisma solo dentro de adaptadores.
+- **Asincronía:** pg-boss sobre el mismo PostgreSQL — el job se encola en la misma transacción del caso de uso (outbox sin relay ni Redis).
+- **Archivos:** Supabase Storage (API compatible con S3, privado, ciclo de vida ≤30 días).
+- **Identidad:** OpenID Connect mediante Supabase Auth (usuario/contraseña, Google, Facebook, passkeys); la pareja issuer–subject aísla al proveedor.
 - **Aislamiento:** un workspace financiero personal por identidad y uno efímero por sesión demo.
-- **Demo:** misma API/casos de uso con semilla y adaptadores mock; medios reales permanecen en el navegador.
-- **OCR y voz:** Azure AI Document Intelligence y Azure AI Speech detrás de puertos propios.
+- **Demo:** misma API/casos de uso con semilla y adaptadores mock; medios reales permanecen en el navegador; los cambios no persisten al terminar la sesión.
+- **OCR y voz:** Azure AI Document Intelligence y Azure AI Speech en capa gratuita F0, detrás de puertos propios.
 - **Analítica:** consultas y agregados en PostgreSQL, con políticas deterministas.
-- **Despliegue inicial:** frontend estático, API y worker en contenedores; sin Kubernetes.
+- **Despliegue inicial:** web en hosting estático gratuito (Vercel), API+worker en un servicio contenerizado gratuito (Render o Koyeb), datos en Supabase. Sin Redis, Keycloak, MinIO ni Kubernetes en esta etapa.
 
 ## Criterios de selección
 
 | Criterio | Consecuencia técnica |
 |---|---|
-| Equipo pequeño y sin ecosistema impuesto | Un lenguaje principal reduce cambios de contexto y duplicación de conocimientos |
+| Equipo pequeño y sin ecosistema impuesto | Un lenguaje principal (TypeScript) reduce cambios de contexto y duplicación de conocimientos frente a Python o Go |
+| Free tier con <20 usuarios | Servicios gestionados con capa gratuita generosa; ninguna pieza operada a mano (Redis, Keycloak, MinIO) mientras exista sustituto gestionado |
 | Frontend y backend separados | No se utiliza un framework full-stack como frontera de negocio ni se acopla el despliegue web al de la API |
 | Datos financieros | Se priorizan integridad transaccional, tipos decimales, auditoría y consultas relacionales |
 | OCR y voz lentos o falibles | Se procesan fuera de la petición HTTP y siempre producen borradores revisables |
@@ -39,9 +40,8 @@ Se recomienda un monorepo con espacios de trabajo técnicos de `pnpm`. Este uso 
 
 | Unidad | Responsabilidad | Dependencias permitidas |
 |---|---|---|
-| Web | Interfaz, captura del navegador, validación de experiencia y consumo de API | Cliente generado desde el contrato público; nunca Prisma ni módulos internos de API |
-| API | HTTP, autorización, validación de entrada, casos de uso síncronos y consulta de estados | Módulos de aplicación y adaptadores configurados en composición |
-| Worker | Relay de outbox, OCR, voz, mantenimiento y agregados asíncronos | Los mismos puertos de aplicación, con adaptadores de cola y proveedor |
+| Web (PWA) | Interfaz, captura del navegador, cola local offline, validación de experiencia y consumo de API | Cliente generado desde el contrato público; nunca Prisma ni módulos internos de API |
+| API + worker | HTTP, autorización, validación de entrada, casos de uso síncronos y consulta de estados; en el mismo proceso, handlers de trabajos pg-boss (OCR, voz, mantenimiento y agregados) | Módulos de aplicación y adaptadores configurados en composición |
 
 ### Compartición permitida
 
@@ -53,7 +53,7 @@ Se recomienda un monorepo con espacios de trabajo técnicos de `pnpm`. Este uso 
 
 - Entidades de dominio entre web y API.
 - Tipos generados por Prisma fuera del adaptador de persistencia.
-- Modelos de respuesta de Azure, Keycloak, Redis o S3 fuera de sus adaptadores.
+- Modelos de respuesta de Azure, Supabase o S3 fuera de sus adaptadores.
 - Acceso de un módulo a tablas, repositorios o servicios internos de otro módulo.
 
 No se incorpora Nx inicialmente. Los espacios de trabajo técnicos y reglas de importación son suficientes para el TFM; un orquestador de monorepo se justificará cuando el grafo de builds o el tiempo de CI lo requieran.
@@ -64,15 +64,15 @@ El workspace financiero es una entidad de dominio y aislamiento, no una carpeta 
 
 | Pieza | Responsabilidad |
 |---|---|
-| PostgreSQL | Estado canónico de workspace, política de retención, sesión demo y versión de semilla |
-| Keycloak/OIDC | Identidad personal, rol demo, sesiones concurrentes y logout |
+| PostgreSQL (Supabase) | Estado canónico de workspace, expiración de medios, sesión demo y versión de semilla |
+| Supabase Auth (OIDC) | Identidad personal, proveedores sociales, passkeys, rol demo, sesiones concurrentes y logout |
 | API | Resolver el workspace desde identidad/sesión y construir un contexto no controlado por cliente |
-| Worker | Expiración de medios y limpieza idempotente de workspaces demo terminados |
-| Web | Mostrar workspace actual, política y marca demo; mantener preview demo únicamente en memoria local |
+| Worker | Expiración de medios a 30 días y limpieza idempotente de workspaces demo terminados |
+| Web (PWA) | Mostrar workspace actual, política y marca demo; mantener preview demo únicamente en memoria local; vaciar cola local al terminar la sesión |
 | Seeder | Materializar datos sintéticos versionados una sola vez por sesión demo |
 | Adaptadores mock | Simular OCR/voz y errores sin acceder a Azure ni interpretar el medio local |
 
-Para usuarios personales, `(issuer, subject)` resuelve el único workspace persistente. Para demo, la identidad compartida se combina con `sid` o con un identificador servidor ligado a la sesión validada. La misma sesión recupera el mismo workspace; una sesión nueva obtiene otro.
+Para usuarios personales, `(issuer, subject)` resuelve el único workspace persistente, sin importar si el acceso fue por usuario/contraseña, proveedor social o passkey. Para demo, la identidad compartida se combina con `sid` o con un identificador servidor ligado a la sesión validada. La misma sesión recupera el mismo workspace; una sesión nueva obtiene otro. La sesión demo expira por logout, cierre de la aplicación o **10 minutos de inactividad**, y las modificaciones realizadas nunca persisten.
 
 ## Frontend
 
@@ -89,13 +89,18 @@ Para usuarios personales, `(issuer, subject)` resuelve el único workspace persi
 | Material UI | Formularios, navegación, tablas, diálogos y tema responsive | Cada uso debe verificar accesibilidad, no asumirla por la librería |
 | Recharts | Tendencias y distribuciones SVG | Todo gráfico tendrá tabla o resumen textual equivalente |
 | react-i18next | Textos, plurales, namespaces y carga de idiomas | Moneda, número y fecha se formatean con `Intl`, no mediante traducciones |
+| Workbox / vite-plugin-pwa | Service worker, instalación PWA y caché del shell estático | No es repositorio de negocio; solo caché de presentación |
+| Dexie (IndexedDB) | Cola local de registros y capturas pendientes de sincronización | Se vacía al terminar la sesión; los ítems pendientes no alimentan reportes |
+| ExcelJS | Generación de reportes `.xlsx` en cliente o API según volumen | Los importes se exportan como decimales con moneda explícita |
 
 ### Decisiones de experiencia
 
 - Cámara y micrófono se habilitan solo en HTTPS o entorno local compatible.
 - Si una capacidad no existe, la interfaz ofrece selección de archivo o entrada manual.
 - En demo, el preview de cámara/micrófono permanece en memoria del navegador y se descarta sin upload; el backend recibe solo un identificador de escenario sintético.
-- La PWA se limita en el MVP a instalación y caché del shell estático. No se guarda información financiera sensible en almacenamiento offline ni se prometen capturas pendientes sin conexión.
+- La PWA es instalable y mantiene una **cola local offline** en IndexedDB: registros manuales, imágenes y audios capturados sin red se encolan con clave de idempotencia generada en el cliente y se sincronizan al recuperar conexión. Solo se encolan altas nuevas; la edición o anulación de datos existentes requiere conexión.
+- Los ítems `pendientes de sincronización` se muestran con ese estado y no participan en reportes, presupuestos ni recomendaciones hasta su confirmación en servidor.
+- La cola local se vacía al cerrar sesión y, en modo demo, al terminar la sesión por logout, cierre de la aplicación o 10 minutos de inactividad.
 - Los tokens no se persisten en `localStorage`. El flujo exacto debe mantener credenciales fuera de almacenamiento accesible a scripts y cumplir la política del proveedor OIDC.
 - Las tablas, navegación por teclado, estados de foco y mensajes de error forman parte de la aceptación, no de una fase estética posterior.
 
@@ -112,7 +117,7 @@ NestJS aporta composición modular, inyección de dependencias, validación HTTP
 | Controllers, DTO HTTP, pipes e interceptors | Adaptador de entrada HTTP |
 | Guards y validación de claims | Adaptador de seguridad HTTP |
 | Módulos y tokens de inyección | Raíz de composición |
-| Configuración de Prisma, Redis, S3 y Azure | Adaptadores de infraestructura |
+| Configuración de Prisma, pg-boss, S3-compatible, Supabase Auth y Azure | Adaptadores de infraestructura |
 | Decoradores de framework | Prohibidos en dominio y aplicación |
 
 Los casos de uso reciben dependencias por constructor mediante puertos propios. La raíz de composición los conecta con adaptadores NestJS; no se utiliza el contenedor del framework como localizador de servicios dentro del dominio.
@@ -121,16 +126,16 @@ Los casos de uso reciben dependencias por constructor mediante puertos propios. 
 
 - REST JSON con versión mayor en ruta, comenzando por `/api/v1` durante la implementación.
 - La API es propietaria de la descripción OpenAPI.
-- El cliente web se genera a partir del contrato publicado; no se comparte la implementación de DTO internos.
+- El cliente web consume el contrato publicado mediante tipos generados con `openapi-typescript` (solo tipos, sin pipeline de cliente runtime); no se comparte la implementación de DTO internos. La generación de un cliente completo se evalúa en etapa 2.
 - Un cambio compatible puede añadir campos opcionales. Eliminar, renombrar o cambiar semántica requiere una nueva versión mayor y una ventana de migración.
 - Errores, paginación, correlación e idempotencia tendrán formatos comunes.
 - El frontend llama directamente a la API; no se incorpora gateway mientras exista una sola API pública.
 
 ## Persistencia
 
-### PostgreSQL
+### PostgreSQL (Supabase)
 
-PostgreSQL será la fuente de verdad para workspaces, vínculos de identidad/sesión, políticas de retención, transacciones, trabajos, planes, revisiones y outbox.
+PostgreSQL será la fuente de verdad para workspaces, vínculos de identidad/sesión, expiración de medios, transacciones, trabajos, presupuestos, planes y revisiones. En etapa 1 se usa **Supabase** (PostgreSQL gestionado, free tier de 500 MB); la misma base hospeda la cola pg-boss.
 
 - Todo registro financiero o derivado incluye un `workspace_id` inmutable y validado por su repositorio.
 - Una restricción garantiza un workspace personal por identidad y un workspace demo por sesión.
@@ -150,35 +155,31 @@ Prisma se selecciona por productividad, migraciones y acceso tipado a PostgreSQL
 - Cada repositorio traduce explícitamente registros a entidades o valores de dominio.
 - El dominio no conoce IDs, enums o decimales propios de Prisma.
 - Las migraciones se serializan para la base compartida y cada cambio declara el módulo propietario.
-- Una transacción técnica no debe atravesar varios contextos como solución habitual; los flujos entre módulos usan casos de uso y, cuando corresponda, outbox.
+- Una transacción técnica no debe atravesar varios contextos como solución habitual; los flujos entre módulos usan casos de uso y, cuando corresponda, trabajos encolados en la misma transacción.
 
 Si Prisma impide expresar una consulta analítica o migración segura, se permite SQL encapsulado en infraestructura. La herramienta no gobierna el modelo financiero.
 
 ## Trabajos asíncronos y fiabilidad
 
-### BullMQ y Redis
+### pg-boss sobre PostgreSQL
 
-BullMQ resuelve colas, concurrencia, reintentos, rate limiting y workers separados. Redis se configura como infraestructura durable de trabajos, no como caché descartable:
+En el MVP no se despliega Redis ni BullMQ: la cola es **pg-boss**, que almacena trabajos en tablas del mismo PostgreSQL y los entrega a workers mediante `SELECT FOR UPDATE SKIP LOCKED` con `LISTEN/NOTIFY`. Resuelve colas, concurrencia, reintentos con backoff exponencial, dead-letter, rate limiting y tareas programadas sin añadir infraestructura:
 
-- Persistencia AOF habilitada.
-- Política de memoria `noeviction`.
-- Autenticación y TLS fuera del entorno local.
-- Monitorización de trabajos activos, fallidos, demorados y estancados.
-- Retención acotada de metadatos completados y fallidos.
+- Los jobs viven en la base que ya se opera y respalda.
+- Los handlers corren en el mismo proceso que la API en etapa 1.
+- La entrega es **al menos una vez**; las guardas de idempotencia de negocio se mantienen igual.
 
-BullMQ ofrece entrega **al menos una vez**. No se promete exactly-once.
+### Relación entre encolado transaccional y estado canónico
 
-### Relación entre outbox, BullMQ y estado canónico
+pg-boss permite encolar el job dentro de la misma transacción PostgreSQL que el cambio de negocio, lo que reduce el patrón outbox a una sola escritura atómica:
 
-1. El caso de uso guarda el cambio de negocio, su `workspace_id`, el estado inicial del trabajo y un evento de outbox en una misma transacción PostgreSQL.
-2. El relay bloquea un evento pendiente y crea un job BullMQ con un identificador determinista derivado del evento.
-3. Solo después de la confirmación de Redis, el relay marca el evento como despachado.
-4. Si el relay cae entre ambos pasos, el reintento utiliza el mismo identificador y la deduplicación evita una segunda intención lógica.
-5. El worker reclama o crea en PostgreSQL una ejecución única por captura, tipo y versión de procesamiento.
-6. El resultado y el siguiente evento se guardan juntos; una respuesta duplicada observa el resultado existente y no repite el efecto.
-7. Un reconciliador recupera eventos pendientes, trabajos estancados y estados PostgreSQL sin job operativo.
+1. El caso de uso guarda el cambio de negocio, su `workspace_id`, el estado inicial del trabajo y encola el job con identificador determinista en una misma transacción PostgreSQL.
+2. Si la transacción confirma, el job existe; si falla, no queda intención huérfana. No hay relay separado ni ventana de doble escritura.
+3. El worker reclama o crea en PostgreSQL una ejecución única por captura, tipo y versión de procesamiento.
+4. El resultado y el siguiente encolado se guardan juntos; una respuesta duplicada observa el resultado existente y no repite el efecto.
+5. La reconciliación se limita a recuperar jobs estancados o expirados según las políticas de pg-boss.
 
-El estado de BullMQ sirve para operar la cola. El estado PostgreSQL decide qué ocurrió para el negocio.
+El estado de la cola sirve para operar los trabajos. El estado PostgreSQL decide qué ocurrió para el negocio.
 
 ### Política de fallos
 
@@ -187,26 +188,26 @@ El estado de BullMQ sirve para operar la cola. El estado PostgreSQL decide qué 
 | Timeout, indisponibilidad o límite temporal | Reintento exponencial con jitter y máximo configurable |
 | Rate limit del proveedor | Respetar espera indicada y presupuesto de consumo |
 | Archivo inválido o campo no interpretable | Fallo permanente y ruta manual, sin reintento automático infinito |
-| Agotamiento de reintentos | Estado fallido recuperable y cola de revisión operativa |
+| Agotamiento de reintentos | Estado fallido recuperable y dead-letter de pg-boss |
 | Mensaje o respuesta duplicada | Guardas de unicidad e idempotencia; no duplica borrador ni transacción |
 | Cuota agotada o kill switch activo | No invocar proveedor; informar degradación y conservar entrada manual |
 
-Una cola respaldada por PostgreSQL sería una alternativa más ligera si el entorno de despliegue no puede ofrecer Redis persistente. Esa sustitución debe decidirse antes de implementar trabajos; no se simulará durabilidad con Redis efímero.
+Si en etapa 2 el throughput lo justifica, el puerto de cola se sustituye por Amazon SQS o BullMQ sobre ElastiCache sin tocar el dominio.
 
 ## Archivos y almacenamiento
 
 Se utiliza una API compatible con S3 para no guardar binarios en el disco de API/worker ni aumentar las copias de seguridad de PostgreSQL.
 
-- MinIO implementa el contrato en desarrollo local.
+- **Supabase Storage** implementa el contrato en etapa 1 (API S3-compatible, buckets privados, 1 GB en free tier).
 - Los buckets son privados y cifrados en reposo cuando la plataforma lo permita.
 - La API crea el activo y emite una URL firmada de subida vinculada a workspace, clave, tipo, tamaño y expiración esperados.
-- El cliente sube directamente y confirma checksum; la API verifica metadatos antes de encolar.
-- Un objeto comienza en cuarentena y solo se procesa después de validar tipo real, dimensiones, páginas y política de malware.
-- Al normalizar, el activo guarda el plazo de 1, 2 o 3 meses vigente y un `expires_at`; cambiar el workspace no altera objetos existentes.
+- El cliente sube directamente y confirma checksum; la API verifica metadatos antes de encolar. Si la captura se hizo sin conexión, el cliente la envía desde la cola local al recuperar red y sigue el mismo flujo.
+- Un objeto comienza en cuarentena y solo se procesa después de validar tipo real, dimensiones y páginas; el escaneo de malware/poliglotas se difiere a etapa 2.
+- Todo activo guarda un `expires_at` fijo de **30 días desde la captura**; no existe configuración que lo extienda.
 - Las URLs de lectura son breves, autorizadas por workspace/recurso y nunca permanentes.
 - El ciclo de vida elimina objetos temporales, huérfanos, vencidos o pertenecientes a un workspace terminado y registra el resultado en PostgreSQL.
 
-Guardar archivos en el sistema local o como `bytea` simplificaría la primera demo, pero acoplaría escalado, backups y retención. El coste de un servicio S3-compatible es aceptable porque cámara y audio son requisitos centrales, no accesorios.
+Guardar archivos en el sistema local o como `bytea` simplificaría la primera demo, pero acoplaría escalado, backups y retención. Supabase Storage cubre el free tier del MVP y el mismo contrato migra a Amazon S3 en etapa 2.
 
 ## Identidad y autorización
 
@@ -216,16 +217,16 @@ Guardar archivos en el sistema local o como `bytea` simplificaría la primera de
 - La API actúa como resource server y valida firma mediante JWKS, issuer, audience, expiración y algoritmo permitido.
 - La identidad local se vincula mediante la pareja inmutable issuer–subject, nunca solo por correo electrónico.
 - Para personal, esa pareja resuelve el único workspace; para demo, el rol y la sesión `sid` resuelven un workspace efímero independiente.
-- El logout termina la sesión local, revoca el workspace demo asociado y solicita cierre en el proveedor cuando el protocolo lo permite.
+- El logout termina la sesión local, revoca el workspace demo asociado y solicita cierre en el proveedor cuando el protocolo lo permite; la sesión demo también expira por cierre de la aplicación o 10 minutos de inactividad.
 - Los roles son mínimos; la pertenencia de cada recurso se valida contra el workspace derivado por servidor.
 
 ### Proveedor
 
-Keycloak es la referencia por ser abierto, soportar autorregistro, recuperación, OIDC, MFA y passkeys. En local puede ejecutarse como servicio opcional con realm reproducible durante la futura implementación.
+**Supabase Auth** es el adaptador de etapa 1: OIDC compatible, usuario/contraseña, proveedores sociales (Google, Facebook u otros habilitados en consola), passkeys/WebAuthn y recuperación gestionada, sin infraestructura propia que operar.
 
-No se oculta su coste: una instalación de producción requiere TLS, base de datos, backups, actualizaciones, monitorización y memoria reservada. Para el despliegue público del TFM puede sustituirse por un OIDC gestionado si reduce operación. El dominio solo conserva issuer y subject, por lo que el cambio no modifica reglas financieras.
+El dominio solo conserva issuer y subject, por lo que sustituir el proveedor (por ejemplo por Amazon Cognito o Keycloak endurecido en etapa 2) no modifica reglas financieras ni casos de uso.
 
-MFA y passkeys son capacidades recomendadas de endurecimiento; el flujo básico de registro y acceso es la puerta del MVP.
+Las capacidades concretas de passkeys y MFA dependen del soporte vigente del proveedor al implementar; se verifican en Fase 0 antes de comprometer la experiencia de registro.
 
 ## OCR, voz e interpretación
 
@@ -270,9 +271,9 @@ No se incorpora motor ML, base vectorial, data lake ni LLM obligatorio. Primero 
 | Logs | JSON estructurado a stdout con correlación y redacción | Agregación gestionada y alertas |
 | Salud | Liveness, readiness y dependencias críticas | SLOs por capacidad |
 | Métricas | Peticiones, latencia, errores, cola, proveedores y consumo | Backend Prometheus compatible |
-| Trazas | Contexto OpenTelemetry en API, worker y llamadas externas | Collector y almacenamiento cuando el diagnóstico lo justifique |
+| Trazas | Correlación en logs estructurados | OpenTelemetry y collector cuando el diagnóstico lo justifique (etapa 2) |
 
-No se despliega una plataforma completa de observabilidad para la demo. Se conserva el estándar y se activa el backend en la fase de endurecimiento.
+No se despliega plataforma de observabilidad ni se instrumenta OpenTelemetry en el MVP: con el volumen del free tier no aporta diagnóstico que los logs no den. El estándar se conserva y el backend de trazas se activa en etapa 2.
 
 ## Estrategia de pruebas
 
@@ -280,7 +281,8 @@ No se despliega una plataforma completa de observabilidad para la demo. Se conse
 |---|---|---|
 | Unidad | Vitest | Entidades, valores, políticas y casos de uso sin NestJS ni red |
 | Componentes | React Testing Library | Formularios, estados, accesibilidad y errores |
-| Integración | Vitest y servicios efímeros | PostgreSQL, Redis, MinIO y adaptadores de persistencia |
+| Integración | Vitest y servicios efímeros | PostgreSQL (con pg-boss), Supabase Storage local/mock y adaptadores de persistencia |
+| Offline PWA | Vitest + Playwright | Cola IndexedDB, orden de sincronización, idempotencia y reconexión |
 | Contrato HTTP | OpenAPI y cliente generado | Compatibilidad entre despliegues de web y API |
 | Proveedores | Fixtures más pruebas opt-in | Normalización estable sin consumir cuota ordinaria |
 | End-to-end | Playwright | Registro, captura, confirmación, reportes y planificación |
@@ -290,34 +292,60 @@ No se despliega una plataforma completa de observabilidad para la demo. Se conse
 
 ### Desarrollo
 
-- Web y procesos Node.js ejecutados desde el workspace.
-- PostgreSQL, Redis, MinIO y, cuando se necesite, Keycloak en contenedores.
+- Web y el proceso Node.js (API + worker) ejecutados desde el workspace.
+- PostgreSQL local o el proyecto Supabase gratuito; Supabase Storage y Supabase Auth configurados con credenciales de desarrollo.
 - Adaptadores simulados por defecto para OCR y voz.
 - Servicios externos habilitados solo con credenciales fuera del repositorio.
 
-### TFM desplegado
+### Etapa 1 — MVP en free tier (<20 usuarios)
 
-- Web en hosting estático con CDN.
-- API y worker como contenedores independientes.
-- PostgreSQL gestionado con backups.
-- Redis persistente compatible con los requisitos de BullMQ.
-- Almacenamiento de objetos privado y económico.
-- OIDC gestionado o Keycloak endurecido según el presupuesto real.
-- Azure OCR/voz con presupuesto y kill switch.
+| Capa | Servicio gratuito | Límite relevante |
+|---|---|---|
+| Web y PWA | **Vercel** (Hobby) | Uso personal/no comercial; assets estáticos y CDN incluidos |
+| API + worker | **Render** o **Koyeb** (un solo proceso contenerizado) | Render free duerme a los 15 min sin tráfico y demora ~1 min en despertar; aceptable para el piloto, con ping de health-check si molesta en demos |
+| Base de datos | **Supabase** Postgres | 500 MB, pausa tras 7 días de inactividad, sin backups automáticos (se documenta `pg_dump` programado) |
+| Cola | **pg-boss** en el mismo Postgres | Sin servicio adicional |
+| Archivos | **Supabase Storage** | 1 GB, buckets privados, ciclo de vida ≤30 días |
+| Identidad | **Supabase Auth** | 50k MAU; Google, Facebook y passkeys |
+| OCR / voz | **Azure AI** capa F0 | ~500 páginas/mes de Document Intelligence y ~5 h/mes de Speech; mocks por defecto |
+
+La web no convive con la API en Vercel porque sus functions son invocaciones efímeras (300 s máx. en Hobby) sin proceso persistente: el worker de la cola necesita un proceso continuo que pollee PostgreSQL, y los Daemons de Vercel solo conceden ~10 vCPU-horas/mes en el plan gratuito — suficiente para probar, no para operar. Un host de contenedores con proceso persistente resuelve ambas necesidades en el free tier.
+
+### Etapa 2 — producción y escalado (AWS)
+
+| Capa | Sustitución | Nota |
+|---|---|---|
+| Web y PWA | Amazon S3 + CloudFront | El artefacto estático no cambia |
+| API + worker | Amazon ECS Fargate o App Runner, procesos separados | El bootstrap se divide; el código de negocio no |
+| PostgreSQL | Amazon RDS / Aurora | Migración estándar de PostgreSQL; mismo esquema |
+| Cola | Amazon SQS o BullMQ sobre ElastiCache (Redis) | Solo cambia el adaptador del puerto de cola |
+| Archivos | Amazon S3 | Mismo contrato S3-compatible y URLs firmadas |
+| Identidad | Amazon Cognito u OIDC gestionado | El dominio conserva issuer–subject |
+| OCR / voz | Azure en plan pago, o Amazon Textract / Transcribe | Detrás de los mismos puertos |
+| Observabilidad | OpenTelemetry + backend de métricas/trazas | Se activa con la telemetría ya prevista |
+
+La extracción de microservicios se evalúa solo con las métricas y umbrales de [Arquitectura de solución](03-arquitectura-solucion.md); nunca antes de necesitarla.
 
 ### No incluido inicialmente
 
 - Kubernetes y service mesh.
 - Kafka u otro log distribuido.
+- Redis/BullMQ, Keycloak y MinIO como piezas operadas a mano (sus roles ya están cubiertos por Supabase y pg-boss; se evalúan en etapa 2 si el volumen lo justifica).
 - Base por microservicio antes de extraer servicios.
 - Multi-región activa-activa.
 - Data warehouse o plataforma ML.
+- OpenTelemetry backend, escaneo de malware y generación de cliente OpenAPI (diferidos a endurecimiento).
 
 ## Alternativas relevantes
 
 | Alternativa | Ventaja | Motivo para no elegirla ahora |
 |---|---|---|
+| Python (Django/FastAPI) | Ecosistema de datos y scripting maduro | Duplicar lenguaje entre web y API aumenta cambio de contexto sin beneficio para este dominio |
+| Go | Rendimiento y binarios simples | Curva de productividad y menor ecosistema de componentes/formularios que TypeScript full-stack |
 | Spring Boot | Ecosistema empresarial y operación madura | Mayor cambio de contexto sin equipo JVM ni requisito que lo compense |
+| Backend en Vercel Functions | Mismo hosting que la web | Funciones efímeras sin proceso persistente para el worker de cola; Daemons ≈10 vCPU-h/mes en Hobby |
+| Keycloak autogestionado | OIDC abierto y completo | Requiere operar JVM, base y TLS propios; Supabase Auth cubre OAuth/passkeys en free tier |
+| Redis + BullMQ | Cola de alto throughput | Infraestructura extra que el volumen del MVP no justifica; pg-boss resuelve la misma necesidad en Postgres |
 | Next.js | SSR, rutas servidor y plataforma full-stack | El producto autenticado no necesita SEO/SSR y podría difuminar la separación con la API |
 | MongoDB | Esquema flexible | Menor ajuste para integridad relacional, decimales, auditoría y reportes financieros |
 | Microservicios desde el inicio | Despliegue y escalado aislados | Multiplica fallos, contratos, observabilidad y consistencia sin carga demostrada |
@@ -341,11 +369,15 @@ No se despliega una plataforma completa de observabilidad para la demo. Se conse
 - [NestJS: colas](https://docs.nestjs.com/techniques/queues)
 - [Vite: build de producción](https://vite.dev/guide/build.html)
 - [Prisma ORM](https://www.prisma.io/docs/orm)
-- [BullMQ: producción](https://docs.bullmq.io/guide/going-to-production)
-- [Keycloak: documentación](https://www.keycloak.org/documentation)
+- [pg-boss](https://pgboss.io/)
+- [Supabase Auth](https://supabase.com/docs/guides/auth) y [Supabase Storage](https://supabase.com/docs/guides/storage)
+- [Vite PWA / Workbox](https://vite-pwa-org.netlify.app/)
+- [Dexie (IndexedDB)](https://dexie.org/)
+- [ExcelJS](https://github.com/exceljs/exceljs)
+- [Render free tier](https://render.com/docs/free)
 - [Azure AI Document Intelligence](https://learn.microsoft.com/azure/ai-services/document-intelligence/)
 - [Azure AI Speech](https://learn.microsoft.com/azure/ai-services/speech-service/)
-- [OpenTelemetry](https://opentelemetry.io/docs/)
+- [OpenTelemetry](https://opentelemetry.io/docs/) (referencia de etapa 2)
 
 ## Siguiente documento
 

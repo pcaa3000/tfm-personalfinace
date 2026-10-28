@@ -1,6 +1,6 @@
 # Requisitos del producto
 
-Este documento define un MVP internacional de finanzas personales que convierte entradas manuales, tickets y dictados en transacciones confirmadas y recomendaciones explicables, sin conectarse a entidades bancarias ni mover dinero.
+Este documento define un MVP internacional de finanzas personales —aplicación web y PWA móvil— que convierte entradas manuales, tickets y dictados en transacciones confirmadas y recomendaciones explicables, sin conectarse a entidades bancarias ni mover dinero. La PWA permite registrar movimientos y capturar medios sin conexión mediante una cola local que se sincroniza de forma idempotente al recuperar red.
 
 ## Resumen ejecutivo
 
@@ -17,30 +17,32 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 5. Mostrar reportes accionables por período, categoría, comercio y moneda.
 6. Recomendar una tasa de ahorro sostenible y una distribución adaptable en siete bolsillos virtuales.
 7. Detectar gastos pequeños y repetitivos sin imponer un umbral universal ni culpabilizar a la persona.
-8. Proteger imágenes, audios y datos financieros mediante una retención configurable y borrado anticipado.
+8. Proteger imágenes, audios y datos financieros mediante una retención máxima de 30 días y borrado anticipado.
 9. Ofrecer una demo reproducible, aislada y claramente simulada para demostrar los flujos sin consumir proveedores externos.
 
 ## Alcance
 
 ### Incluido en el MVP
 
-- Registro y autenticación mediante un proveedor de identidad.
+- Registro y autenticación mediante un proveedor de identidad, con usuario y contraseña, proveedores sociales (Google, Facebook u otros configurados) y passkeys.
 - Un workspace financiero personal por usuario registrado.
-- Preferencias de idioma, locale, zona horaria, moneda y retención en el workspace.
+- Preferencias de idioma, locale, zona horaria y moneda en el workspace.
 - Ingresos y gastos manuales.
 - Tickets capturados con cámara o seleccionados desde almacenamiento.
 - Dictados cortos desde micrófono.
+- Cola local de la PWA para registrar movimientos manuales y capturar imágenes o audios sin conexión, con sincronización idempotente al recuperar red.
 - Procesamiento asíncrono de OCR y voz.
-- Retención común de tickets y audios durante 1, 2 o 3 meses.
+- Conservación de tickets y audios con un máximo fijo de 30 días desde la captura y borrado anticipado por la persona.
 - Revisión obligatoria de datos inferidos.
-- Categorías globales y personalizadas por workspace.
-- Reportes mensuales separados por moneda.
+- Categorías globales iniciales (Hogar, Comida, Transporte, Salud, Sueldo, etc.) y personalizadas por workspace.
+- Reportes mensuales separados por moneda y exportables en `.csv` y `.xlsx`.
+- Presupuestos ajustables por categoría y período con seguimiento de ejecución.
 - Recomendación de ahorro después de cerrar un período mensual válido.
-- Siete bolsillos virtuales y porcentajes ajustables.
+- Siete cuentas virtuales (cuenta corriente y seis de ahorro) con porcentajes ajustables.
 - Detección configurable de gastos hormiga.
-- Exportación y eliminación de datos del workspace.
-- Cuenta demo compartida con un workspace efímero independiente por sesión.
-- Datos demo sintéticos y extracciones simuladas que se restablecen en cada nuevo login.
+- Eliminación de datos del workspace.
+- Cuenta demo compartida que carga datos semilla como cualquier usuario; las modificaciones de la sesión no persisten.
+- La sesión demo termina por logout, cierre de la aplicación o 10 minutos de inactividad, y el siguiente login restaura la semilla original.
 
 ### Fuera del MVP
 
@@ -52,6 +54,8 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 - Múltiples workspaces por usuario, membresías, invitaciones o transferencia de propiedad.
 - Procesamiento de medios demo mediante Azure o cualquier proveedor de pago.
 - Reinicio manual del dataset dentro de una sesión demo vigente.
+- Persistencia de cambios del modo demo fuera de la sesión activa.
+- Edición o anulación de transacciones existentes mientras no hay conexión; la cola local solo admite nuevos registros y capturas.
 - Conversión automática entre monedas sin una fuente de tipos de cambio trazable.
 - Recomendaciones presentadas como asesoramiento financiero, fiscal, legal o de inversión.
 - Clasificación o planificación dependientes de un LLM.
@@ -65,7 +69,7 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 | Visitante demo | Utiliza credenciales compartidas dentro de un workspace efímero aislado por sesión |
 | Aplicación web | Captura entradas, presenta estados, solicita confirmación y muestra reportes accesibles |
 | API de negocio | Ejecuta casos de uso, aplica autorización y conserva el estado canónico |
-| Worker | Procesa de forma asíncrona archivos, OCR, voz, outbox y agregados |
+| Worker | Procesa de forma asíncrona archivos, OCR, voz, trabajos encolados y agregados |
 | Proveedor de identidad | Autentica, recupera cuentas y ofrece segundo factor o passkeys |
 | Proveedor OCR | Extrae campos y confianza de imágenes o documentos de tickets |
 | Proveedor de voz | Convierte audio en texto y, cuando exista, informa idioma y confianza |
@@ -81,8 +85,10 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 - Cada transacción conserva su moneda original. Los reportes no suman monedas distintas.
 - El período base es el mes calendario de la zona horaria configurada en el workspace.
 - Un cierre mensual requiere datos confirmados y una declaración de integridad; el sistema no puede saber si faltan movimientos sin conexión bancaria.
-- La política de retención se elige una vez para tickets y audios, acepta 1, 2 o 3 meses y solo afecta capturas futuras.
-- Cada login demo nuevo recibe una sesión y workspace diferentes; recargar conserva la sesión y logout/expiración la termina.
+- La conservación de tickets y audios es fija: máximo 30 días desde el instante de captura; la persona siempre puede borrar un medio antes de su vencimiento.
+- La cola local de la PWA solo admite altas nuevas (registros manuales y capturas); cada ítem porta una clave de idempotencia generada en el cliente.
+- Un ítem pendiente de sincronización no participa en reportes ni recomendaciones hasta que el servidor lo confirma.
+- Cada login demo nuevo materializa la semilla sintética en un workspace efímero; recargar conserva la sesión, mientras que logout, cierre de la aplicación/pestaña o 10 minutos de inactividad la terminan y descartan los cambios.
 - Cámara y micrófono demo se procesan localmente para preview; ningún medio real se sube ni se envía a proveedores.
 - Las cuotas y precios de proveedores externos pueden cambiar y no forman parte de la garantía funcional.
 
@@ -92,9 +98,11 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 |---|---|
 | Workspace financiero | Contenedor aislado de datos, preferencias y políticas de una identidad personal o sesión demo |
 | Workspace personal | Workspace persistente y único de un usuario registrado |
-| Sesión demo | Sesión OIDC de credenciales compartidas ligada a un workspace efímero exclusivo |
+| Sesión demo | Sesión de credenciales compartidas ligada a un workspace efímero que expira por logout, cierre de la aplicación o 10 minutos de inactividad |
 | Dataset semilla | Conjunto sintético, versionado y reproducible materializado al iniciar una sesión demo |
-| Política de retención | Plazo común de 1, 2 o 3 meses que un workspace asigna a nuevos tickets y audios |
+| Retención de medios | Plazo fijo máximo de 30 días que aplica a cada ticket y audio desde su captura |
+| Cola local | Almacenamiento de la PWA (IndexedDB) con altas y capturas pendientes de sincronizar |
+| Presupuesto | Límite de gasto declarado por la persona para una categoría, moneda y período, con seguimiento de ejecución |
 | Transacción | Ingreso o gasto perteneciente a un workspace, con importe positivo, moneda, fecha de negocio y estado |
 | Borrador | Propuesta editable que todavía no participa en reportes ni recomendaciones |
 | Transacción confirmada | Dato aceptado explícitamente por la persona usuaria y válido para cálculos |
@@ -114,7 +122,7 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 
 1. La persona se autentica mediante OIDC.
 2. La API resuelve su perfil por issuer–subject.
-3. En el primer acceso crea exactamente un workspace personal con la política de retención predeterminada de un mes.
+3. En el primer acceso crea exactamente un workspace personal con la retención de medios fija de 30 días.
 4. En accesos posteriores recupera el mismo workspace.
 5. La API inyecta el workspace en cada caso de uso; el cliente no puede seleccionar otro.
 
@@ -126,11 +134,13 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 4. La confirmación crea la transacción.
 5. Los reportes afectados se recalculan o invalidan.
 
+Si la PWA está sin conexión, el registro confirmado por la persona entra en la cola local con estado `pendiente de sincronización`; al recuperar red se envía con su clave de idempotencia y queda confirmado en servidor sin crear duplicados.
+
 ### Captura de ticket
 
 1. La persona toma una fotografía o selecciona un archivo.
 2. La aplicación valida tamaño, formato y permiso de uso.
-3. El activo se almacena en cuarentena y se crea un trabajo trazable.
+3. El activo se almacena en cuarentena y se crea un trabajo trazable. Sin conexión, la imagen queda en la cola local y los pasos 3 a 7 se ejecutan al sincronizar.
 4. El worker solicita la extracción OCR y normaliza su respuesta.
 5. La web muestra comercio, fecha, moneda, total, impuestos, partidas y confianza cuando existan.
 6. La persona corrige o completa los campos y confirma.
@@ -155,11 +165,11 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 ### Sesión demo
 
 1. La persona inicia sesión con las credenciales demo compartidas.
-2. La API crea un workspace efímero ligado a esa sesión y materializa la semilla sintética.
-3. La persona modifica datos sin afectar otras sesiones ni workspaces personales.
+2. La API crea un workspace efímero ligado a esa sesión y materializa la semilla sintética; la persona ve la app con datos como cualquier usuario.
+3. La persona modifica datos durante la sesión sin afectar otras sesiones ni workspaces personales; esos cambios no persisten al terminar.
 4. Cámara y micrófono muestran preview local; el backend devuelve escenarios de extracción mock marcados como simulados y no recibe el medio real.
 5. Recargar conserva el workspace mientras la sesión siga vigente.
-6. Logout o expiración revoca el workspace e inicia su limpieza.
+6. Logout explícito, cierre de la aplicación/pestaña o 10 minutos de inactividad revocan el workspace e inician su limpieza, descartando las modificaciones.
 7. El siguiente login crea otro workspace con la semilla original.
 
 ## Requisitos funcionales
@@ -168,7 +178,7 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 
 | ID | Requisito |
 |---|---|
-| RF-001 | La persona debe poder registrarse, autenticarse, cerrar sesión y recuperar acceso mediante OpenID Connect |
+| RF-001 | La persona debe poder registrarse, autenticarse, cerrar sesión y recuperar acceso mediante OpenID Connect, incluyendo usuario y contraseña, proveedores sociales (Google, Facebook u otros habilitados) y passkeys |
 | RF-002 | La API debe restringir cada operación al workspace resuelto desde la identidad o sesión autenticada |
 | RF-003 | El workspace debe conservar idioma, locale, zona horaria y moneda predeterminada de nuevas transacciones |
 | RF-004 | La persona debe poder cambiar las preferencias de su workspace sin alterar moneda, zona ni fecha histórica de transacciones existentes |
@@ -188,7 +198,7 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 | RF-013 | La persona debe poder listar, buscar, paginar y filtrar por período, tipo, moneda, categoría, comercio y origen |
 | RF-014 | La aplicación debe distinguir borrador, confirmado y anulado; solo confirmado participa en cálculos |
 | RF-015 | La categoría `Sin categorizar` debe ser visible y filtrable, nunca un valor ausente oculto |
-| RF-016 | Toda operación de creación susceptible de repetición debe aceptar una clave de idempotencia o un identificador equivalente |
+| RF-016 | Toda operación de creación susceptible de repetición debe aceptar una clave de idempotencia o un identificador equivalente; los registros encolados offline la generan en el cliente |
 
 ### Tickets y OCR
 
@@ -262,12 +272,12 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 | ID | Requisito |
 |---|---|
 | RF-070 | La persona debe conocer qué proveedor externo procesa una imagen o audio antes de habilitar esa capacidad |
-| RF-071 | El workspace personal debe ofrecer un único plazo de conservación para tickets y audios con valores válidos de 1, 2 o 3 meses y 1 mes predeterminado |
-| RF-072 | La persona debe poder exportar transacciones, categorías, planes y metadatos de captura de su workspace en un formato interoperable |
+| RF-071 | La conservación de tickets y audios debe ser fija y no configurable por encima de 30 días desde la captura |
+| RF-072 | La persona debe poder exportar transacciones, categorías, presupuestos, planes y metadatos de captura de su workspace en formatos interoperables, incluyendo `.csv` y `.xlsx` |
 | RF-073 | Debe poder solicitar eliminación de su workspace/cuenta y seguir el estado hasta completar borrado o anonimización legalmente justificada |
-| RF-074 | La eliminación debe contemplar base de datos, objetos, trabajos, cachés y copias según la política de retención documentada |
-| RF-075 | Cada ticket o audio debe guardar el plazo vigente al capturarse y una expiración calculada desde ese instante |
-| RF-076 | Cambiar la preferencia de retención debe afectar solo nuevas capturas y mantener inalterada la expiración de medios existentes |
+| RF-074 | La eliminación debe contemplar base de datos, objetos, trabajos, cachés, copias y la cola local de la PWA según la política de retención documentada |
+| RF-075 | Cada ticket o audio debe guardar su expiración calculada a 30 días desde el instante de captura |
+| RF-076 | Ninguna configuración puede extender la conservación por encima de 30 días; el borrado anticipado por la persona siempre está disponible |
 | RF-077 | La interfaz debe mostrar la expiración de cada medio y permitir borrarlo antes sin eliminar necesariamente la transacción confirmada |
 
 ### Modo demo
@@ -275,13 +285,35 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 | ID | Requisito |
 |---|---|
 | RF-080 | La experiencia demo debe utilizar credenciales compartidas identificadas como cuenta no personal y sin funciones de recuperación o cambio de identidad |
-| RF-081 | Cada nueva sesión OIDC demo debe crear un workspace efímero distinto mediante `sid` o un identificador servidor ligado a la sesión validada |
-| RF-082 | El workspace demo debe materializar una semilla sintética versionada con manual, ticket, voz, reportes, gastos hormiga, ahorro, bolsillos y auditoría |
-| RF-083 | Recargar debe conservar los cambios mientras la sesión continúe vigente; no debe existir reinicio manual en el MVP |
-| RF-084 | Logout o expiración deben revocar el workspace inmediatamente e iniciar limpieza idempotente; el siguiente login debe cargar la semilla original en otro workspace |
+| RF-081 | Al iniciar sesión, la cuenta demo debe cargar el dataset semilla en un workspace efímero ligado a esa sesión, presentando la misma experiencia que un usuario registrado |
+| RF-082 | El workspace demo debe materializar una semilla sintética versionada con manual, ticket, voz, reportes, gastos hormiga, ahorro, cuentas virtuales, presupuestos y auditoría |
+| RF-083 | Las modificaciones realizadas durante la sesión demo no deben persistir: se descartan al cerrar sesión, cerrar la aplicación/pestaña o tras 10 minutos de inactividad |
+| RF-084 | Logout, cierre de la aplicación o expiración por inactividad deben revocar el workspace inmediatamente e iniciar limpieza idempotente; el siguiente login debe cargar la semilla original en otro workspace |
 | RF-085 | Dos sesiones demo concurrentes con el mismo `subject` deben mantener datos, objetos, cachés, jobs y proyecciones separados |
 | RF-086 | Cámara, archivos y micrófono demo deben permanecer en el navegador; el backend solo recibe un escenario sintético y no llama a Azure |
 | RF-087 | Toda extracción, error o confianza demo debe marcarse como simulada y nunca atribuirse al contenido real capturado |
+| RF-088 | En modo demo, la cola local y el almacenamiento offline deben vaciarse al terminar la sesión y nunca conservar cambios de una sesión anterior |
+
+### Presupuestos
+
+| ID | Requisito |
+|---|---|
+| RF-090 | La persona debe poder declarar un presupuesto de gasto por categoría, moneda y período (mensual del workspace) |
+| RF-091 | El presupuesto debe mostrar importe asignado, gasto ejecutado confirmado, porcentaje consumido y restante disponible |
+| RF-092 | La persona debe poder ajustar o eliminar un presupuesto; cada cambio crea una versión y no altera el histórico ya informado |
+| RF-093 | El sistema debe señalar cuando la ejecución supera un umbral configurable (por ejemplo 80%) o el 100% del presupuesto, con lenguaje informativo y sin culpabilizar |
+| RF-094 | Los presupuestos deben incluirse en reportes y exportaciones, y una revisión de transacción debe actualizar la ejecución afectada |
+
+### Sincronización offline de la PWA
+
+| ID | Requisito |
+|---|---|
+| RF-100 | La PWA debe permitir crear registros manuales y capturar imágenes o audios sin conexión, conservándolos en una cola local visible para la persona |
+| RF-101 | Cada ítem encolado debe portar una clave de idempotencia generada en el cliente para impedir duplicados ante reintentos o reconexiones |
+| RF-102 | Al recuperar conexión, la cola debe sincronizarse en orden de captura con reintentos acotados; un ítem sincronizado abandona la cola local |
+| RF-103 | Las capturas encoladas inician su procesamiento de OCR o voz solo después de sincronizarse y siguen el mismo flujo de revisión que una captura en línea |
+| RF-104 | Los ítems `pendientes de sincronización` deben ser visibles como tales y no participar en reportes, presupuestos ni recomendaciones hasta su confirmación en servidor |
+| RF-105 | El almacenamiento local debe vaciarse al cerrar sesión y, en modo demo, al terminar la sesión por cualquier vía |
 
 ## Reglas de negocio transversales
 
@@ -303,8 +335,10 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 | RN-014 | Los bolsillos son proyecciones matemáticas; guardarlos nunca desencadena un movimiento de dinero |
 | RN-015 | Todo recurso financiero o derivado pertenece a un solo workspace y no puede reasignarse a otro |
 | RN-016 | Una identidad personal posee exactamente un workspace; una sesión demo posee exactamente un workspace efímero |
-| RN-017 | La retención del medio se fija al capturarse y solo admite 1, 2 o 3 meses calendario; cambios posteriores no la reescriben |
+| RN-017 | La retención del medio se fija al capturarse en un máximo de 30 días calendario; no existe configuración que la extienda |
 | RN-018 | Un workspace demo terminado nunca se reactiva; un nuevo login materializa la semilla original en otro workspace |
+| RN-019 | Un ítem de la cola local no participa en reportes, presupuestos ni recomendaciones hasta confirmarse en servidor |
+| RN-020 | Ninguna modificación de una sesión demo se materializa como estado persistente; la limpieza descarta datos, medios, jobs y cola local |
 
 ## Requisitos no funcionales
 
@@ -329,7 +363,8 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 | RNF-017 | Navegadores | Cámara y micrófono solo se ofrecerán cuando el navegador y el contexto seguro los soporten; siempre existirá alternativa de archivo o entrada manual |
 | RNF-018 | Compatibilidad | Los contratos HTTP publicados deben versionarse y mantener una ventana de migración definida para clientes desplegados por separado |
 | RNF-019 | Aislamiento | Persistencia, objetos, jobs, cachés, eventos y proyecciones deben incluir y validar el workspace; las pruebas deben cubrir accesos cruzados |
-| RNF-020 | Demo | La revocación del workspace demo debe ser inmediata y su limpieza física idempotente/reconciliable; ninguna ruta demo puede invocar proveedores de pago |
+| RNF-020 | Demo | La revocación del workspace demo debe ser inmediata (logout, cierre de la aplicación o 10 minutos de inactividad) y su limpieza física idempotente/reconciliable; ninguna ruta demo puede invocar proveedores de pago |
+| RNF-021 | Offline | La cola local debe sobrevivir recargas de la PWA, conservar orden de captura y sincronizarse de forma idempotente; su contenido se descarta al terminar la sesión |
 
 ## Criterios de aceptación del MVP
 
@@ -350,10 +385,15 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 | CA-013 | Las tablas permiten comprender la misma información que los gráficos mediante teclado y lector de pantalla |
 | CA-014 | La exportación incluye monedas, zonas horarias, origen, estados y revisiones suficientes para interpretar los datos fuera del sistema |
 | CA-015 | El primer acceso personal crea un workspace; repetir el acceso devuelve el mismo y no permite crear un segundo |
-| CA-016 | Un medio capturado con plazo de 1 mes conserva esa expiración después de cambiar la preferencia a 3 meses; la siguiente captura usa 3 meses |
+| CA-016 | Un medio capturado conserva su expiración de 30 días; la persona puede eliminarlo antes sin perder la transacción confirmada |
 | CA-017 | Dos logins demo concurrentes con las mismas credenciales reciben workspaces y modificaciones independientes |
-| CA-018 | Recargar conserva datos demo, pero logout/expiración revoca el workspace y el siguiente login restaura la semilla original |
+| CA-018 | Recargar conserva la sesión demo; logout, cierre de la aplicación o 10 minutos de inactividad descartan los cambios y el siguiente login restaura la semilla original |
 | CA-019 | Cámara/micrófono demo no generan una subida real ni llamada Azure y todo resultado se muestra como simulado |
+| CA-020 | Un gasto registrado sin conexión queda `pendiente de sincronización`, no altera reportes y, al recuperar red, se confirma una sola vez aunque la sincronización se reintente |
+| CA-021 | Una imagen o audio capturado sin conexión permanece en la cola local y al sincronizar sigue el flujo normal de procesamiento y revisión |
+| CA-022 | La exportación produce archivos `.csv` y `.xlsx` con monedas, zonas horarias y estados inequívocos |
+| CA-023 | Un presupuesto por categoría muestra ejecución confirmada, alerta al superar el umbral configurado y admite ajuste versionado sin reescribir el histórico |
+| CA-024 | La autenticación admite usuario/contraseña, al menos un proveedor social (Google o Facebook) y passkey, resolviendo siempre el mismo workspace personal |
 
 ## Datos mínimos para una recomendación
 

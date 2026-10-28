@@ -62,14 +62,15 @@ Preparar el entorno y las fronteras que impiden que la implementación se convie
 
 ### Unidades de trabajo
 
-1. Inicializar repositorio y workspace con web, API y worker como builds independientes.
-2. Establecer módulos, capas y reglas de importación.
+1. Inicializar repositorio y workspace con web (PWA) y API+worker como builds independientes.
+2. Establecer módulos, capas, reglas de importación y revisión de principios SOLID.
 3. Preparar configuración por entorno y gestión externa de secretos.
-4. Incorporar PostgreSQL, Redis y MinIO reproducibles en local.
+4. Incorporar PostgreSQL reproducible en local (o el proyecto Supabase gratuito), pg-boss y un adaptador de objetos compatible con Supabase Storage.
 5. Preparar adaptadores simulados de identidad, OCR y voz para pruebas.
 6. Definir contrato HTTP inicial, errores, correlación e idempotencia.
-7. Activar lint, typecheck, pruebas, escaneo de dependencias y builds en CI.
-8. Crear fixtures sintéticas para monedas, zonas horarias, tickets y audios.
+7. Preparar la base PWA: service worker (Workbox) e IndexedDB (Dexie) para la cola local.
+8. Activar lint, typecheck, pruebas, escaneo de dependencias y builds en CI.
+9. Crear fixtures sintéticas para monedas, zonas horarias, tickets y audios.
 
 ### No incluido
 
@@ -80,9 +81,10 @@ Preparar el entorno y las fronteras que impiden que la implementación se convie
 
 ### Puerta de salida
 
-- Web, API y worker pueden construirse y verificarse por separado.
+- Web y el proceso API+worker pueden construirse y verificarse por separado.
 - Una prueba de arquitectura detecta imports prohibidos.
-- PostgreSQL, Redis y MinIO pueden reiniciarse sin perder el estado que declaradamente debe ser durable.
+- PostgreSQL con pg-boss y el adaptador de objetos pueden reiniciarse sin perder el estado que declaradamente debe ser durable.
+- La cola local de la PWA persiste recargas y se vacía correctamente.
 - Ningún secreto es necesario para ejecutar pruebas ordinarias.
 - El contrato de API tiene versionado y validación automática.
 - Las fixtures no contienen datos personales reales.
@@ -95,28 +97,32 @@ Entregar el núcleo financiero sin depender de OCR o voz.
 
 ### Unidades de trabajo
 
-1. Integrar OIDC, validación de tokens y aprovisionamiento por issuer–subject.
-2. Crear perfil con idioma, locale, zona horaria y moneda predeterminada.
-3. Crear categorías iniciales y personalizadas.
+1. Integrar OIDC mediante Supabase Auth: usuario/contraseña, al menos un proveedor social (Google o Facebook) y passkey; validación de tokens y aprovisionamiento por issuer–subject.
+2. Crear workspace con idioma, locale, zona horaria y moneda predeterminada.
+3. Crear el catálogo inicial de categorías (Hogar, Comida, Transporte, Salud, Sueldo, etc.) y categorías personalizadas.
 4. Registrar ingresos y gastos manuales con dinero exacto y fecha de negocio.
-5. Listar, buscar, filtrar, editar y anular movimientos.
-6. Conservar revisiones, origen e idempotencia.
-7. Aplicar autorización por propietario en caso de uso y repositorio.
-8. Añadir tabla accesible y estados vacíos/error.
+5. Implementar la cola local de la PWA y el endpoint de sincronización idempotente para registros manuales.
+6. Listar, buscar, filtrar, editar y anular movimientos.
+7. Conservar revisiones, origen e idempotencia.
+8. Aplicar autorización por workspace en caso de uso y repositorio.
+9. Añadir tabla accesible y estados vacíos/error.
 
 ### Requisitos cubiertos
 
 - RF-001 a RF-016.
+- RF-100 a RF-102 y RF-104 (cola offline de registros manuales).
 - Base de RF-040, RF-041 y RF-044.
-- RN-001 a RN-005.
-- RNF-001 a RNF-006, RNF-009, RNF-010, RNF-014 y RNF-018.
+- RN-001 a RN-005 y RN-019.
+- RNF-001 a RNF-006, RNF-009, RNF-010, RNF-014, RNF-018 y RNF-021.
 
 ### Validación
 
 - Casos unitarios para dinero, moneda, fechas, estados y revisiones.
 - Integración real con PostgreSQL.
 - Contratos HTTP y cliente web.
-- Pruebas de dos perfiles intentando acceder al mismo ID.
+- Pruebas de dos workspaces intentando acceder al mismo ID.
+- Login por usuario/contraseña, proveedor social y passkey resolviendo el mismo workspace.
+- Registro manual creado sin conexión, encolado y sincronizado una sola vez.
 - Navegación completa por teclado y lector de pantalla en alta manual.
 - Casos con EUR, USD, JPY y BHD para escala y presentación.
 - Cambio de zona horaria que no altera el mes histórico.
@@ -138,33 +144,35 @@ Convertir una imagen de ticket en un borrador revisable utilizando el mismo caso
 ### Unidades de trabajo
 
 1. Crear activo, captura, borrador y estados canónicos.
-2. Autorizar subida firmada, finalizar por checksum y aplicar cuotas.
-3. Implementar cuarentena, tipo real, límites, normalización y eliminación de EXIF/GPS.
-4. Implementar outbox, relay, BullMQ y reconciliación.
-5. Procesar primero con un adaptador OCR determinista.
-6. Integrar Azure Document Intelligence como adaptador opt-in.
-7. Normalizar campos y confianza sin exponer tipos del proveedor.
-8. Presentar revisión, corrección, confirmación, descarte y ruta manual.
-9. Aplicar consentimiento y ciclo de vida de imágenes.
-10. Añadir métricas de cola, latencia, error, cuota y coste.
+2. Autorizar subida firmada contra Supabase Storage, finalizar por checksum y aplicar cuotas.
+3. Implementar cuarentena, tipo real, límites, normalización y eliminación de EXIF/GPS (escaneo de malware diferido a etapa 2).
+4. Implementar encolado transaccional con pg-boss y reconciliación de jobs estancados.
+5. Admitir imágenes encoladas offline en la PWA que entran en este flujo al sincronizar.
+6. Procesar primero con un adaptador OCR determinista.
+7. Integrar Azure Document Intelligence (capa F0) como adaptador opt-in.
+8. Normalizar campos y confianza sin exponer tipos del proveedor.
+9. Presentar revisión, corrección, confirmación, descarte y ruta manual.
+10. Aplicar consentimiento y ciclo de vida de imágenes a 30 días.
+11. Añadir métricas de cola, latencia, error, cuota y coste.
 
 ### Requisitos cubiertos
 
 - RF-020 a RF-029.
-- RF-070 y RF-071 para imágenes.
-- RN-006 y RN-012.
-- RNF-003 a RNF-005, RNF-008, RNF-011 a RNF-017.
+- RF-070, RF-071 y RF-075 a RF-077 para imágenes.
+- RF-100 a RF-105 para capturas de imagen encoladas offline.
+- RN-006, RN-012, RN-017 y RN-019.
+- RNF-003 a RNF-005, RNF-008, RNF-011 a RNF-017 y RNF-021.
 
 ### Validación
 
 - Imágenes válidas, corruptas, sobredimensionadas, con MIME falso y con metadatos de ubicación.
 - Fallos de almacenamiento antes y después de finalizar subida.
-- Redis caído después de confirmar la transacción PostgreSQL que creó el outbox.
+- Caída del proceso API+worker tras confirmar la transacción PostgreSQL que encoló el job; el job persiste y se retoma.
 - Job ejecutado dos veces y respuesta de proveedor duplicada.
 - Timeout, rate limit, error permanente y cuota agotada.
 - Campos con confianza desconocida, baja y contradictoria.
 - Confirmación simultánea desde dos pestañas.
-- Eliminación de imagen conservando la transacción.
+- Eliminación de imagen dentro de sus 30 días conservando la transacción.
 - Consentimiento rechazado y revocado.
 - Pruebas de contrato Azure acotadas y separadas de CI ordinaria.
 
@@ -175,7 +183,7 @@ Convertir una imagen de ticket en un borrador revisable utilizando el mismo caso
 - Una captura origina como máximo una transacción.
 - Desarrollo y CI funcionan sin Azure.
 - La respuesta bruta del proveedor no cruza al dominio.
-- Los plazos de retención se pueden demostrar con reloj controlado.
+- La expiración a 30 días se puede demostrar con reloj controlado.
 
 ## Fase 3 — Voz e interpretación
 
@@ -193,7 +201,7 @@ Transformar un clip corto en un borrador sin grabación continua, biometría ni 
 6. Crear analizador sensible a locale para español e inglés.
 7. Asociar evidencia textual a tipo, importe, moneda, fecha, comercio y categoría.
 8. Mantener campos dudosos vacíos y presentar confirmación explícita.
-9. Aplicar consentimiento, borrado de audio y fallback manual.
+9. Aplicar consentimiento, borrado de audio dentro de su ventana de 30 días y fallback manual.
 10. Medir precisión por campo, idioma y condición de audio.
 
 ### Requisitos cubiertos
@@ -214,12 +222,13 @@ Transformar un clip corto en un borrador sin grabación continua, biometría ni 
 - Reintento, job duplicado y dos confirmaciones simultáneas.
 - Eliminación del audio dentro de su ventana.
 - Cuota agotada con texto manual reutilizable.
+- Audio grabado sin conexión encolado en la PWA y procesado al sincronizar.
 
 ### Puerta de salida
 
 - CA-003, CA-004, CA-011 y CA-012 completos para voz.
 - Ningún campo sin evidencia se inventa.
-- El audio exitoso se elimina dentro de 24 horas.
+- El audio se elimina a los 30 días de su captura o antes, por borrado anticipado.
 - No hay voiceprint, clasificación de hablante ni grabación en segundo plano.
 - Desarrollo y CI funcionan sin Azure.
 
@@ -231,19 +240,21 @@ Convertir movimientos confirmados en reportes navegables y patrones accionables 
 
 ### Unidades de trabajo
 
-1. Implementar reglas, alias de comercio y preferencias explícitas por perfil.
+1. Implementar reglas, alias de comercio y preferencias explícitas por workspace.
 2. Publicar eventos del Libro y proyecciones idempotentes de Insights.
 3. Mostrar reportes mensuales por moneda y naturaleza de categoría.
 4. Añadir categorías, comercios, evolución y movimientos sin categorizar.
-5. Permitir navegación del agregado al detalle.
-6. Implementar política versionada de gastos pequeños y repetitivos.
-7. Añadir descarte/silencio de patrones y recálculo por revisión.
-8. Ofrecer tablas equivalentes, exportación tabular y accesibilidad.
-9. Medir latencia, lag de proyección y calidad del dato.
+5. Implementar presupuestos por categoría, moneda y período con ejecución, umbrales de aviso y ajuste versionado.
+6. Permitir navegación del agregado al detalle.
+7. Implementar política versionada de gastos pequeños y repetitivos.
+8. Añadir descarte/silencio de patrones y recálculo por revisión.
+9. Ofrecer tablas equivalentes, exportación tabular en `.csv` y `.xlsx` y accesibilidad.
+10. Medir latencia, lag de proyección y calidad del dato.
 
 ### Requisitos cubiertos
 
 - RF-040 a RF-058.
+- RF-090 a RF-094 (presupuestos).
 - RN-009 a RN-012.
 - RNF-007, RNF-009, RNF-010, RNF-013 y RNF-015.
 
@@ -255,6 +266,8 @@ Convertir movimientos confirmados en reportes navegables y patrones accionables 
 - Cambio de categoría o anulación invalida el agregado correcto.
 - Primer mes, varios meses, mes vacío y mes con déficit.
 - Gasto aislado pequeño frente a patrón que cumple todos los umbrales.
+- Presupuesto dentro, al umbral y superado; ajuste versionado sin reescribir histórico.
+- Ítem pendiente de sincronización que no consume presupuesto ni participa en reportes.
 - Exclusiones esenciales/fiscales y decisión `No es gasto hormiga`.
 - Gráficos comprendidos mediante tabla, teclado, lector y sin depender del color.
 
@@ -279,10 +292,10 @@ Generar una recomendación prudente, versionada y editable a partir de un snapsh
 3. Aplicar objetivo de referencia del 10% limitado por capacidad.
 4. Calcular confianza y mostrar factores.
 5. Detectar anomalías e ingresos irregulares sin descartarlos.
-6. Crear plantilla de una cuenta corriente y seis bolsillos de ahorro.
+6. Crear plantilla de una cuenta corriente y seis cuentas de ahorro: Independencia Financiera 40%, Millonaria 30%, Año Sabático 10%, Compras Grandes 10%, Generosidad 5% e Impuestos 5%.
 7. Calcular porcentajes/importes, redondeo y residuo exactos.
 8. Permitir renombrar, ordenar, desactivar, redistribuir y versionar.
-9. Diferenciar fondo de emergencia y reserva fiscal declarada.
+9. Diferenciar Cuenta Impuestos (reserva fiscal declarada) del concepto de fondo de emergencia para imprevistos.
 10. Obtener aceptación explícita del aviso informativo y del plan.
 
 ### Requisitos cubiertos
@@ -300,8 +313,8 @@ Generar una recomendación prudente, versionada y editable a partir de un snapsh
 - Ingreso extraordinario y período omitido.
 - JPY sin decimales y BHD con tres; residuo entre seis bolsillos.
 - Suma de 99,99%, 100% y 100,01%.
-- Fondo de emergencia bajo/alcanzado.
-- Reserva fiscal sin declaración, con tasa declarada y superior al máximo permitido.
+- Fondo de emergencia como bolsillo reorientado, meta baja/alcanzada.
+- Cuenta Impuestos sin declaración de ingreso no retenido, con tasa declarada y superior al máximo permitido.
 - Revisión de una transacción después de aceptar un plan.
 
 ### Puerta de salida
@@ -310,7 +323,7 @@ Generar una recomendación prudente, versionada y editable a partir de un snapsh
 - Un mes siempre muestra confianza baja.
 - Ningún ahorro supera capacidad ni genera cuenta corriente proyectada negativa.
 - Los seis importes suman exactamente el ahorro.
-- Reserva fiscal no se presenta como fondo de imprevistos ni cálculo tributario.
+- Cuenta Impuestos no se presenta como fondo de imprevistos ni como cálculo tributario; el concepto de emergencia permanece diferenciado.
 - Cambiar una política no modifica planes históricos.
 
 ## Fase 6 — Derechos, endurecimiento y despliegue
@@ -321,20 +334,23 @@ Cerrar controles transversales y demostrar una operación segura, reproducible y
 
 ### Unidades de trabajo
 
-1. Exportación JSON/CSV y paquete opcional de medios.
+1. Exportación JSON, CSV y XLSX, y paquete opcional de medios.
 2. Borrado de activo, transacción y cuenta con estados y reconciliación.
-3. Retención automática, objetos huérfanos y rotación de backups.
-4. CSP, CORS, cabeceras, rate limits y revisión de errores/logs.
-5. Pruebas de carga, accesibilidad y seguridad sobre todos los flujos.
-6. Backups y restauración en entorno aislado.
-7. Rotación de secretos y recuperación operativa.
-8. Dashboards mínimos, alertas, presupuesto y kill switches.
-9. Despliegues independientes de web, API y worker.
-10. Revisión DPA, residencia, textos de consentimiento y aviso legal antes de piloto público.
+3. Retención automática de medios a 30 días, objetos huérfanos y rotación de backups.
+4. Modo demo completo: seed por sesión, no-persistencia de cambios, expiración por logout, cierre de aplicación o 10 minutos de inactividad, y limpieza de la cola local.
+5. CSP, CORS, cabeceras, rate limits y revisión de errores/logs.
+6. Pruebas de carga, accesibilidad y seguridad sobre todos los flujos.
+7. Backups y restauración en entorno aislado (pg_dump programado en free tier).
+8. Rotación de secretos y recuperación operativa.
+9. Dashboards mínimos, alertas, presupuesto y kill switches.
+10. Despliegues independientes de web y del proceso API+worker.
+11. Revisión DPA, residencia, textos de consentimiento y aviso legal antes de piloto público.
 
 ### Requisitos cubiertos
 
-- RF-072 a RF-074 y cierre de RF-070/RF-071.
+- RF-072 a RF-077 y cierre de RF-070/RF-071.
+- RF-080 a RF-088 (modo demo), RN-018 y RN-020.
+- RNF-020.
 - Todos los RNF, especialmente RNF-003, RNF-004, RNF-012, RNF-013 y RNF-016.
 
 ### Validación
@@ -345,7 +361,7 @@ Cerrar controles transversales y demostrar una operación segura, reproducible y
 - Restore probado sin copiar datos a desarrollo.
 - Escaneo de secreto y dependencia.
 - Revisión automatizada y manual de logs prohibidos.
-- Fallos de PostgreSQL, Redis, objetos, OIDC y proveedores.
+- Fallos de PostgreSQL (incluida la cola pg-boss), objetos, OIDC y proveedores.
 - Consumo por usuario y global contra presupuestos.
 - Pruebas WCAG 2.2 AA en flujos críticos.
 - Carga de API, reporte y cola contra SLOs documentados.
@@ -369,8 +385,8 @@ Cerrar controles transversales y demostrar una operación segura, reproducible y
 | Casos de uso | Autorización, estados, idempotencia y puertos | Dobles deterministas |
 | Arquitectura | Importaciones y APIs públicas de módulos | Análisis estático |
 | Persistencia | Mapeos, transacciones, unicidad y migraciones | PostgreSQL efímero |
-| Cola | Outbox, relay, reintentos, duplicados y reconciliación | PostgreSQL y Redis efímeros |
-| Objetos | Firma, cuarentena, lifecycle y propiedad | MinIO efímero |
+| Cola | Encolado transaccional, reintentos, duplicados y dead-letter | PostgreSQL efímero con pg-boss |
+| Objetos | Firma, cuarentena, lifecycle y propiedad | Supabase Storage local o mock |
 | Contrato HTTP | Compatibilidad API–cliente, errores y versiones | OpenAPI publicado |
 | Componentes | Formularios, permisos, estados, foco y tablas | Navegador simulado/real |
 | End-to-end | Flujos verticales completos | Entorno integrado con proveedores simulados |
@@ -397,7 +413,7 @@ Cerrar controles transversales y demostrar una operación segura, reproducible y
 
 - Petición, evento, job y callback duplicados.
 - Evento fuera de orden.
-- Caída entre escritura de outbox y publicación.
+- Caída del proceso tras confirmar la transacción que encoló el job y antes de ejecutarlo.
 - Caída del worker tras llamar al proveedor y antes de persistir.
 - Respuesta tardía después de descartar captura.
 - Archivo eliminado mientras espera trabajo.
@@ -417,6 +433,7 @@ Cerrar controles transversales y demostrar una operación segura, reproducible y
 - Tickets nítidos, inclinados, recortados, con bajo contraste y campos contradictorios.
 - Audios cortos con ruido, pausas, moneda omitida y fechas relativas.
 - Archivos corruptos y metadatos sensibles.
+- Colas offline con varios ítems, reconexiones intermitentes y cierre de la app con pendientes.
 
 Una fixture real solo puede incorporarse con autorización, eliminación irreversible de identidad y revisión específica. La vía normal es generar casos sintéticos.
 
@@ -439,7 +456,7 @@ Las credenciales y cuotas son distintas por entorno. Nunca se restaura producci�
 | CA-001 | 1 | E2E manual y consulta de reporte básico |
 | CA-002 | 2 | E2E ticket con borrador no confirmado |
 | CA-003 | 3 | E2E dictado ambiguo y revisión |
-| CA-004 | 2 y 3 | Pruebas de duplicado en API, outbox, job y confirmación |
+| CA-004 | 2 y 3 | Pruebas de duplicado en API, cola, job y confirmación |
 | CA-005 | 1 y todas | Matriz negativa de autorización por recurso |
 | CA-006 | 4 | Reporte multimoneda separado |
 | CA-007 | 5 | Política de un mes con confianza baja |
@@ -450,12 +467,22 @@ Las credenciales y cuotas son distintas por entorno. Nunca se restaura producci�
 | CA-012 | 2 y 3 | Eliminación de medio conservando transacción |
 | CA-013 | 4 y 5 | Auditoría WCAG de tabla/gráfico |
 | CA-014 | 6 | Exportación interoperable verificada |
+| CA-015 | 1 | Primer acceso crea workspace único |
+| CA-016 | 2 | Expiración de medio a 30 días y borrado anticipado |
+| CA-017 | 6 | Sesiones demo concurrentes aisladas |
+| CA-018 | 6 | Demo descarta cambios por logout, cierre o 10 min de inactividad |
+| CA-019 | 2 y 3 | Extracción demo simulada sin llamadas a Azure |
+| CA-020 | 1 | Registro offline encolado y confirmado una sola vez |
+| CA-021 | 2 y 3 | Medio encolado offline procesado al sincronizar |
+| CA-022 | 6 | Archivos `.csv` y `.xlsx` verificados |
+| CA-023 | 4 | Presupuesto con ejecución, umbral y ajuste versionado |
+| CA-024 | 1 | Login por contraseña, social y passkey al mismo workspace |
 
 ## Puertas de publicación
 
 ### Demo académica
 
-- Flujos CA-001 a CA-013 demostrables con datos sintéticos.
+- Flujos CA-001 a CA-024 demostrables con datos sintéticos.
 - Al menos una prueba opt-in de OCR y voz real, sin depender de ella para repetir la demo.
 - Arquitectura, dominio y riesgos explicables desde esta documentación.
 - Ningún secreto o dato personal en repositorio.
@@ -514,7 +541,7 @@ Cada unidad incluye pruebas y documentación del comportamiento. Si una revisió
 - Web evita depender de una ruta hasta que la API compatible esté promovida.
 - Un adaptador nuevo puede volver al anterior sin reinterpretar datos históricos.
 - Una política financiera nueva crea versión; desactivarla conserva planes previos.
-- Rollback de worker no elimina outbox ni trabajos canónicos.
+- Rollback del proceso API+worker no elimina jobs pendientes ni trabajos canónicos.
 
 ## Riesgos de ejecución
 
@@ -523,7 +550,7 @@ Cada unidad incluye pruebas y documentación del comportamiento. Si una revisió
 | Alcance crece hacia banca/pagos | Historias requieren credenciales o movimientos reales | Rechazar del MVP y abrir iniciativa regulatoria independiente |
 | Proveedor poco preciso | Corrección alta por campo/idioma | Mejorar captura o adaptar proveedor; nunca auto-confirmar |
 | Coste externo inesperado | Consumo por captura supera presupuesto | Reducir límites, caché segura, kill switch y manual |
-| Redis/Keycloak/MinIO pesan demasiado | Entorno local inestable o memoria insuficiente | Perfiles opcionales o servicio gestionado; no eliminar puertos |
+| Free tier insuficiente o proveedor pausa el proyecto | Supabase inactivo 7 días o Render duerme el servicio | Ping programado de keep-alive, pg_dump programado y evaluación del plan pago mínimo |
 | Reglas financieras confunden | Usuarios no entienden evidencia o confianza | Revisar lenguaje y política antes de añadir más automatización |
 | Internacionalización incompleta | Datos cambian al cambiar locale/zona | Pruebas de dominio y no reinterpretación histórica |
 | Datos de prueba sensibles | Fixture contiene comercio/persona real | Retirar, investigar y sustituir por sintético |

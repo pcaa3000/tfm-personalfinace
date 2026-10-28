@@ -16,12 +16,12 @@ El dominio transforma datos confirmados en una descripción explicable de la sit
 
 | Contexto | Conceptos principales |
 |---|---|
-| Perfil | Propietario, locale, zona horaria, moneda predeterminada, consentimientos y parámetros personales |
+| Workspace | Propietario lógico, locale, zona horaria, moneda predeterminada, consentimientos y parámetros personales |
 | Libro | Transacción, revisión, tipo, fecha de negocio y origen |
 | Captura | Activo, ejecución, extracción, confianza y borrador |
 | Categorización | Categoría, naturaleza financiera, regla y preferencia por comercio |
 | Insights | Snapshot mensual, métricas, calidad del dato y patrón de gasto |
-| Planificación | Capacidad, recomendación, política, plan y asignación virtual |
+| Planificación | Capacidad, recomendación, política, plan, asignación virtual, presupuesto y ejecución |
 
 ## Valores fundamentales
 
@@ -71,7 +71,7 @@ Sin esos elementos, una suma multimoneda es inválida.
 | Instante confirmado | Momento UTC de la acción explícita de confirmación |
 | Período | Inicio local inclusivo y comienzo del mes siguiente exclusivo |
 
-Cambiar la zona horaria del perfil solo afecta nuevas entradas y vistas futuras. No desplaza silenciosamente una transacción histórica a otro mes.
+Cambiar la zona horaria del workspace solo afecta nuevas entradas y vistas futuras. No desplaza silenciosamente una transacción histórica a otro mes.
 
 ### Porcentaje
 
@@ -81,11 +81,11 @@ No se guarda un plan si la suma es menor o mayor. La cuenta corriente no partici
 
 ## Agregados y entidades
 
-### Perfil financiero
+### Workspace financiero
 
 | Atributo conceptual | Propósito |
 |---|---|
-| Propietario | Límite de autorización |
+| Workspace | Límite de autorización |
 | Locale e idioma | Formato y comunicación |
 | Zona horaria | Períodos y fechas de negocio |
 | Moneda predeterminada | Ayuda de entrada, no moneda global obligatoria |
@@ -99,23 +99,23 @@ El sistema no infiere una situación fiscal a partir del comercio, país o profe
 
 Una transacción confirmada contiene como mínimo:
 
-- Propietario.
+- Workspace propietario.
 - Tipo ingreso o gasto.
 - Dinero.
 - Fecha de negocio y zona horaria de origen.
 - Concepto o contraparte.
 - Categoría o estado explícito `Sin categorizar`.
-- Origen manual, ticket o voz.
+- Origen manual, ticket o voz; el registro manual creado offline se confirma igualmente, conservando su clave de idempotencia de cliente.
 - Instante y actor de confirmación.
 - Revisión vigente y trazabilidad de cambios.
 
 | ID | Invariante |
 |---|---|
-| INV-TRX-01 | Solo el estado confirmado participa en agregados |
+| INV-TRX-01 | Solo el estado confirmado participa en agregados; un ítem `pendiente de sincronización` en la cola local de la PWA todavía no es una transacción |
 | INV-TRX-02 | Una anulación no borra el historial; deja de participar desde la revisión que la registra |
 | INV-TRX-03 | Editar importe, moneda, fecha, tipo o categoría crea una revisión y desencadena invalidación |
 | INV-TRX-04 | Una referencia de captura puede originar como máximo una transacción confirmada |
-| INV-TRX-05 | Una transacción pertenece a un propietario y nunca se reasigna |
+| INV-TRX-05 | Una transacción pertenece a un workspace y nunca se reasigna |
 | INV-TRX-06 | La procedencia inferida se conserva aunque la persona corrija el valor |
 
 ### Borrador de transacción
@@ -167,7 +167,7 @@ No se utiliza una ventana heurística como sustituto de una restricción de orig
 
 ### Categoría
 
-Una categoría tiene nombre localizable, propietario cuando es personalizada, estado y naturaleza financiera.
+Una categoría tiene nombre localizable, workspace propietario cuando es personalizada, estado y naturaleza financiera.
 
 | Naturaleza | Uso analítico |
 |---|---|
@@ -177,13 +177,35 @@ Una categoría tiene nombre localizable, propietario cuando es personalizada, es
 | Obligación | Impuesto, deuda u obligación declarada |
 | Sin categorizar | Calidad pendiente; visible en todos los reportes |
 
-Las categorías globales utilizan claves estables y etiquetas traducibles. Una categoría personalizada no se comparte entre perfiles. Archivar una categoría no modifica el historial.
+Las categorías globales utilizan claves estables y etiquetas traducibles. Una categoría personalizada no se comparte entre workspaces. Archivar una categoría no modifica el historial.
+
+### Catálogo inicial de categorías
+
+El workspace nuevo recibe un catálogo semilla localizable; cada categoría declara su naturaleza para alimentar reportes, presupuestos y detección de gastos hormiga.
+
+| Categoría | Naturaleza |
+|---|---|
+| Sueldo | Ingreso |
+| Otros ingresos | Ingreso |
+| Hogar | Esencial |
+| Comida | Esencial |
+| Transporte | Esencial |
+| Salud | Esencial |
+| Servicios y suscripciones | Esencial |
+| Ocio | Discrecional |
+| Restaurantes y cafés | Discrecional |
+| Compras | Discrecional |
+| Educación | Esencial |
+| Impuestos y obligaciones | Obligación |
+| Sin categorizar | Sin clasificar |
+
+La lista es extensible por el workspace y sus claves se traducen; nunca se interpreta una categoría ajena como propia.
 
 ### Activo, ejecución y extracción
 
 | Concepto | Responsabilidad |
 |---|---|
-| Activo | Referencia privada, checksum, tipo real, propietario y retención |
+| Activo | Referencia privada, checksum, tipo real, workspace y expiración a 30 días |
 | Ejecución | Intento idempotente de un proceso y versión de adaptador |
 | Extracción | Valores brutos/normalizados, procedencia y confianza |
 | Borrador | Selección editable de valores propuesta a la persona |
@@ -192,7 +214,7 @@ Una nueva versión de OCR o parser puede crear una nueva versión del borrador, 
 
 ### Snapshot mensual
 
-Un snapshot es inmutable y contiene una moneda, propietario, período, versión y conjunto exacto de revisiones de transacción.
+Un snapshot es inmutable y contiene una moneda, workspace, período, versión y conjunto exacto de revisiones de transacción.
 
 Incluye:
 
@@ -212,7 +234,7 @@ Corregir una transacción no reescribe el snapshot: crea una versión nueva y ma
 
 Un período puede cerrarse para recomendación cuando:
 
-1. Ha terminado el mes calendario en la zona horaria del perfil.
+1. Ha terminado el mes calendario en la zona horaria del workspace.
 2. Existe al menos un ingreso confirmado en la moneda analizada.
 3. Solo se incluyen movimientos confirmados y no anulados.
 4. La persona declara que el período es suficientemente completo.
@@ -291,7 +313,7 @@ La confianza mide estabilidad y cobertura del dato, no calidad futura de una dec
 | Media | Entre tres y cinco meses, como máximo 10% sin categorizar y variabilidad de ingreso dentro del límite configurado |
 | Alta | Al menos seis meses consecutivos, como máximo 5% sin categorizar, sin períodos omitidos y variabilidad baja |
 
-Para ingresos regulares, la variabilidad puede medirse como desviación absoluta mediana respecto de la mediana. Los límites iniciales de revisión son 25% para confianza media y 15% para alta. Un perfil que declara ingresos irregulares muestra esa condición y no obtiene confianza alta solo por acumular meses.
+Para ingresos regulares, la variabilidad puede medirse como desviación absoluta mediana respecto de la mediana. Los límites iniciales de revisión son 25% para confianza media y 15% para alta. Un workspace que declara ingresos irregulares muestra esa condición y no obtiene confianza alta solo por acumular meses.
 
 Cualquier anomalía material puede bajar la banda. Los umbrales pertenecen a una versión de política y pueden calibrarse con evidencia; nunca se cambian en planes históricos.
 
@@ -306,19 +328,19 @@ La expresión `siete cuentas` significa exactamente:
 
 No existen cuentas bancarias ni transferencias. Los importes son una proyección.
 
-### Plantilla base corregida
+### Plantilla base
 
 | Posición | Partición | Porcentaje inicial del ahorro | Propósito |
 |---|---|---:|---|
 | 1 | Cuenta corriente | No aplica | Operación y gastos; conserva ingresos no asignados al ahorro |
-| 2 | Independencia financiera | 40% | Capital de largo plazo, sin promesa de rentabilidad ni recomendación de producto |
-| 3 | Crecimiento e ingresos | 30% | Formación, proyecto o negocio; reemplaza el nombre ambiguo `Cuenta millonaria` |
-| 4 | Año sabático | 10% | Meta de descanso o experiencia planificada |
-| 5 | Compras grandes | 10% | Fondo para compras al contado y metas concretas |
-| 6 | Generosidad | 5% | Donaciones o regalos definidos por la persona |
-| 7 | Fondo de emergencia | 5% | Imprevistos y pérdida temporal de ingresos |
+| 2 | Cuenta Independencia Financiera | 40% | Capital de largo plazo; la persona puede consumir regularmente los intereses, sin promesa de rentabilidad ni recomendación de producto |
+| 3 | Cuenta Millonaria | 30% | Proyecto o negocio propio |
+| 4 | Cuenta Año Sabático | 10% | Descanso o experiencia planificada |
+| 5 | Cuenta de las Compras Grandes | 10% | Compras al contado y metas concretas |
+| 6 | Cuenta de Generosidad | 5% | Regalar dinero o donaciones definidas por la persona |
+| 7 | Cuenta Impuestos | 5% | Reserva para obligaciones fiscales estimadas |
 
-Los seis porcentajes suman 100% del ahorro. El cambio de `Cuenta Impuestos` a `Fondo de emergencia` es deliberado: el ejemplo original describía imprevistos, no impuestos.
+Los seis porcentajes suman 100% del ahorro. Aclaración semántica sobre los nombres del requisito: `Cuenta Impuestos` acumula reserva para **obligaciones fiscales**; los gastos imprevistos corresponden al concepto separado de **fondo de emergencia**, que la persona puede modelar renombrando o reorientando un bolsillo.
 
 ### Adaptabilidad
 
@@ -338,41 +360,62 @@ Con 300 EUR de ahorro y la plantilla base:
 
 | Bolsillo | Importe |
 |---|---:|
-| Independencia financiera | 120 EUR |
-| Crecimiento e ingresos | 90 EUR |
-| Año sabático | 30 EUR |
-| Compras grandes | 30 EUR |
-| Generosidad | 15 EUR |
-| Fondo de emergencia | 15 EUR |
+| Cuenta Independencia Financiera | 120 EUR |
+| Cuenta Millonaria | 90 EUR |
+| Cuenta Año Sabático | 30 EUR |
+| Cuenta de las Compras Grandes | 30 EUR |
+| Cuenta de Generosidad | 15 EUR |
+| Cuenta Impuestos | 15 EUR |
 
 La cuenta corriente proyectada conserva 2.700 EUR de los 3.000 EUR de ingresos antes de aplicar gastos. No representa el saldo bancario actual.
 
-## Fondo de emergencia y reserva fiscal
+## Fondo de emergencia y Cuenta Impuestos
 
-### Fondo de emergencia
+### Fondo de emergencia (concepto)
 
 - Cubre imprevistos personales o pérdida de ingresos.
 - Su meta puede expresarse como meses de gasto esencial.
 - La referencia inicial configurable es tres meses, no una obligación universal.
-- Mientras esté por debajo de la meta, la política puede recomendar elevar su porcentaje y reducir otros bolsillos, siempre con explicación.
+- No es una partición fija de la plantilla: la persona puede renombrar o reorientar un bolsillo hacia emergencias y la política puede recomendarlo, siempre con explicación.
 
-### Reserva fiscal
+### Cuenta Impuestos (reserva fiscal)
 
-- Cubre una obligación futura sobre ingresos que la persona declara como no sujetos a retención suficiente.
+- Es el sexto bolsillo de la plantilla y acumula reserva para obligaciones fiscales sobre ingresos que la persona declara como no sujetos a retención suficiente.
 - No es un bolsillo para imprevistos ni una estimación automática de impuestos.
-- La persona proporciona el ingreso afectado y una tasa orientativa obtenida de su propio criterio o asesoramiento profesional.
-- El importe reservado se trata como obligación antes de calcular capacidad de ahorro discrecional.
+- La persona proporciona el ingreso afectado y una tasa orientativa obtenida de su propio criterio o asesoramiento profesional; con esos datos la política puede sugerir ajustar su porcentaje.
 - El sistema no selecciona tasa, jurisdicción, deducción ni estrategia fiscal.
-
-Si existe reserva fiscal, se muestra fuera de los seis bolsillos de ahorro como obligación comprometida. La plantilla sigue teniendo siete particiones; no se renombra el fondo de emergencia como impuestos.
 
 | ID | Invariante |
 |---|---|
-| INV-RES-01 | Fondo de emergencia y reserva fiscal no comparten nombre, propósito ni fórmula |
-| INV-RES-02 | La reserva fiscal solo existe tras una declaración explícita de ingreso no retenido y tasa proporcionada por la persona |
-| INV-RES-03 | El importe fiscal no puede superar el ingreso declarado multiplicado por la tasa proporcionada |
-| INV-RES-04 | La reserva fiscal reduce capacidad antes de calcular ahorro; el fondo de emergencia recibe una parte del ahorro después |
+| INV-RES-01 | Cuenta Impuestos y fondo de emergencia no comparten nombre, propósito ni fórmula: el primero reserva para obligaciones fiscales y el segundo cubre imprevistos |
+| INV-RES-02 | La estimación de reserva fiscal solo existe tras una declaración explícita de ingreso no retenido y tasa proporcionada por la persona |
+| INV-RES-03 | El importe sugerido para Cuenta Impuestos no puede superar el ingreso declarado multiplicado por la tasa proporcionada |
+| INV-RES-04 | Cuenta Impuestos recibe una parte del ahorro como bolsillo; el fondo de emergencia es un concepto que puede adoptar cualquier bolsillo reorientado |
 | INV-RES-05 | Toda pantalla fiscal indica que es una provisión informativa, no cálculo ni asesoramiento tributario |
+
+## Presupuestos
+
+Un presupuesto es un límite de gasto declarado por la persona para una categoría, moneda y período mensual del workspace. Es una herramienta de control prospectivo: informa cuánto del límite se ha ejecutado, no bloquea movimientos.
+
+### Contenido
+
+- Categoría (o `Sin categorizar`), moneda y período.
+- Importe límite decimal.
+- Umbral de aviso configurable (por defecto 80%).
+- Versión y vigencia; cada ajuste crea una versión nueva sin reescribir históricos.
+
+### Reglas
+
+|| ID | Invariante |
+|---|---|
+|| INV-PRE-01 | El límite de presupuesto es positivo y se expresa en una única moneda |
+|| INV-PRE-02 | La ejecución solo suma transacciones confirmadas, no anuladas, de la misma categoría, moneda y período |
+|| INV-PRE-03 | Ítems `pendientes de sincronización` y borradores nunca consumen presupuesto |
+|| INV-PRE-04 | Ajustar el límite crea una versión; los reportes pasados conservan el límite vigente en ese período |
+|| INV-PRE-05 | Superar el presupuesto genera información y evidencia, nunca bloqueo ni penalización |
+|| INV-PRE-06 | Un presupuesto pertenece a un workspace y no puede reasignarse |
+
+La ejecución se calcula sobre las proyecciones de Insights; una revisión de transacción actualiza la ejecución del presupuesto afectado. Los presupuestos participan en reportes y exportaciones.
 
 ## Gastos hormiga
 
@@ -398,7 +441,7 @@ Un grupo por comercio normalizado o categoría es candidato cuando cumple simult
 1. Tiene al menos tres operaciones en 30 días.
 2. Su importe medio no supera el 1% de los ingresos del período; si además existe un límite absoluto configurado para esa moneda, se utiliza el menor de ambos.
 3. Su suma alcanza al menos el 1% del gasto discrecional del período, para evitar alertas irrelevantes.
-4. No pertenece a la lista de exclusión del perfil.
+4. No pertenece a la lista de exclusión del workspace.
 
 Si no existe ingreso positivo, se necesita un límite absoluto explícito para esa moneda; sin él no se emite el insight. La confianza no puede superar baja. Los valores 3, 1% y 1% son defaults de política, no definiciones universales; la persona puede ajustarlos.
 
@@ -415,7 +458,7 @@ Cada insight muestra:
 - Confianza y período.
 - Proyección puramente ilustrativa si el patrón se redujera.
 
-La persona puede marcar `No es un gasto hormiga`, ajustar la categoría o silenciar el patrón durante 90 días. Esa decisión se conserva por perfil y política.
+La persona puede marcar `No es un gasto hormiga`, ajustar la categoría o silenciar el patrón durante 90 días. Esa decisión se conserva por workspace y política.
 
 | ID | Invariante |
 |---|---|
@@ -504,9 +547,12 @@ Además:
 | Borradores y confirmación | RF-020 a RF-037, RN-001 y RN-006 |
 | Categorías | RF-040 a RF-044 |
 | Reportes y gastos hormiga | RF-050 a RF-058, RN-010 a RN-012 |
-| Ahorro y bolsillos | RF-060 a RF-069, RN-007 a RN-009 y RN-014 |
-| Reserva fiscal y emergencia | RF-069 y RN-013 |
-| Control de datos | RF-070 a RF-074 |
+| Ahorro y cuentas virtuales | RF-060 a RF-069, RN-007 a RN-009 y RN-014 |
+| Cuenta Impuestos y fondo de emergencia | RF-069 y RN-013 |
+| Presupuestos | RF-090 a RF-094 |
+| Sincronización offline | RF-100 a RF-105, RN-019 |
+| Modo demo | RF-080 a RF-088, RN-018 y RN-020 |
+| Control de datos | RF-070 a RF-077 |
 
 ## Documentos relacionados
 
