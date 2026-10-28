@@ -3,6 +3,8 @@ import { PrismaClient } from "@prisma/client";
 
 import { WORKSPACE_CONTEXT } from "../modules/identity-workspace/index.js";
 import { DeterministicWorkspaceAdapter } from "../modules/identity-workspace/infrastructure/deterministic-workspace.adapter.js";
+import { CATEGORY_CATALOG } from "../modules/categorization/index.js";
+import { CategoriesController } from "../modules/categorization/infrastructure/http/categories.controller.js";
 import { PrismaCategoryValidationAdapter } from "../modules/categorization/infrastructure/prisma-category-validation.adapter.js";
 import {
   CATEGORY_VALIDATION,
@@ -20,7 +22,7 @@ import { HealthController } from "./health.controller.js";
 import { PrismaService } from "./prisma.service.js";
 
 @Module({
-  controllers: [HealthController, TransactionsController],
+  controllers: [HealthController, TransactionsController, CategoriesController],
   providers: [
     PrismaService,
     { provide: PrismaClient, useExisting: PrismaService },
@@ -34,6 +36,10 @@ import { PrismaService } from "./prisma.service.js";
     },
     {
       provide: CATEGORY_VALIDATION,
+      useClass: PrismaCategoryValidationAdapter,
+    },
+    {
+      provide: CATEGORY_CATALOG,
       useClass: PrismaCategoryValidationAdapter,
     },
     { provide: CLOCK, useClass: SystemClock },

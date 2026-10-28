@@ -8,5 +8,5 @@
       "@modules/*": ["src/modules/*"]
     }
   },
-  "include": ["src", "test", "vitest.config.ts"]
+  "include": ["src", "test", "prisma", "vitest.config.ts"]
 }

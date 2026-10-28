@@ -1,8 +1,18 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
+
+import { LedgerPage } from "./features/ledger/LedgerPage";
+
+const queryClient = new QueryClient();
+const theme = createTheme();
+
 export function App() {
   return (
-    <main>
-      <h1>Personal Finance</h1>
-      <p>Ledger of income and expenses — initial scaffold.</p>
-    </main>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <LedgerPage />
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }
