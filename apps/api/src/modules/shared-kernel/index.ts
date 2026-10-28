@@ -7,3 +7,4 @@ export { CurrencyCode } from "./domain/currency-code.js";
 export { DomainError } from "./domain/domain-error.js";
 export { Money } from "./domain/money.js";
 export { err, ok, type Result } from "./domain/result.js";
+export { WorkspaceId } from "./domain/workspace-id.js";
