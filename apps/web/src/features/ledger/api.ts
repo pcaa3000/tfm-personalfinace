@@ -1,6 +1,8 @@
 import type {
   CategoryView,
   CreateTransactionInput,
+  ReviseTransactionInput,
+  TransactionRevisionView,
   TransactionView,
 } from "./types";
 
@@ -37,4 +39,26 @@ export function listTransactions(): Promise<TransactionView[]> {
 
 export function listCategories(): Promise<CategoryView[]> {
   return request<CategoryView[]>("/categories");
+}
+
+export function reviseTransaction(
+  id: string,
+  input: ReviseTransactionInput,
+): Promise<TransactionView> {
+  return request<TransactionView>(`/transactions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function voidTransaction(id: string): Promise<TransactionView> {
+  return request<TransactionView>(`/transactions/${id}/void`, {
+    method: "POST",
+  });
+}
+
+export function listTransactionRevisions(
+  id: string,
+): Promise<TransactionRevisionView[]> {
+  return request<TransactionRevisionView[]>(`/transactions/${id}/revisions`);
 }

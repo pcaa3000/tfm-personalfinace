@@ -35,4 +35,19 @@ export {
   type RecordManualTransactionCommand,
 } from "./application/record-manual-transaction.use-case.js";
 export { ListTransactionsUseCase } from "./application/list-transactions.use-case.js";
+export {
+  ListTransactionRevisionsUseCase,
+} from "./application/list-transaction-revisions.use-case.js";
+export {
+  ReviseTransactionUseCase,
+  type ReviseTransactionCommand,
+} from "./application/revise-transaction.use-case.js";
+export {
+  VoidTransactionUseCase,
+  type VoidTransactionCommand,
+} from "./application/void-transaction.use-case.js";
 export { toTransactionView, type TransactionView } from "./application/transaction.view.js";
+export {
+  toTransactionRevisionView,
+  type TransactionRevisionView,
+} from "./application/transaction-revision.view.js";

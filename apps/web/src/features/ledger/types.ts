@@ -31,3 +31,23 @@ export interface CreateTransactionInput {
   categoryId: string | null;
   idempotencyKey: string;
 }
+
+export interface ReviseTransactionInput {
+  type?: "income" | "expense";
+  amount?: string;
+  currency?: string;
+  businessDate?: string;
+  timezone?: string;
+  concept?: string;
+  categoryId?: string | null;
+}
+
+export interface TransactionRevisionView {
+  id: string;
+  transactionId: string;
+  revisionNumber: number;
+  kind: "revision" | "void";
+  changes: { field: string; previous: string; next: string }[];
+  occurredAt: string;
+  actor: string;
+}

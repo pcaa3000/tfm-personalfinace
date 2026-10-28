@@ -1,11 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Box, Container, Divider, Paper, Stack, Typography } from "@mui/material";
+import { useState } from "react";
 
-import { createTransaction, listCategories, listTransactions } from "./api";
+import {
+  createTransaction,
+  listCategories,
+  listTransactions,
+  reviseTransaction,
+  voidTransaction,
+} from "./api";
+import { EditTransactionDialog } from "./EditTransactionDialog";
 import { summarizeByCurrency } from "./summarize";
-import { TransactionForm } from "./TransactionForm";
+import { TransactionForm, type TransactionFormValues } from "./TransactionForm";
+import { TransactionHistoryDialog } from "./TransactionHistoryDialog";
 import { TransactionTable } from "./TransactionTable";
-import type { CreateTransactionInput } from "./types";
+import { VoidTransactionDialog } from "./VoidTransactionDialog";
+import type { TransactionView } from "./types";
 
 function formatMinor(minor: bigint, currency: string): string {
   const exponent = ({ JPY: 0, KRW: 0, BHD: 3, KWD: 3, CLF: 4 })[currency] ?? 2;
@@ -17,6 +27,9 @@ function formatMinor(minor: bigint, currency: string): string {
 
 export function LedgerPage() {
   const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<TransactionView | null>(null);
+  const [voiding, setVoiding] = useState<TransactionView | null>(null);
+  const [historyFor, setHistoryFor] = useState<TransactionView | null>(null);
 
   const categoriesQuery = useQuery({
     queryKey: ["categories"],
@@ -27,10 +40,27 @@ export function LedgerPage() {
     queryFn: listTransactions,
   });
 
-  const mutation = useMutation({
+  const createMutation = useMutation({
     mutationFn: createTransaction,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    },
+  });
+
+  const reviseMutation = useMutation({
+    mutationFn: ({ id, values }: { id: string; values: TransactionFormValues }) =>
+      reviseTransaction(id, values),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      setEditing(null);
+    },
+  });
+
+  const voidMutation = useMutation({
+    mutationFn: voidTransaction,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      setVoiding(null);
     },
   });
 
@@ -39,8 +69,8 @@ export function LedgerPage() {
   const categoryLabels = new Map(categories.map((c) => [c.id, c.label]));
   const summaries = summarizeByCurrency(transactions);
 
-  const onSubmit = (input: CreateTransactionInput) => {
-    mutation.mutate(input);
+  const onSubmit = (values: TransactionFormValues) => {
+    createMutation.mutate({ ...values, idempotencyKey: crypto.randomUUID() });
   };
 
   return (
@@ -56,8 +86,8 @@ export function LedgerPage() {
           </Typography>
           <TransactionForm
             categories={categories}
-            submitting={mutation.isPending}
-            error={mutation.error?.message ?? null}
+            submitting={createMutation.isPending}
+            error={createMutation.error?.message ?? null}
             onSubmit={onSubmit}
           />
         </Paper>
@@ -102,10 +132,39 @@ export function LedgerPage() {
             <TransactionTable
               transactions={transactions}
               categoryLabels={categoryLabels}
+              onEdit={setEditing}
+              onVoid={setVoiding}
+              onHistory={setHistoryFor}
             />
           )}
         </section>
       </Stack>
+
+      <EditTransactionDialog
+        transaction={editing}
+        categories={categories}
+        submitting={reviseMutation.isPending}
+        error={reviseMutation.error?.message ?? null}
+        onClose={() => {
+          setEditing(null);
+          reviseMutation.reset();
+        }}
+        onSubmit={(id, values) => reviseMutation.mutate({ id, values })}
+      />
+      <VoidTransactionDialog
+        transaction={voiding}
+        submitting={voidMutation.isPending}
+        error={voidMutation.error?.message ?? null}
+        onClose={() => {
+          setVoiding(null);
+          voidMutation.reset();
+        }}
+        onConfirm={(id) => voidMutation.mutate(id)}
+      />
+      <TransactionHistoryDialog
+        transaction={historyFor}
+        onClose={() => setHistoryFor(null)}
+      />
     </Container>
   );
 }

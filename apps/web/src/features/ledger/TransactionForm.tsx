@@ -9,7 +9,7 @@ import {
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 
-import type { CategoryView, CreateTransactionInput } from "./types";
+import type { CategoryView } from "./types";
 
 const schema = z.object({
   type: z.enum(["income", "expense"]),
@@ -25,22 +25,35 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+export interface TransactionFormValues extends FormValues {
+  timezone: string;
+}
+
 const CURRENCIES = ["USD", "EUR", "ARS", "JPY", "BHD"];
 
 interface Props {
   categories: CategoryView[];
   submitting: boolean;
   error: string | null;
-  onSubmit: (input: CreateTransactionInput) => void;
+  initialValues?: Partial<FormValues>;
+  submitLabel?: string;
+  onSubmit: (values: TransactionFormValues) => void;
 }
 
-export function TransactionForm({ categories, submitting, error, onSubmit }: Props) {
+export function TransactionForm({
+  categories,
+  submitting,
+  error,
+  initialValues,
+  submitLabel,
+  onSubmit,
+}: Props) {
   const {
     register,
     handleSubmit,
     control,
     reset,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -50,17 +63,18 @@ export function TransactionForm({ categories, submitting, error, onSubmit }: Pro
       businessDate: new Date().toISOString().slice(0, 10),
       concept: "",
       categoryId: null,
+      ...initialValues,
     },
   });
 
   const submit = handleSubmit((values) => {
     onSubmit({
       ...values,
-      categoryId: values.categoryId,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-      idempotencyKey: crypto.randomUUID(),
     });
-    reset();
+    if (!initialValues) {
+      reset();
+    }
   });
 
   return (
@@ -137,8 +151,12 @@ export function TransactionForm({ categories, submitting, error, onSubmit }: Pro
             </TextField>
           )}
         />
-        <Button type="submit" variant="contained" disabled={submitting}>
-          {submitting ? "Saving…" : "Save transaction"}
+        <Button
+          type="submit"
+          variant="contained"
+          disabled={submitting || (initialValues !== undefined && !isDirty)}
+        >
+          {submitting ? "Saving…" : (submitLabel ?? "Save transaction")}
         </Button>
       </Stack>
     </form>

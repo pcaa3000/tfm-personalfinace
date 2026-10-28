@@ -12,8 +12,11 @@ import {
   ID_GENERATOR,
   TRANSACTION_REPOSITORY,
 } from "../modules/ledger/index.js";
+import { ListTransactionRevisionsUseCase } from "../modules/ledger/application/list-transaction-revisions.use-case.js";
 import { ListTransactionsUseCase } from "../modules/ledger/application/list-transactions.use-case.js";
 import { RecordManualTransactionUseCase } from "../modules/ledger/application/record-manual-transaction.use-case.js";
+import { ReviseTransactionUseCase } from "../modules/ledger/application/revise-transaction.use-case.js";
+import { VoidTransactionUseCase } from "../modules/ledger/application/void-transaction.use-case.js";
 import { CryptoIdGenerator } from "../modules/ledger/infrastructure/crypto-id-generator.adapter.js";
 import { TransactionsController } from "../modules/ledger/infrastructure/http/transactions.controller.js";
 import { PrismaTransactionRepository } from "../modules/ledger/infrastructure/persistence/prisma-transaction.repository.js";
@@ -58,6 +61,29 @@ import { PrismaService } from "./prisma.service.js";
       provide: ListTransactionsUseCase,
       useFactory: (transactions: PrismaTransactionRepository) =>
         new ListTransactionsUseCase(transactions),
+      inject: [TRANSACTION_REPOSITORY],
+    },
+    {
+      provide: ReviseTransactionUseCase,
+      useFactory: (
+        transactions: PrismaTransactionRepository,
+        categories: PrismaCategoryValidationAdapter,
+        clock: SystemClock,
+      ) => new ReviseTransactionUseCase(transactions, categories, clock),
+      inject: [TRANSACTION_REPOSITORY, CATEGORY_VALIDATION, CLOCK],
+    },
+    {
+      provide: VoidTransactionUseCase,
+      useFactory: (
+        transactions: PrismaTransactionRepository,
+        clock: SystemClock,
+      ) => new VoidTransactionUseCase(transactions, clock),
+      inject: [TRANSACTION_REPOSITORY, CLOCK],
+    },
+    {
+      provide: ListTransactionRevisionsUseCase,
+      useFactory: (transactions: PrismaTransactionRepository) =>
+        new ListTransactionRevisionsUseCase(transactions),
       inject: [TRANSACTION_REPOSITORY],
     },
   ],
