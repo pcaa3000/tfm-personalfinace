@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:alpine
+    container_name: tfm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tfm
+      POSTGRES_PASSWORD: tfm-local-dev
+      POSTGRES_DB: personal_finance
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tfm -d personal_finance"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

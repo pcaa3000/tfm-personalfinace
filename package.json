@@ -1,0 +1,28 @@
+{
+  "name": "tfm-personal-finance",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal finance platform (web + PWA) - TFM",
+  "type": "module",
+  "packageManager": "pnpm@12.15.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "eslint .",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "eslint": "^9.30.0",
+    "globals": "^16.5.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.30.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

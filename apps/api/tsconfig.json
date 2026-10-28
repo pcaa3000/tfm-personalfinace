@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@modules/*": ["src/modules/*"]
+    }
+  },
+  "include": ["src", "test", "vitest.config.ts"]
+}
