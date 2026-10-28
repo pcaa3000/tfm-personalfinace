@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---- identity-workspace module ----
+
+model Workspace {
+  id              String   @id @default(uuid())
+  identityKey     String   @unique // "issuer|subject" or a deterministic local key
+  kind            String   @default("personal") // personal | demo
+  locale          String   @default("en-US")
+  timezone        String   @default("UTC")
+  defaultCurrency String   @default("USD")
+  createdAt       DateTime @default(now())
+
+  @@map("identity_workspace_workspaces")
+}
+
+// ---- categorization module ----
+
+model Category {
+  id          String    @id @default(uuid())
+  key         String // stable catalog key, e.g. "groceries"
+  label       String
+  nature      String // income | essential | discretionary | obligation | uncategorized
+  workspaceId String? // null = global catalog entry
+  archivedAt  DateTime?
+
+  @@unique([key, workspaceId])
+  @@map("categorization_categories")
+}
+
+// ---- ledger module ----
+
+model Transaction {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  idempotencyKey String
+  type           String // income | expense
+  amountMinor    BigInt
+  currency       String // ISO 4217
+  businessDate   DateTime @db.Date
+  timezone       String // IANA zone of the business date
+  concept        String
+  categoryId     String? // null = explicit "Sin categorizar"
+  status         String   @default("confirmed") // confirmed | voided
+  origin         String   @default("manual") // manual | ticket | voice
+  originRef      String?
+  confirmedAt    DateTime
+  confirmedBy    String
+  createdAt      DateTime @default(now())
+  revisions      TransactionRevision[]
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, businessDate])
+  @@map("ledger_transactions")
+}
+
+model TransactionRevision {
+  id             String      @id @default(uuid())
+  transactionId  String
+  transaction    Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  revisionNumber Int
+  kind           String // revision | void
+  changes        Json // FieldChange[]
+  occurredAt     DateTime
+  actor          String
+
+  @@unique([transactionId, revisionNumber])
+  @@map("ledger_transaction_revisions")
+}

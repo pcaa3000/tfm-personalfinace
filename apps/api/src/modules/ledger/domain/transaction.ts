@@ -36,6 +36,7 @@ function describeCategory(category: CategoryAssignment): string {
 export interface RecordManualInput {
   readonly id: string;
   readonly workspaceId: WorkspaceId;
+  readonly idempotencyKey: string;
   readonly type: TransactionType;
   readonly amount: Money;
   readonly businessDate: BusinessDate;
@@ -44,6 +45,24 @@ export interface RecordManualInput {
   readonly originReference?: string;
   readonly confirmedAt: Date;
   readonly confirmedBy: string;
+}
+
+/** Full persisted state used by infrastructure to rebuild the aggregate. */
+export interface TransactionState {
+  readonly id: string;
+  readonly workspaceId: WorkspaceId;
+  readonly idempotencyKey: string;
+  readonly type: TransactionType;
+  readonly amount: Money;
+  readonly businessDate: BusinessDate;
+  readonly concept: string;
+  readonly category: CategoryAssignment;
+  readonly status: TransactionStatus;
+  readonly origin: TransactionOrigin;
+  readonly originReference: string | null;
+  readonly confirmedAt: Date;
+  readonly confirmedBy: string;
+  readonly revisions: TransactionRevision[];
 }
 
 export interface ReviseInput {
@@ -67,6 +86,7 @@ export class Transaction {
   private constructor(
     readonly id: string,
     readonly workspaceId: WorkspaceId,
+    readonly idempotencyKey: string,
     private _type: TransactionType,
     private _amount: Money,
     private _businessDate: BusinessDate,
@@ -104,6 +124,7 @@ export class Transaction {
       new Transaction(
         input.id,
         input.workspaceId,
+        input.idempotencyKey,
         input.type,
         input.amount,
         input.businessDate,
@@ -116,6 +137,26 @@ export class Transaction {
         input.confirmedBy,
         [],
       ),
+    );
+  }
+
+  /** Rebuilds the aggregate from persisted state without re-validating. */
+  static reconstitute(state: TransactionState): Transaction {
+    return new Transaction(
+      state.id,
+      state.workspaceId,
+      state.idempotencyKey,
+      state.type,
+      state.amount,
+      state.businessDate,
+      state.concept,
+      state.category,
+      state.status,
+      state.origin,
+      state.originReference,
+      state.confirmedAt,
+      state.confirmedBy,
+      [...state.revisions],
     );
   }
 

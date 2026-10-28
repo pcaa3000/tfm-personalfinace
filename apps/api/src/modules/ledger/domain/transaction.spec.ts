@@ -23,6 +23,7 @@ if (!amount.ok) throw new Error("setup failed");
 const baseInput = {
   id: "trx-1",
   workspaceId: workspaceId.value,
+  idempotencyKey: "idem-1",
   type: "expense" as const,
   amount: amount.value,
   businessDate: businessDate.value,

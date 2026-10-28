@@ -1,0 +1,27 @@
+import type { WorkspaceId } from "../../../shared-kernel/index.js";
+import type { Transaction } from "../../domain/transaction.js";
+
+export interface TransactionFilter {
+  readonly from?: string; // YYYY-MM-DD inclusive
+  readonly to?: string; // YYYY-MM-DD inclusive
+  readonly type?: "income" | "expense";
+  readonly currency?: string;
+  /** "uncategorized" filters the explicit uncategorized state. */
+  readonly category?: string;
+}
+
+/** Write-side and query-side access to ledger transactions (ISP). */
+export interface TransactionRepositoryPort {
+  findByIdempotencyKey(
+    workspaceId: WorkspaceId,
+    idempotencyKey: string,
+  ): Promise<Transaction | null>;
+
+  findById(workspaceId: WorkspaceId, id: string): Promise<Transaction | null>;
+
+  save(transaction: Transaction): Promise<void>;
+
+  list(workspaceId: WorkspaceId, filter: TransactionFilter): Promise<Transaction[]>;
+}
+
+export const TRANSACTION_REPOSITORY = Symbol("TRANSACTION_REPOSITORY");
