@@ -36,6 +36,7 @@ const createTransactionSchema = z.object({
   businessDate: z.string().min(10).max(10),
   timezone: z.string().min(1).max(64),
   concept: z.string().min(1).max(500),
+  accountId: z.string().min(1),
   categoryId: z.string().nullable().optional(),
   idempotencyKey: z.string().min(8).max(128).optional(),
 });
@@ -136,6 +137,7 @@ export class TransactionsController {
       businessDate: parsed.data.businessDate,
       timezone: parsed.data.timezone,
       concept: parsed.data.concept,
+      accountId: parsed.data.accountId,
       categoryId: parsed.data.categoryId ?? null,
       actor: caller.subject,
     });

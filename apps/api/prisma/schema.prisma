@@ -35,6 +35,23 @@ model Category {
   @@map("categorization_categories")
 }
 
+// ---- accounts module ----
+
+model Account {
+  id          String    @id @default(uuid())
+  workspaceId String
+  name        String // e.g. "BCP soles", "Interbank dólares"
+  currency    String // ISO 4217 — one account holds one currency
+  kind        String    @default("bank") // bank | cash | wallet
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  transactions Transaction[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@map("accounts_accounts")
+}
+
 // ---- ledger module ----
 
 model Transaction {
@@ -47,6 +64,8 @@ model Transaction {
   businessDate   DateTime @db.Date
   timezone       String // IANA zone of the business date
   concept        String
+  accountId      String?
+  account        Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   categoryId     String? // null = explicit "Sin categorizar"
   status         String   @default("confirmed") // confirmed | voided
   origin         String   @default("manual") // manual | ticket | voice

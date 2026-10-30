@@ -10,6 +10,7 @@ export interface TransactionView {
   readonly businessDate: string; // YYYY-MM-DD
   readonly timezone: string;
   readonly concept: string;
+  readonly accountId: string | null; // null = legacy pre-accounts row
   readonly categoryId: string | null; // null = uncategorized
   readonly status: "confirmed" | "voided";
   readonly origin: "manual" | "ticket" | "voice";
@@ -27,6 +28,7 @@ export function toTransactionView(trx: Transaction): TransactionView {
     businessDate: trx.businessDate.isoDate,
     timezone: trx.businessDate.timezone,
     concept: trx.concept,
+    accountId: trx.accountId,
     categoryId:
       trx.category.kind === "categorized" ? trx.category.categoryId : null,
     status: trx.status,

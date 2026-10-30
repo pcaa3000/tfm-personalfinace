@@ -49,7 +49,7 @@ async function makeTransaction(): Promise<Transaction> {
   const amount = Money.create("25.50", "EUR");
   const date = BusinessDate.create("2026-10-27", "UTC");
   if (!amount.ok || !date.ok) throw new Error("setup failed");
-  const trx = Transaction.recordManual({
+  const trx = Transaction.recordManual({ accountId: "acc-1",
     id: "trx-1",
     workspaceId: ws,
     idempotencyKey: "idem-1",

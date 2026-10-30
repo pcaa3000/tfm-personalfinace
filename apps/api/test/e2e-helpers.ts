@@ -32,9 +32,18 @@ export interface TxView {
   amount: string;
   currency: string;
   concept: string;
+  accountId: string | null;
   categoryId: string | null;
   status: string;
   revisionCount: number;
+}
+
+export interface AccountView {
+  id: string;
+  workspaceId: string;
+  name: string;
+  currency: string;
+  kind: string;
 }
 
 export interface RevisionView {
@@ -92,6 +101,7 @@ export async function cleanE2eData(marker: string): Promise<void> {
   });
   const ids = workspaces.map((w) => w.id);
   await prisma.transaction.deleteMany({ where: { workspaceId: { in: ids } } });
+  await prisma.account.deleteMany({ where: { workspaceId: { in: ids } } });
   await prisma.workspace.deleteMany({
     where: { identityKey: { contains: marker } },
   });

@@ -8,6 +8,7 @@ import {
   type Result,
 } from "../../shared-kernel/index.js";
 import { Transaction, UNCATEGORIZED, categorized } from "../domain/transaction.js";
+import type { AccountValidationPort } from "./ports/account-validation.port.js";
 import type { CategoryValidationPort } from "./ports/category-validation.port.js";
 import type { Clock } from "./ports/clock.port.js";
 import type { IdGenerator } from "./ports/id-generator.port.js";
@@ -23,6 +24,8 @@ export interface RecordManualTransactionCommand {
   readonly businessDate: string;
   readonly timezone: string;
   readonly concept: string;
+  /** Account holding the money; must exist and share the amount's currency. */
+  readonly accountId: string;
   /** null = explicit uncategorized choice. */
   readonly categoryId: string | null;
   readonly actor: string;
@@ -31,6 +34,7 @@ export interface RecordManualTransactionCommand {
 export class RecordManualTransactionUseCase {
   constructor(
     private readonly transactions: TransactionRepositoryPort,
+    private readonly accounts: AccountValidationPort,
     private readonly categories: CategoryValidationPort,
     private readonly clock: Clock,
     private readonly ids: IdGenerator,
@@ -56,6 +60,26 @@ export class RecordManualTransactionUseCase {
     if (!businessDate.ok) {
       return businessDate;
     }
+    const accountCurrency = await this.accounts.accountCurrency(
+      command.workspaceId,
+      command.accountId,
+    );
+    if (accountCurrency === null) {
+      return err(
+        new DomainError(
+          "ACCOUNT_NOT_FOUND",
+          `Account does not exist in this workspace: ${command.accountId}`,
+        ),
+      );
+    }
+    if (accountCurrency !== money.value.currency.code) {
+      return err(
+        new DomainError(
+          "ACCOUNT_CURRENCY_MISMATCH",
+          `Transaction currency ${money.value.currency.code} does not match account currency ${accountCurrency}`,
+        ),
+      );
+    }
     if (
       command.categoryId !== null &&
       !(await this.categories.existsForWorkspace(command.workspaceId, command.categoryId))
@@ -76,6 +100,7 @@ export class RecordManualTransactionUseCase {
       amount: money.value,
       businessDate: businessDate.value,
       concept: command.concept,
+      accountId: command.accountId,
       category:
         command.categoryId === null
           ? UNCATEGORIZED

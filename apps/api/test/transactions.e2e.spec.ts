@@ -18,6 +18,7 @@ import {
   cleanE2eData,
   ensureGlobalCategory,
   prisma,
+  type AccountView,
   type ApiError,
   type ApiResponse,
   type CategoryView,
@@ -38,12 +39,29 @@ const BOB = { "x-dev-user": "e2e-dev-bob" };
 
 let app: INestApplication;
 let categoryId: string;
+let accountId: string;
+let eurAccountId: string;
+let bobAccountId: string;
+
+async function createAccount(
+  headers: Record<string, string>,
+  name: string,
+  currency = "PEN",
+): Promise<string> {
+  const res = await api<AccountView>("/api/v1/accounts", {
+    method: "POST",
+    headers,
+    body: { name, currency },
+  });
+  return res.body.id;
+}
 
 function txPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
+    accountId,
     type: "expense",
     amount: "12.50",
-    currency: "USD",
+    currency: "PEN",
     businessDate: "2026-10-01",
     timezone: "UTC",
     concept: "e2e lunch",
@@ -59,7 +77,10 @@ async function createTx(
   return api<TxView>("/api/v1/transactions", {
     method: "POST",
     headers,
-    body: txPayload(overrides),
+    body: txPayload({
+      ...(headers === BOB ? { accountId: bobAccountId } : {}),
+      ...overrides,
+    }),
   });
 }
 
@@ -69,7 +90,12 @@ beforeAll(async () => {
   categoryId = await ensureGlobalCategory();
 }, 30_000);
 
-beforeEach(() => cleanE2eData(MARKER));
+beforeEach(async () => {
+  await cleanE2eData(MARKER);
+  accountId = await createAccount(ALICE, "e2e BCP soles", "PEN");
+  eurAccountId = await createAccount(ALICE, "e2e Cuenta euros", "EUR");
+  bobAccountId = await createAccount(BOB, "e2e Interbank dolares", "PEN");
+});
 
 afterAll(async () => {
   await cleanE2eData(MARKER);
@@ -84,7 +110,7 @@ describe("POST /api/v1/transactions", () => {
     expect(res.body.id).toBeTruthy();
     expect(res.body.status).toBe("confirmed");
     expect(res.body.amount).toBe("12.50");
-    expect(res.body.currency).toBe("USD");
+    expect(res.body.currency).toBe("PEN");
     expect(res.body.concept).toBe("e2e lunch");
     expect(res.body.revisionCount).toBe(0);
   });
@@ -130,6 +156,26 @@ describe("POST /api/v1/transactions", () => {
     expect(list.body).toHaveLength(1);
   });
 
+  it("rejects an unknown account", async () => {
+    const res = await api<ApiError>("/api/v1/transactions", {
+      method: "POST",
+      headers: ALICE,
+      body: txPayload({ accountId: randomUUID() }),
+    });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("ACCOUNT_NOT_FOUND");
+  });
+
+  it("rejects a transaction whose currency differs from the account", async () => {
+    const res = await api<ApiError>("/api/v1/transactions", {
+      method: "POST",
+      headers: ALICE,
+      body: txPayload({ currency: "USD" }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("ACCOUNT_CURRENCY_MISMATCH");
+  });
+
   it("rejects an unknown category", async () => {
     const res = await api<ApiError>("/api/v1/transactions", {
       method: "POST",
@@ -143,8 +189,13 @@ describe("POST /api/v1/transactions", () => {
 
 describe("GET /api/v1/transactions", () => {
   it("lists transactions and applies filters", async () => {
-    await createTx(ALICE, { type: "expense", currency: "USD" });
-    await createTx(ALICE, { type: "income", currency: "EUR", amount: "100" });
+    await createTx(ALICE);
+    await createTx(ALICE, {
+      type: "income",
+      currency: "EUR",
+      amount: "100",
+      accountId: eurAccountId,
+    });
     await createTx(ALICE, { categoryId });
 
     const all = await api<TxView[]>("/api/v1/transactions", {
@@ -352,5 +403,93 @@ describe("workspace isolation", () => {
     expect(bobTx.status).toBe(201);
     expect(bobTx.body.id).not.toBe(aliceTx.body.id);
     expect(bobTx.body.workspaceId).not.toBe(aliceTx.body.workspaceId);
+  });
+});
+
+describe("/api/v1/accounts", () => {
+  it("creates and lists accounts for the caller workspace", async () => {
+    const res = await api<AccountView[]>("/api/v1/accounts", {
+      headers: ALICE,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.map((a) => a.name)).toContain("e2e BCP soles");
+  });
+
+  it("rejects a duplicate account name in the same workspace", async () => {
+    const res = await api<ApiError>("/api/v1/accounts", {
+      method: "POST",
+      headers: ALICE,
+      body: { name: "e2e BCP soles", currency: "USD" },
+    });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("ACCOUNT_NAME_TAKEN");
+  });
+
+  it("keeps accounts isolated between workspaces", async () => {
+    const res = await api<ApiError>("/api/v1/transactions", {
+      method: "POST",
+      headers: BOB,
+      body: txPayload({ accountId }),
+    });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("ACCOUNT_NOT_FOUND");
+  });
+});
+
+describe("/api/v1/accounts validation", () => {
+  it("rejects an invalid create body", async () => {
+    const res = await api<ApiError>("/api/v1/accounts", {
+      method: "POST",
+      headers: ALICE,
+      body: { name: "", currency: "PEN" },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_BODY");
+  });
+
+  it("rejects an invalid account kind", async () => {
+    const res = await api<ApiError>("/api/v1/accounts", {
+      method: "POST",
+      headers: ALICE,
+      body: { name: "e2e bolsillo", currency: "PEN", kind: "crypto" },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_BODY");
+  });
+});
+
+describe("/api/v1/workspace", () => {
+  it("returns the caller workspace context", async () => {
+    const res = await api<{ defaultCurrency: string; workspaceId: string }>(
+      "/api/v1/workspace",
+      { headers: ALICE },
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.defaultCurrency).toBe("PEN");
+  });
+
+  it("updates the default currency and persists it", async () => {
+    const patch = await api<{ defaultCurrency: string }>("/api/v1/workspace", {
+      method: "PATCH",
+      headers: ALICE,
+      body: { defaultCurrency: "USD" },
+    });
+    expect(patch.status).toBe(200);
+    expect(patch.body.defaultCurrency).toBe("USD");
+
+    const get = await api<{ defaultCurrency: string }>("/api/v1/workspace", {
+      headers: ALICE,
+    });
+    expect(get.body.defaultCurrency).toBe("USD");
+  });
+
+  it("rejects an invalid currency code", async () => {
+    const res = await api<ApiError>("/api/v1/workspace", {
+      method: "PATCH",
+      headers: ALICE,
+      body: { defaultCurrency: "US1" },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("CURRENCY_INVALID_CODE");
   });
 });

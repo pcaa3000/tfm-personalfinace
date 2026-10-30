@@ -28,6 +28,7 @@ const baseInput = {
   amount: amount.value,
   businessDate: businessDate.value,
   concept: "Grocery run",
+  accountId: "acc-1",
   category: categorized("cat-food"),
   confirmedAt: new Date("2026-10-27T12:00:00Z"),
   confirmedBy: "subject-1",

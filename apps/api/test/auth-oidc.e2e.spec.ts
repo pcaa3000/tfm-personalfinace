@@ -20,6 +20,7 @@ import {
   bootApp,
   cleanE2eData,
   prisma,
+  type AccountView,
   type ApiError,
   type TxView,
 } from "./e2e-helpers.js";
@@ -73,7 +74,7 @@ function txPayload(overrides: Record<string, unknown> = {}): Record<string, unkn
   return {
     type: "expense",
     amount: "9.99",
-    currency: "USD",
+    currency: "PEN",
     businessDate: "2026-10-01",
     timezone: "UTC",
     concept: "e2e oidc tx",
@@ -203,10 +204,15 @@ describe("authentication required", () => {
 describe("authenticated requests", () => {
   it("creates and lists transactions for the token subject workspace", async () => {
     const token = await signToken({ subject: "e2e-oidc-carol" });
+    const account = await api<AccountView>("/api/v1/accounts", {
+      method: "POST",
+      headers: bearer(token),
+      body: { name: "e2e bcp", currency: "PEN" },
+    });
     const created = await api<TxView>("/api/v1/transactions", {
       method: "POST",
       headers: bearer(token),
-      body: txPayload(),
+      body: txPayload({ accountId: account.body.id }),
     });
     expect(created.status).toBe(201);
     expect(created.body.status).toBe("confirmed");
@@ -221,10 +227,15 @@ describe("authenticated requests", () => {
     const aliceToken = await signToken({ subject: "e2e-oidc-alice" });
     const bobToken = await signToken({ subject: "e2e-oidc-bob" });
 
+    const account = await api<AccountView>("/api/v1/accounts", {
+      method: "POST",
+      headers: bearer(aliceToken),
+      body: { name: "e2e bcp", currency: "PEN" },
+    });
     const created = await api<TxView>("/api/v1/transactions", {
       method: "POST",
       headers: bearer(aliceToken),
-      body: txPayload(),
+      body: txPayload({ accountId: account.body.id }),
     });
     const id = created.body.id;
 

@@ -41,6 +41,8 @@ export interface RecordManualInput {
   readonly amount: Money;
   readonly businessDate: BusinessDate;
   readonly concept: string;
+  /** Account holding the money; its currency must match the amount's. */
+  readonly accountId: string;
   readonly category: CategoryAssignment;
   readonly originReference?: string;
   readonly confirmedAt: Date;
@@ -56,6 +58,8 @@ export interface TransactionState {
   readonly amount: Money;
   readonly businessDate: BusinessDate;
   readonly concept: string;
+  /** Null only for rows recorded before accounts existed. */
+  readonly accountId: string | null;
   readonly category: CategoryAssignment;
   readonly status: TransactionStatus;
   readonly origin: TransactionOrigin;
@@ -91,6 +95,7 @@ export class Transaction {
     private _amount: Money,
     private _businessDate: BusinessDate,
     private _concept: string,
+    readonly accountId: string | null,
     private _category: CategoryAssignment,
     private _status: TransactionStatus,
     readonly origin: TransactionOrigin,
@@ -129,6 +134,7 @@ export class Transaction {
         input.amount,
         input.businessDate,
         concept,
+        input.accountId,
         input.category,
         "confirmed",
         "manual",
@@ -150,6 +156,7 @@ export class Transaction {
       state.amount,
       state.businessDate,
       state.concept,
+      state.accountId,
       state.category,
       state.status,
       state.origin,

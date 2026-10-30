@@ -40,6 +40,7 @@ export function toDomain(row: TransactionRow): Transaction {
       BusinessDate.create(row.businessDate.toISOString().slice(0, 10), row.timezone),
     ),
     concept: row.concept,
+    accountId: row.accountId,
     category: row.categoryId ? categorized(row.categoryId) : UNCATEGORIZED,
     status: row.status as TransactionStatus,
     origin: row.origin as TransactionOrigin,

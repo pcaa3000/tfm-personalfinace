@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 
 import { WorkspaceId } from "../../shared-kernel/index.js";
+import type { WorkspaceSettingsPort } from "../application/update-default-currency.use-case.js";
 import type {
   CallerIdentity,
   WorkspaceContext,
@@ -15,7 +16,9 @@ import type {
  * in Corte 4 — the port contract and use cases do not change.
  */
 @Injectable()
-export class DeterministicWorkspaceAdapter implements WorkspaceContextPort {
+export class DeterministicWorkspaceAdapter
+  implements WorkspaceContextPort, WorkspaceSettingsPort
+{
   constructor(@Inject(PrismaClient) private readonly prisma: PrismaClient) {}
 
   async resolve(caller: CallerIdentity): Promise<WorkspaceContext> {
@@ -28,7 +31,7 @@ export class DeterministicWorkspaceAdapter implements WorkspaceContextPort {
         kind: "personal",
         locale: "en-US",
         timezone: "UTC",
-        defaultCurrency: "USD",
+        defaultCurrency: "PEN",
       },
     });
 
@@ -39,6 +42,22 @@ export class DeterministicWorkspaceAdapter implements WorkspaceContextPort {
 
     return {
       workspaceId: workspaceId.value,
+      locale: workspace.locale,
+      timezone: workspace.timezone,
+      defaultCurrency: workspace.defaultCurrency,
+    };
+  }
+
+  async updateDefaultCurrency(
+    workspaceId: WorkspaceId,
+    currency: string,
+  ): Promise<WorkspaceContext> {
+    const workspace = await this.prisma.workspace.update({
+      where: { id: workspaceId.value },
+      data: { defaultCurrency: currency },
+    });
+    return {
+      workspaceId,
       locale: workspace.locale,
       timezone: workspace.timezone,
       defaultCurrency: workspace.defaultCurrency,

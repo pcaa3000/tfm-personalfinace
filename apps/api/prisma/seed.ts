@@ -29,7 +29,7 @@ async function main(): Promise<void> {
       kind: "personal",
       locale: "en-US",
       timezone: "UTC",
-      defaultCurrency: "USD",
+      defaultCurrency: "PEN",
     },
   });
 

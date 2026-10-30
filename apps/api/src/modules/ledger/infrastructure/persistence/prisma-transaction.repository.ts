@@ -52,6 +52,7 @@ export class PrismaTransactionRepository implements TransactionRepositoryPort {
           businessDate: new Date(`${transaction.businessDate.isoDate}T00:00:00Z`),
           timezone: transaction.businessDate.timezone,
           concept: transaction.concept,
+          accountId: transaction.accountId,
           categoryId:
             transaction.category.kind === "categorized"
               ? transaction.category.categoryId

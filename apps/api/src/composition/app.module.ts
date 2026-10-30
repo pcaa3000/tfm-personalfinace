@@ -5,12 +5,23 @@ import {
   CALLER_RESOLVER,
   WORKSPACE_CONTEXT,
 } from "../modules/identity-workspace/index.js";
+import {
+  UpdateDefaultCurrencyUseCase,
+  WORKSPACE_SETTINGS,
+} from "../modules/identity-workspace/application/update-default-currency.use-case.js";
 import { DeterministicWorkspaceAdapter } from "../modules/identity-workspace/infrastructure/deterministic-workspace.adapter.js";
+import { WorkspaceController } from "../modules/identity-workspace/infrastructure/http/workspace.controller.js";
 import { DevHeaderCallerResolver } from "../modules/identity-workspace/infrastructure/http/dev-header-caller.resolver.js";
 import { JwtCallerResolver } from "../modules/identity-workspace/infrastructure/http/jwt-caller.resolver.js";
+import { ACCOUNT_REPOSITORY } from "../modules/accounts/index.js";
+import { CreateAccountUseCase } from "../modules/accounts/application/create-account.use-case.js";
+import { ListAccountsUseCase } from "../modules/accounts/application/list-accounts.use-case.js";
+import { AccountsController } from "../modules/accounts/infrastructure/http/accounts.controller.js";
+import { PrismaAccountRepository } from "../modules/accounts/infrastructure/prisma-account.repository.js";
 import { CATEGORY_CATALOG } from "../modules/categorization/index.js";
 import { CategoriesController } from "../modules/categorization/infrastructure/http/categories.controller.js";
 import { PrismaCategoryValidationAdapter } from "../modules/categorization/infrastructure/prisma-category-validation.adapter.js";
+import { ACCOUNT_VALIDATION } from "../modules/ledger/application/ports/account-validation.port.js";
 import {
   CATEGORY_VALIDATION,
   CLOCK,
@@ -38,7 +49,13 @@ function requiredEnv(name: string): string {
 }
 
 @Module({
-  controllers: [HealthController, TransactionsController, CategoriesController],
+  controllers: [
+    HealthController,
+    TransactionsController,
+    CategoriesController,
+    AccountsController,
+    WorkspaceController,
+  ],
   providers: [
     PrismaService,
     { provide: PrismaClient, useExisting: PrismaService },
@@ -58,8 +75,26 @@ function requiredEnv(name: string): string {
       useClass: DeterministicWorkspaceAdapter,
     },
     {
+      provide: WORKSPACE_SETTINGS,
+      useClass: DeterministicWorkspaceAdapter,
+    },
+    {
+      provide: UpdateDefaultCurrencyUseCase,
+      useFactory: (settings: DeterministicWorkspaceAdapter) =>
+        new UpdateDefaultCurrencyUseCase(settings),
+      inject: [WORKSPACE_SETTINGS],
+    },
+    {
       provide: TRANSACTION_REPOSITORY,
       useClass: PrismaTransactionRepository,
+    },
+    {
+      provide: ACCOUNT_REPOSITORY,
+      useClass: PrismaAccountRepository,
+    },
+    {
+      provide: ACCOUNT_VALIDATION,
+      useClass: PrismaAccountRepository,
     },
     {
       provide: CATEGORY_VALIDATION,
@@ -75,11 +110,39 @@ function requiredEnv(name: string): string {
       provide: RecordManualTransactionUseCase,
       useFactory: (
         transactions: PrismaTransactionRepository,
+        accounts: PrismaAccountRepository,
         categories: PrismaCategoryValidationAdapter,
         clock: SystemClock,
         ids: CryptoIdGenerator,
-      ) => new RecordManualTransactionUseCase(transactions, categories, clock, ids),
-      inject: [TRANSACTION_REPOSITORY, CATEGORY_VALIDATION, CLOCK, ID_GENERATOR],
+      ) =>
+        new RecordManualTransactionUseCase(
+          transactions,
+          accounts,
+          categories,
+          clock,
+          ids,
+        ),
+      inject: [
+        TRANSACTION_REPOSITORY,
+        ACCOUNT_VALIDATION,
+        CATEGORY_VALIDATION,
+        CLOCK,
+        ID_GENERATOR,
+      ],
+    },
+    {
+      provide: CreateAccountUseCase,
+      useFactory: (
+        accounts: PrismaAccountRepository,
+        ids: CryptoIdGenerator,
+      ) => new CreateAccountUseCase(accounts, ids),
+      inject: [ACCOUNT_REPOSITORY, ID_GENERATOR],
+    },
+    {
+      provide: ListAccountsUseCase,
+      useFactory: (accounts: PrismaAccountRepository) =>
+        new ListAccountsUseCase(accounts),
+      inject: [ACCOUNT_REPOSITORY],
     },
     {
       provide: ListTransactionsUseCase,
