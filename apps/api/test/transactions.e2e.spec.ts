@@ -1,11 +1,8 @@
 import "reflect-metadata";
 
 import { randomUUID } from "node:crypto";
-import type { AddressInfo } from "node:net";
 
-import { NestFactory } from "@nestjs/core";
 import type { INestApplication } from "@nestjs/common";
-import { PrismaClient } from "@prisma/client";
 import {
   afterAll,
   beforeAll,
@@ -15,78 +12,32 @@ import {
   it,
 } from "vitest";
 
-import { AppModule } from "../src/composition/app.module.js";
+import {
+  api,
+  bootApp,
+  cleanE2eData,
+  ensureGlobalCategory,
+  prisma,
+  type ApiError,
+  type ApiResponse,
+  type CategoryView,
+  type RevisionView,
+  type TxView,
+} from "./e2e-helpers.js";
 
 /**
- * HTTP e2e suite against the real Nest app + Docker Postgres.
+ * HTTP e2e suite (AUTH_MODE=dev) against the real Nest app + Docker Postgres.
  * Callers are simulated with the dev-only x-dev-user header; each "e2e-*"
  * subject resolves to its own lazily created workspace, which is how the
  * cross-workspace isolation cases exercise the same code path as production.
  */
 
-const prisma = new PrismaClient();
-const E2E_PREFIX = "local|e2e-";
-const ALICE = { "x-dev-user": "e2e-alice" };
-const BOB = { "x-dev-user": "e2e-bob" };
+const MARKER = "|e2e-dev-";
+const ALICE = { "x-dev-user": "e2e-dev-alice" };
+const BOB = { "x-dev-user": "e2e-dev-bob" };
 
 let app: INestApplication;
-let baseUrl: string;
 let categoryId: string;
-
-interface ApiResponse<T> {
-  status: number;
-  body: T;
-}
-
-interface TxView {
-  id: string;
-  workspaceId: string;
-  type: string;
-  amount: string;
-  currency: string;
-  concept: string;
-  categoryId: string | null;
-  status: string;
-  revisionCount: number;
-}
-
-interface ApiError {
-  code: string;
-  message: string;
-}
-
-interface RevisionView {
-  kind: string;
-  revisionNumber: number;
-  actor: string;
-}
-
-interface CategoryView {
-  id: string;
-  key: string;
-}
-
-async function api<T>(
-  path: string,
-  options: {
-    method?: string;
-    headers?: Record<string, string>;
-    body?: unknown;
-  } = {},
-): Promise<ApiResponse<T>> {
-  const res = await fetch(`${baseUrl}${path}`, {
-    method: options.method ?? "GET",
-    headers: {
-      "content-type": "application/json",
-      ...(options.headers ?? ALICE),
-    },
-    ...(options.body === undefined
-      ? {}
-      : { body: JSON.stringify(options.body) }),
-  });
-  const text = await res.text();
-  return { status: res.status, body: (text ? JSON.parse(text) : null) as T };
-}
 
 function txPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -112,49 +63,16 @@ async function createTx(
   });
 }
 
-/** Wipes workspaces, transactions and revisions created by e2e-* subjects only. */
-async function cleanE2eData(): Promise<void> {
-  const workspaces = await prisma.workspace.findMany({
-    where: { identityKey: { startsWith: E2E_PREFIX } },
-    select: { id: true },
-  });
-  const ids = workspaces.map((w) => w.id);
-  await prisma.transaction.deleteMany({ where: { workspaceId: { in: ids } } });
-  await prisma.workspace.deleteMany({
-    where: { identityKey: { startsWith: E2E_PREFIX } },
-  });
-}
-
-async function ensureGlobalCategory(): Promise<void> {
-  const existing = await prisma.category.findFirst({
-    where: { key: "e2e-food", workspaceId: null },
-  });
-  const category =
-    existing ??
-    (await prisma.category.create({
-      data: {
-        key: "e2e-food",
-        label: "E2E Food",
-        nature: "essential",
-        workspaceId: null,
-      },
-    }));
-  categoryId = category.id;
-}
-
 beforeAll(async () => {
-  app = await NestFactory.create(AppModule, { logger: false });
-  await app.listen(0);
-  const address = app.getHttpServer().address() as AddressInfo;
-  baseUrl = `http://127.0.0.1:${address.port}`;
-  await cleanE2eData();
-  await ensureGlobalCategory();
+  app = await bootApp();
+  await cleanE2eData(MARKER);
+  categoryId = await ensureGlobalCategory();
 }, 30_000);
 
-beforeEach(cleanE2eData);
+beforeEach(() => cleanE2eData(MARKER));
 
 afterAll(async () => {
-  await cleanE2eData();
+  await cleanE2eData(MARKER);
   await app.close();
   await prisma.$disconnect();
 });
@@ -174,6 +92,7 @@ describe("POST /api/v1/transactions", () => {
   it("rejects a body without idempotencyKey", async () => {
     const res = await api<ApiError>("/api/v1/transactions", {
       method: "POST",
+      headers: ALICE,
       body: txPayload({ idempotencyKey: undefined }),
     });
     expect(res.status).toBe(400);
@@ -183,6 +102,7 @@ describe("POST /api/v1/transactions", () => {
   it("rejects an invalid payload", async () => {
     const res = await api<ApiError>("/api/v1/transactions", {
       method: "POST",
+      headers: ALICE,
       body: txPayload({ type: "transfer" }),
     });
     expect(res.status).toBe(400);
@@ -193,22 +113,27 @@ describe("POST /api/v1/transactions", () => {
     const payload = txPayload();
     const first = await api<TxView>("/api/v1/transactions", {
       method: "POST",
+      headers: ALICE,
       body: payload,
     });
     const second = await api<TxView>("/api/v1/transactions", {
       method: "POST",
+      headers: ALICE,
       body: payload,
     });
     expect(first.status).toBe(201);
     expect(second.body.id).toBe(first.body.id);
 
-    const list = await api<TxView[]>("/api/v1/transactions");
+    const list = await api<TxView[]>("/api/v1/transactions", {
+      headers: ALICE,
+    });
     expect(list.body).toHaveLength(1);
   });
 
   it("rejects an unknown category", async () => {
     const res = await api<ApiError>("/api/v1/transactions", {
       method: "POST",
+      headers: ALICE,
       body: txPayload({ categoryId: randomUUID() }),
     });
     expect(res.status).toBe(404);
@@ -222,35 +147,46 @@ describe("GET /api/v1/transactions", () => {
     await createTx(ALICE, { type: "income", currency: "EUR", amount: "100" });
     await createTx(ALICE, { categoryId });
 
-    const all = await api<TxView[]>("/api/v1/transactions");
+    const all = await api<TxView[]>("/api/v1/transactions", {
+      headers: ALICE,
+    });
     expect(all.body).toHaveLength(3);
 
-    const expenses = await api<TxView[]>("/api/v1/transactions?type=expense");
+    const expenses = await api<TxView[]>("/api/v1/transactions?type=expense", {
+      headers: ALICE,
+    });
     expect(expenses.body).toHaveLength(2);
 
-    const eur = await api<TxView[]>("/api/v1/transactions?currency=EUR");
+    const eur = await api<TxView[]>("/api/v1/transactions?currency=EUR", {
+      headers: ALICE,
+    });
     expect(eur.body).toHaveLength(1);
     expect(eur.body[0]?.type).toBe("income");
 
     const uncategorized = await api<TxView[]>(
       "/api/v1/transactions?category=uncategorized",
+      { headers: ALICE },
     );
     expect(uncategorized.body).toHaveLength(2);
 
     const byCategory = await api<TxView[]>(
       `/api/v1/transactions?category=${categoryId}`,
+      { headers: ALICE },
     );
     expect(byCategory.body).toHaveLength(1);
     expect(byCategory.body[0]?.categoryId).toBe(categoryId);
 
     const ranged = await api<TxView[]>(
       "/api/v1/transactions?from=2026-10-02&to=2026-10-31",
+      { headers: ALICE },
     );
     expect(ranged.body).toHaveLength(0);
   });
 
   it("rejects invalid filters", async () => {
-    const res = await api<ApiError>("/api/v1/transactions?type=transfer");
+    const res = await api<ApiError>("/api/v1/transactions?type=transfer", {
+      headers: ALICE,
+    });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("INVALID_QUERY");
   });
@@ -261,6 +197,7 @@ describe("PATCH /api/v1/transactions/:id", () => {
     const created = await createTx();
     const res = await api<TxView>(`/api/v1/transactions/${created.body.id}`, {
       method: "PATCH",
+      headers: ALICE,
       body: { concept: "e2e dinner", amount: "20.00" },
     });
     expect(res.status).toBe(200);
@@ -272,6 +209,7 @@ describe("PATCH /api/v1/transactions/:id", () => {
   it("returns 404 for an unknown transaction", async () => {
     const res = await api<ApiError>(`/api/v1/transactions/${randomUUID()}`, {
       method: "PATCH",
+      headers: ALICE,
       body: { concept: "nope" },
     });
     expect(res.status).toBe(404);
@@ -282,9 +220,11 @@ describe("PATCH /api/v1/transactions/:id", () => {
     const created = await createTx();
     await api<TxView>(`/api/v1/transactions/${created.body.id}/void`, {
       method: "POST",
+      headers: ALICE,
     });
     const res = await api<ApiError>(`/api/v1/transactions/${created.body.id}`, {
       method: "PATCH",
+      headers: ALICE,
       body: { concept: "late edit" },
     });
     expect(res.status).toBe(400);
@@ -297,7 +237,7 @@ describe("POST /api/v1/transactions/:id/void", () => {
     const created = await createTx();
     const voided = await api<TxView>(
       `/api/v1/transactions/${created.body.id}/void`,
-      { method: "POST" },
+      { method: "POST", headers: ALICE },
     );
     expect(voided.status).toBe(201);
     expect(voided.body.status).toBe("voided");
@@ -305,7 +245,7 @@ describe("POST /api/v1/transactions/:id/void", () => {
 
     const replay = await api<TxView>(
       `/api/v1/transactions/${created.body.id}/void`,
-      { method: "POST" },
+      { method: "POST", headers: ALICE },
     );
     expect(replay.body.status).toBe("voided");
     expect(replay.body.revisionCount).toBe(1);
@@ -314,7 +254,7 @@ describe("POST /api/v1/transactions/:id/void", () => {
   it("returns 404 for an unknown transaction", async () => {
     const res = await api<ApiError>(
       `/api/v1/transactions/${randomUUID()}/void`,
-      { method: "POST" },
+      { method: "POST", headers: ALICE },
     );
     expect(res.status).toBe(404);
   });
@@ -326,18 +266,23 @@ describe("GET /api/v1/transactions/:id/revisions", () => {
     const id = created.body.id;
     await api<TxView>(`/api/v1/transactions/${id}`, {
       method: "PATCH",
+      headers: ALICE,
       body: { concept: "edited" },
     });
-    await api<TxView>(`/api/v1/transactions/${id}/void`, { method: "POST" });
+    await api<TxView>(`/api/v1/transactions/${id}/void`, {
+      method: "POST",
+      headers: ALICE,
+    });
 
     const res = await api<RevisionView[]>(
       `/api/v1/transactions/${id}/revisions`,
+      { headers: ALICE },
     );
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
     expect(res.body[0]?.kind).toBe("revision");
     expect(res.body[0]?.revisionNumber).toBe(1);
-    expect(res.body[0]?.actor).toBe("e2e-alice");
+    expect(res.body[0]?.actor).toBe("e2e-dev-alice");
     expect(res.body[1]?.kind).toBe("void");
     expect(res.body[1]?.revisionNumber).toBe(2);
   });
@@ -345,6 +290,7 @@ describe("GET /api/v1/transactions/:id/revisions", () => {
   it("returns 404 for an unknown transaction", async () => {
     const res = await api<ApiError>(
       `/api/v1/transactions/${randomUUID()}/revisions`,
+      { headers: ALICE },
     );
     expect(res.status).toBe(404);
   });
@@ -352,7 +298,9 @@ describe("GET /api/v1/transactions/:id/revisions", () => {
 
 describe("GET /api/v1/categories", () => {
   it("lists the global catalog for the caller workspace", async () => {
-    const res = await api<CategoryView[]>("/api/v1/categories");
+    const res = await api<CategoryView[]>("/api/v1/categories", {
+      headers: ALICE,
+    });
     expect(res.status).toBe(200);
     const keys = res.body.map((c) => c.key);
     expect(keys).toContain("e2e-food");
@@ -390,6 +338,7 @@ describe("workspace isolation", () => {
 
     const aliceRevisions = await api<RevisionView[]>(
       `/api/v1/transactions/${id}/revisions`,
+      { headers: ALICE },
     );
     expect(aliceRevisions.status).toBe(200);
   });
