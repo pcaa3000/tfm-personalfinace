@@ -7,3 +7,7 @@ export {
   type WorkspaceContext,
   type WorkspaceContextPort,
 } from "./application/workspace-context.port.js";
+export {
+  callerFromHeaders,
+  DEV_USER_HEADER,
+} from "./infrastructure/http/dev-caller.js";

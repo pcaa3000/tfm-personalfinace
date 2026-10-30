@@ -8,25 +8,23 @@ import type {
   WorkspaceContextPort,
 } from "../application/workspace-context.port.js";
 
-const LOCAL_IDENTITY_KEY = "local|dev-user";
-const LOCAL_WORKSPACE_ID = "ws-local-dev";
-
 /**
- * Deterministic adapter for local development (Corte 2): resolves a single
- * seeded workspace regardless of the caller. Replaced by the OIDC adapter
- * (Supabase Auth, issuer+subject) in Corte 4 without touching use cases.
+ * Deterministic adapter for local development: resolves (and lazily creates)
+ * one workspace per caller identity key "issuer|subject". The caller arrives
+ * through the x-dev-user header until the OIDC adapter (Supabase Auth) lands
+ * in Corte 4 — the port contract and use cases do not change.
  */
 @Injectable()
 export class DeterministicWorkspaceAdapter implements WorkspaceContextPort {
   constructor(@Inject(PrismaClient) private readonly prisma: PrismaClient) {}
 
-  async resolve(_caller: CallerIdentity): Promise<WorkspaceContext> {
+  async resolve(caller: CallerIdentity): Promise<WorkspaceContext> {
+    const identityKey = `${caller.issuer}|${caller.subject}`;
     const workspace = await this.prisma.workspace.upsert({
-      where: { identityKey: LOCAL_IDENTITY_KEY },
+      where: { identityKey },
       update: {},
       create: {
-        id: LOCAL_WORKSPACE_ID,
-        identityKey: LOCAL_IDENTITY_KEY,
+        identityKey,
         kind: "personal",
         locale: "en-US",
         timezone: "UTC",

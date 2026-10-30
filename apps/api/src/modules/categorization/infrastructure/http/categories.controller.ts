@@ -1,6 +1,7 @@
-import { Controller, Get, Inject } from "@nestjs/common";
+import { Controller, Get, Headers, Inject } from "@nestjs/common";
 
 import {
+  callerFromHeaders,
   WORKSPACE_CONTEXT,
   type WorkspaceContextPort,
 } from "../../../identity-workspace/index.js";
@@ -8,8 +9,6 @@ import {
   CATEGORY_CATALOG,
   type CategoryCatalogPort,
 } from "../../application/category-catalog.port.js";
-
-const LOCAL_CALLER = { issuer: "local", subject: "dev-user" } as const;
 
 @Controller("api/v1/categories")
 export class CategoriesController {
@@ -19,8 +18,12 @@ export class CategoriesController {
   ) {}
 
   @Get()
-  async list(): Promise<unknown> {
-    const context = await this.workspaceContext.resolve(LOCAL_CALLER);
+  async list(
+    @Headers() headers: Record<string, string | string[] | undefined>,
+  ): Promise<unknown> {
+    const context = await this.workspaceContext.resolve(
+      callerFromHeaders(headers),
+    );
     return this.catalog.listForWorkspace(context.workspaceId);
   }
 }

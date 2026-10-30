@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpException,
   HttpStatus,
   Inject,
@@ -14,6 +15,7 @@ import {
 import { z } from "zod";
 
 import {
+  callerFromHeaders,
   WORKSPACE_CONTEXT,
   type WorkspaceContextPort,
 } from "../../../identity-workspace/index.js";
@@ -54,7 +56,7 @@ const listTransactionsSchema = z.object({
   category: z.string().optional(),
 });
 
-const LOCAL_CALLER = { issuer: "local", subject: "dev-user" } as const;
+type RequestHeaders = Record<string, string | string[] | undefined>;
 
 function toHttpError(error: DomainError): HttpException {
   const notFound = error.code.endsWith("_NOT_FOUND");
@@ -81,7 +83,10 @@ export class TransactionsController {
   ) {}
 
   @Post()
-  async create(@Body() body: unknown): Promise<unknown> {
+  async create(
+    @Body() body: unknown,
+    @Headers() headers: RequestHeaders,
+  ): Promise<unknown> {
     const parsed = createTransactionSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException({
@@ -99,7 +104,8 @@ export class TransactionsController {
       });
     }
 
-    const context = await this.workspaceContext.resolve(LOCAL_CALLER);
+    const caller = callerFromHeaders(headers);
+    const context = await this.workspaceContext.resolve(caller);
     const result = await this.recordManual.execute({
       workspaceId: context.workspaceId,
       idempotencyKey,
@@ -110,7 +116,7 @@ export class TransactionsController {
       timezone: parsed.data.timezone,
       concept: parsed.data.concept,
       categoryId: parsed.data.categoryId ?? null,
-      actor: LOCAL_CALLER.subject,
+      actor: caller.subject,
     });
     if (!result.ok) {
       throw toHttpError(result.error);
@@ -119,7 +125,10 @@ export class TransactionsController {
   }
 
   @Get()
-  async list(@Query() query: unknown): Promise<unknown> {
+  async list(
+    @Query() query: unknown,
+    @Headers() headers: RequestHeaders,
+  ): Promise<unknown> {
     const parsed = listTransactionsSchema.safeParse(query);
     if (!parsed.success) {
       throw new BadRequestException({
@@ -129,7 +138,9 @@ export class TransactionsController {
       });
     }
 
-    const context = await this.workspaceContext.resolve(LOCAL_CALLER);
+    const context = await this.workspaceContext.resolve(
+      callerFromHeaders(headers),
+    );
     const filter: TransactionFilter = {};
     if (parsed.data.from) Object.assign(filter, { from: parsed.data.from });
     if (parsed.data.to) Object.assign(filter, { to: parsed.data.to });
@@ -141,7 +152,11 @@ export class TransactionsController {
   }
 
   @Patch(":id")
-  async revise(@Param("id") id: string, @Body() body: unknown): Promise<unknown> {
+  async revise(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Headers() headers: RequestHeaders,
+  ): Promise<unknown> {
     const parsed = reviseTransactionSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException({
@@ -151,7 +166,8 @@ export class TransactionsController {
       });
     }
 
-    const context = await this.workspaceContext.resolve(LOCAL_CALLER);
+    const caller = callerFromHeaders(headers);
+    const context = await this.workspaceContext.resolve(caller);
     const result = await this.reviseTransaction.execute({
       workspaceId: context.workspaceId,
       transactionId: id,
@@ -172,7 +188,7 @@ export class TransactionsController {
       ...(parsed.data.categoryId !== undefined
         ? { categoryId: parsed.data.categoryId }
         : {}),
-      actor: LOCAL_CALLER.subject,
+      actor: caller.subject,
     });
     if (!result.ok) {
       throw toHttpError(result.error);
@@ -181,12 +197,16 @@ export class TransactionsController {
   }
 
   @Post(":id/void")
-  async void(@Param("id") id: string): Promise<unknown> {
-    const context = await this.workspaceContext.resolve(LOCAL_CALLER);
+  async void(
+    @Param("id") id: string,
+    @Headers() headers: RequestHeaders,
+  ): Promise<unknown> {
+    const caller = callerFromHeaders(headers);
+    const context = await this.workspaceContext.resolve(caller);
     const result = await this.voidTransaction.execute({
       workspaceId: context.workspaceId,
       transactionId: id,
-      actor: LOCAL_CALLER.subject,
+      actor: caller.subject,
     });
     if (!result.ok) {
       throw toHttpError(result.error);
@@ -195,8 +215,13 @@ export class TransactionsController {
   }
 
   @Get(":id/revisions")
-  async revisions(@Param("id") id: string): Promise<unknown> {
-    const context = await this.workspaceContext.resolve(LOCAL_CALLER);
+  async revisions(
+    @Param("id") id: string,
+    @Headers() headers: RequestHeaders,
+  ): Promise<unknown> {
+    const context = await this.workspaceContext.resolve(
+      callerFromHeaders(headers),
+    );
     const result = await this.listRevisions.execute(context.workspaceId, id);
     if (!result.ok) {
       throw toHttpError(result.error);
