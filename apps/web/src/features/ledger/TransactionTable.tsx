@@ -1,5 +1,6 @@
 import {
   Button,
+  Chip,
   Stack,
   Table,
   TableBody,
@@ -9,14 +10,14 @@ import {
   Typography,
 } from "@mui/material";
 
-import type { TransactionView } from "./types";
+import type { LedgerRow } from "./types";
 
 interface Props {
-  transactions: TransactionView[];
+  transactions: LedgerRow[];
   categoryLabels: Map<string, string>;
-  onEdit: (transaction: TransactionView) => void;
-  onVoid: (transaction: TransactionView) => void;
-  onHistory: (transaction: TransactionView) => void;
+  onEdit: (transaction: LedgerRow) => void;
+  onVoid: (transaction: LedgerRow) => void;
+  onHistory: (transaction: LedgerRow) => void;
 }
 
 export function TransactionTable({
@@ -46,6 +47,7 @@ export function TransactionTable({
       <TableBody>
         {transactions.map((trx) => {
           const voided = trx.status === "voided";
+          const pending = trx.pendingSync === true;
           return (
             <TableRow key={trx.id} sx={voided ? { opacity: 0.5 } : undefined}>
               <TableCell>{trx.businessDate}</TableCell>
@@ -57,8 +59,14 @@ export function TransactionTable({
                   : "Uncategorized"}
               </TableCell>
               <TableCell>
-                {trx.status}
-                {trx.revisionCount > 0 ? ` (${trx.revisionCount})` : ""}
+                {pending ? (
+                  <Chip size="small" color="warning" label="Pending sync" />
+                ) : (
+                  <>
+                    {trx.status}
+                    {trx.revisionCount > 0 ? ` (${trx.revisionCount})` : ""}
+                  </>
+                )}
               </TableCell>
               <TableCell align="right">
                 {trx.amount} {trx.currency}
@@ -67,7 +75,7 @@ export function TransactionTable({
                 <Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}>
                   <Button
                     size="small"
-                    disabled={voided}
+                    disabled={voided || pending}
                     onClick={() => onEdit(trx)}
                   >
                     Edit
@@ -75,12 +83,16 @@ export function TransactionTable({
                   <Button
                     size="small"
                     color="error"
-                    disabled={voided}
+                    disabled={voided || pending}
                     onClick={() => onVoid(trx)}
                   >
                     Void
                   </Button>
-                  <Button size="small" onClick={() => onHistory(trx)}>
+                  <Button
+                    size="small"
+                    disabled={pending}
+                    onClick={() => onHistory(trx)}
+                  >
                     History
                   </Button>
                 </Stack>

@@ -1,14 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Box, Container, Divider, Paper, Stack, Typography } from "@mui/material";
+import {
+  Box,
+  Chip,
+  Container,
+  Divider,
+  Paper,
+  Stack,
+  Typography,
+} from "@mui/material";
 import { useState } from "react";
 
 import {
-  createTransaction,
   listCategories,
   listTransactions,
   reviseTransaction,
   voidTransaction,
 } from "./api";
+import { createTransactionOrQueue, toPendingView } from "./offline/create-or-queue";
+import { listPendingTransactions } from "./offline/queue";
+import { PENDING_QUERY_KEY, usePendingSync } from "./offline/use-pending-sync";
 import { EditTransactionDialog } from "./EditTransactionDialog";
 import { summarizeByCurrency } from "./summarize";
 import { TransactionForm, type TransactionFormValues } from "./TransactionForm";
@@ -30,6 +40,7 @@ export function LedgerPage() {
   const [editing, setEditing] = useState<TransactionView | null>(null);
   const [voiding, setVoiding] = useState<TransactionView | null>(null);
   const [historyFor, setHistoryFor] = useState<TransactionView | null>(null);
+  usePendingSync();
 
   const categoriesQuery = useQuery({
     queryKey: ["categories"],
@@ -39,11 +50,18 @@ export function LedgerPage() {
     queryKey: ["transactions"],
     queryFn: listTransactions,
   });
+  const pendingQuery = useQuery({
+    queryKey: PENDING_QUERY_KEY,
+    queryFn: listPendingTransactions,
+  });
 
   const createMutation = useMutation({
-    mutationFn: createTransaction,
+    mutationFn: createTransactionOrQueue,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["transactions"] }),
+        queryClient.invalidateQueries({ queryKey: PENDING_QUERY_KEY }),
+      ]);
     },
   });
 
@@ -66,6 +84,8 @@ export function LedgerPage() {
 
   const categories = categoriesQuery.data ?? [];
   const transactions = transactionsQuery.data ?? [];
+  const pendingRows = (pendingQuery.data ?? []).map(toPendingView);
+  const tableRows = [...pendingRows, ...transactions];
   const categoryLabels = new Map(categories.map((c) => [c.id, c.label]));
   const summaries = summarizeByCurrency(transactions);
 
@@ -76,9 +96,17 @@ export function LedgerPage() {
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
       <Stack spacing={3}>
-        <Typography variant="h4" component="h1">
-          Personal Finance — Ledger
-        </Typography>
+        <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+          <Typography variant="h4" component="h1">
+            Personal Finance — Ledger
+          </Typography>
+          {pendingRows.length > 0 ? (
+            <Chip
+              color="warning"
+              label={`${pendingRows.length} pending sync`}
+            />
+          ) : null}
+        </Stack>
 
         <Paper variant="outlined" sx={{ p: 3 }}>
           <Typography variant="h6" component="h2" gutterBottom>
@@ -130,7 +158,7 @@ export function LedgerPage() {
             </Typography>
           ) : (
             <TransactionTable
-              transactions={transactions}
+              transactions={tableRows}
               categoryLabels={categoryLabels}
               onEdit={setEditing}
               onVoid={setVoiding}

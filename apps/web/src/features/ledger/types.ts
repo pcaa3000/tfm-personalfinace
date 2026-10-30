@@ -14,6 +14,9 @@ export interface TransactionView {
   revisionCount: number;
 }
 
+/** Table row: a confirmed server transaction or a locally queued one. */
+export type LedgerRow = TransactionView & { pendingSync?: true };
+
 export interface CategoryView {
   id: string;
   key: string;
