@@ -2,19 +2,21 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+// Spanish-first product: labels match docs/06 (Hogar, Comida, Sueldo…).
+// Keys stay stable English identifiers; the web translates them per locale.
 const GLOBAL_CATEGORIES = [
-  { key: "salary", label: "Salary", nature: "income" },
-  { key: "other_income", label: "Other income", nature: "income" },
-  { key: "home", label: "Home", nature: "essential" },
-  { key: "food", label: "Food", nature: "essential" },
-  { key: "transport", label: "Transport", nature: "essential" },
-  { key: "health", label: "Health", nature: "essential" },
-  { key: "services", label: "Services & subscriptions", nature: "essential" },
-  { key: "education", label: "Education", nature: "essential" },
-  { key: "leisure", label: "Leisure", nature: "discretionary" },
-  { key: "restaurants", label: "Restaurants & cafes", nature: "discretionary" },
-  { key: "shopping", label: "Shopping", nature: "discretionary" },
-  { key: "taxes", label: "Taxes & obligations", nature: "obligation" },
+  { key: "salary", label: "Sueldo", nature: "income" },
+  { key: "other_income", label: "Otros ingresos", nature: "income" },
+  { key: "home", label: "Hogar", nature: "essential" },
+  { key: "food", label: "Comida", nature: "essential" },
+  { key: "transport", label: "Transporte", nature: "essential" },
+  { key: "health", label: "Salud", nature: "essential" },
+  { key: "services", label: "Servicios y suscripciones", nature: "essential" },
+  { key: "education", label: "Educación", nature: "essential" },
+  { key: "leisure", label: "Ocio", nature: "discretionary" },
+  { key: "restaurants", label: "Restaurantes y cafés", nature: "discretionary" },
+  { key: "shopping", label: "Compras", nature: "discretionary" },
+  { key: "taxes", label: "Impuestos y obligaciones", nature: "obligation" },
 ] as const;
 
 async function main(): Promise<void> {
