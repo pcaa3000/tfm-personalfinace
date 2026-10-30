@@ -1,4 +1,5 @@
 import { Dialog, DialogContent, DialogTitle } from "@mui/material";
+import { useTranslation } from "react-i18next";
 
 import { TransactionForm, type TransactionFormValues } from "./TransactionForm";
 import type { CategoryView, TransactionView } from "./types";
@@ -20,16 +21,17 @@ export function EditTransactionDialog({
   onClose,
   onSubmit,
 }: Props) {
+  const { t } = useTranslation();
   return (
     <Dialog open={transaction !== null} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Edit transaction</DialogTitle>
+      <DialogTitle>{t("dialog.editTitle")}</DialogTitle>
       <DialogContent>
         {transaction ? (
           <TransactionForm
             categories={categories}
             submitting={submitting}
             error={error}
-            submitLabel="Save changes"
+            submitLabel={t("form.saveChanges")}
             initialValues={{
               type: transaction.type,
               amount: transaction.amount,

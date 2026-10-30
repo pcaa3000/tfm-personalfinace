@@ -6,30 +6,36 @@ import {
   Stack,
   TextField,
 } from "@mui/material";
+import { useMemo } from "react";
 import { Controller, useForm } from "react-hook-form";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { z } from "zod";
 
 import type { CategoryView } from "./types";
 
-const schema = z.object({
-  type: z.enum(["income", "expense"]),
-  amount: z
-    .string()
-    .min(1, "Amount is required")
-    .regex(/^\d+(\.\d+)?$/, "Amount must be a positive decimal"),
-  currency: z.string().length(3),
-  businessDate: z.string().min(10, "Date is required"),
-  concept: z.string().trim().min(1, "Concept is required").max(500),
-  categoryId: z.string().nullable(),
-});
-
-type FormValues = z.infer<typeof schema>;
+type FormValues = {
+  type: "income" | "expense";
+  amount: string;
+  currency: string;
+  businessDate: string;
+  concept: string;
+  categoryId: string | null;
+};
 
 export interface TransactionFormValues extends FormValues {
   timezone: string;
 }
 
 const CURRENCIES = ["USD", "EUR", "ARS", "JPY", "BHD"];
+
+/** Stable catalog key → localized label; custom categories keep their label. */
+export function categoryLabel(
+  category: CategoryView,
+  t: TFunction,
+): string {
+  return t(`categories.${category.key}`, { defaultValue: category.label });
+}
 
 interface Props {
   categories: CategoryView[];
@@ -48,6 +54,28 @@ export function TransactionForm({
   submitLabel,
   onSubmit,
 }: Props) {
+  const { t } = useTranslation();
+
+  const schema = useMemo(
+    () =>
+      z.object({
+        type: z.enum(["income", "expense"]),
+        amount: z
+          .string()
+          .min(1, t("form.validation.amountRequired"))
+          .regex(/^\d+(\.\d+)?$/, t("form.validation.amountDecimal")),
+        currency: z.string().length(3),
+        businessDate: z.string().min(10, t("form.validation.dateRequired")),
+        concept: z
+          .string()
+          .trim()
+          .min(1, t("form.validation.conceptRequired"))
+          .max(500),
+        categoryId: z.string().nullable(),
+      }),
+    [t],
+  );
+
   const {
     register,
     handleSubmit,
@@ -78,22 +106,22 @@ export function TransactionForm({
   });
 
   return (
-    <form onSubmit={submit} aria-label="Register transaction">
+    <form onSubmit={submit} aria-label={t("form.newTransaction")}>
       <Stack spacing={2} sx={{ maxWidth: 480 }}>
         {error ? <Alert severity="error">{error}</Alert> : null}
         <Controller
           name="type"
           control={control}
           render={({ field }) => (
-            <TextField {...field} select label="Type" fullWidth>
-              <MenuItem value="income">Income</MenuItem>
-              <MenuItem value="expense">Expense</MenuItem>
+            <TextField {...field} select label={t("form.type")} fullWidth>
+              <MenuItem value="income">{t("form.income")}</MenuItem>
+              <MenuItem value="expense">{t("form.expense")}</MenuItem>
             </TextField>
           )}
         />
         <TextField
           {...register("amount")}
-          label="Amount"
+          label={t("form.amount")}
           slotProps={{ htmlInput: { inputMode: "decimal" } }}
           error={Boolean(errors.amount)}
           helperText={errors.amount?.message}
@@ -103,7 +131,7 @@ export function TransactionForm({
           name="currency"
           control={control}
           render={({ field }) => (
-            <TextField {...field} select label="Currency" fullWidth>
+            <TextField {...field} select label={t("form.currency")} fullWidth>
               {CURRENCIES.map((code) => (
                 <MenuItem key={code} value={code}>
                   {code}
@@ -114,7 +142,7 @@ export function TransactionForm({
         />
         <TextField
           {...register("businessDate")}
-          label="Date"
+          label={t("form.date")}
           type="date"
           slotProps={{ inputLabel: { shrink: true } }}
           error={Boolean(errors.businessDate)}
@@ -123,7 +151,7 @@ export function TransactionForm({
         />
         <TextField
           {...register("concept")}
-          label="Concept"
+          label={t("form.concept")}
           error={Boolean(errors.concept)}
           helperText={errors.concept?.message}
           fullWidth
@@ -135,17 +163,17 @@ export function TransactionForm({
             <TextField
               {...field}
               select
-              label="Category"
+              label={t("form.category")}
               value={field.value ?? ""}
               onChange={(event) =>
                 field.onChange(event.target.value === "" ? null : event.target.value)
               }
               fullWidth
             >
-              <MenuItem value="">Uncategorized</MenuItem>
+              <MenuItem value="">{t("form.uncategorized")}</MenuItem>
               {categories.map((category) => (
                 <MenuItem key={category.id} value={category.id}>
-                  {category.label}
+                  {categoryLabel(category, t)}
                 </MenuItem>
               ))}
             </TextField>
@@ -156,7 +184,7 @@ export function TransactionForm({
           variant="contained"
           disabled={submitting || (initialValues !== undefined && !isDirty)}
         >
-          {submitting ? "Saving…" : (submitLabel ?? "Save transaction")}
+          {submitting ? t("form.saving") : (submitLabel ?? t("form.save"))}
         </Button>
       </Stack>
     </form>

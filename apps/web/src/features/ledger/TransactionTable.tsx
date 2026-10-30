@@ -9,12 +9,15 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
+import { useTranslation } from "react-i18next";
 
-import type { LedgerRow } from "./types";
+import { formatBusinessDate } from "./format";
+import { categoryLabel } from "./TransactionForm";
+import type { CategoryView, LedgerRow } from "./types";
 
 interface Props {
   transactions: LedgerRow[];
-  categoryLabels: Map<string, string>;
+  categories: CategoryView[];
   onEdit: (transaction: LedgerRow) => void;
   onVoid: (transaction: LedgerRow) => void;
   onHistory: (transaction: LedgerRow) => void;
@@ -22,26 +25,31 @@ interface Props {
 
 export function TransactionTable({
   transactions,
-  categoryLabels,
+  categories,
   onEdit,
   onVoid,
   onHistory,
 }: Props) {
+  const { t, i18n } = useTranslation();
+  const categoryLabels = new Map(
+    categories.map((c) => [c.id, categoryLabel(c, t)]),
+  );
+
   if (transactions.length === 0) {
-    return <Typography color="text.secondary">No transactions yet.</Typography>;
+    return <Typography color="text.secondary">{t("table.empty")}</Typography>;
   }
 
   return (
-    <Table size="small" aria-label="Transactions">
+    <Table size="small" aria-label={t("transactions.title")}>
       <TableHead>
         <TableRow>
-          <TableCell>Date</TableCell>
-          <TableCell>Type</TableCell>
-          <TableCell>Concept</TableCell>
-          <TableCell>Category</TableCell>
-          <TableCell>Status</TableCell>
-          <TableCell align="right">Amount</TableCell>
-          <TableCell align="right">Actions</TableCell>
+          <TableCell>{t("table.date")}</TableCell>
+          <TableCell>{t("table.type")}</TableCell>
+          <TableCell>{t("table.concept")}</TableCell>
+          <TableCell>{t("table.category")}</TableCell>
+          <TableCell>{t("table.status")}</TableCell>
+          <TableCell align="right">{t("table.amount")}</TableCell>
+          <TableCell align="right">{t("table.actions")}</TableCell>
         </TableRow>
       </TableHead>
       <TableBody>
@@ -50,20 +58,28 @@ export function TransactionTable({
           const pending = trx.pendingSync === true;
           return (
             <TableRow key={trx.id} sx={voided ? { opacity: 0.5 } : undefined}>
-              <TableCell>{trx.businessDate}</TableCell>
-              <TableCell>{trx.type}</TableCell>
+              <TableCell>
+                {formatBusinessDate(trx.businessDate, i18n.language)}
+              </TableCell>
+              <TableCell>{t(`form.${trx.type}`)}</TableCell>
               <TableCell>{trx.concept}</TableCell>
               <TableCell>
                 {trx.categoryId
                   ? (categoryLabels.get(trx.categoryId) ?? trx.categoryId)
-                  : "Uncategorized"}
+                  : t("form.uncategorized")}
               </TableCell>
               <TableCell>
                 {pending ? (
-                  <Chip size="small" color="warning" label="Pending sync" />
+                  <Chip
+                    size="small"
+                    color="warning"
+                    label={t("table.pendingSync")}
+                  />
                 ) : (
                   <>
-                    {trx.status}
+                    {trx.status === "voided"
+                      ? t("table.statusVoided")
+                      : t("table.statusConfirmed")}
                     {trx.revisionCount > 0 ? ` (${trx.revisionCount})` : ""}
                   </>
                 )}
@@ -78,7 +94,7 @@ export function TransactionTable({
                     disabled={voided || pending}
                     onClick={() => onEdit(trx)}
                   >
-                    Edit
+                    {t("table.edit")}
                   </Button>
                   <Button
                     size="small"
@@ -86,14 +102,14 @@ export function TransactionTable({
                     disabled={voided || pending}
                     onClick={() => onVoid(trx)}
                   >
-                    Void
+                    {t("table.void")}
                   </Button>
                   <Button
                     size="small"
                     disabled={pending}
                     onClick={() => onHistory(trx)}
                   >
-                    History
+                    {t("table.history")}
                   </Button>
                 </Stack>
               </TableCell>

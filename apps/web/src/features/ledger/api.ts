@@ -8,6 +8,19 @@ import type {
 
 const BASE = "/api/v1";
 
+/** API rejection carrying the server error code for localized display. */
+export class ApiError extends Error {
+  readonly code: string;
+  readonly status: number;
+
+  constructor(code: string, message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE}${path}`, {
     headers: { "content-type": "application/json" },
@@ -17,11 +30,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     | ({ code?: string; message?: string } & T)
     | null;
   if (!response.ok) {
+    const code =
+      payload && typeof payload === "object" && "code" in payload
+        ? String(payload.code)
+        : `HTTP_${response.status}`;
     const message =
       payload && typeof payload === "object" && "message" in payload
         ? String(payload.message)
         : `Request failed with status ${response.status}`;
-    throw new Error(message);
+    throw new ApiError(code, message, response.status);
   }
   return payload as T;
 }

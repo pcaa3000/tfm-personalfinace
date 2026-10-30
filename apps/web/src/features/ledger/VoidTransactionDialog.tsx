@@ -7,7 +7,9 @@ import {
   DialogContentText,
   DialogTitle,
 } from "@mui/material";
+import { useTranslation } from "react-i18next";
 
+import { formatBusinessDate } from "./format";
 import type { TransactionView } from "./types";
 
 interface Props {
@@ -25,25 +27,23 @@ export function VoidTransactionDialog({
   onClose,
   onConfirm,
 }: Props) {
+  const { t, i18n } = useTranslation();
   return (
     <Dialog open={transaction !== null} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Void transaction</DialogTitle>
+      <DialogTitle>{t("dialog.voidTitle")}</DialogTitle>
       <DialogContent>
         {error ? <Alert severity="error">{error}</Alert> : null}
-        <DialogContentText>
-          Voiding marks the transaction as cancelled without deleting its
-          history. This cannot be undone.
-        </DialogContentText>
+        <DialogContentText>{t("dialog.voidBody")}</DialogContentText>
         {transaction ? (
           <DialogContentText sx={{ mt: 1 }}>
-            {transaction.businessDate} — {transaction.concept} (
-            {transaction.amount} {transaction.currency})
+            {formatBusinessDate(transaction.businessDate, i18n.language)} —{" "}
+            {transaction.concept} ({transaction.amount} {transaction.currency})
           </DialogContentText>
         ) : null}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={submitting}>
-          Cancel
+          {t("dialog.cancel")}
         </Button>
         <Button
           color="error"
@@ -51,7 +51,7 @@ export function VoidTransactionDialog({
           disabled={submitting}
           onClick={() => transaction && onConfirm(transaction.id)}
         >
-          {submitting ? "Voiding…" : "Void"}
+          {submitting ? t("dialog.voiding") : t("dialog.confirm")}
         </Button>
       </DialogActions>
     </Dialog>

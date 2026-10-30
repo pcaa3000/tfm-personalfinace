@@ -9,17 +9,20 @@ import {
   Typography,
 } from "@mui/material";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
+import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import {
   listCategories,
   listTransactions,
   reviseTransaction,
   voidTransaction,
 } from "./api";
+import { EditTransactionDialog } from "./EditTransactionDialog";
+import { errorMessage } from "./errors";
 import { createTransactionOrQueue, toPendingView } from "./offline/create-or-queue";
 import { listPendingTransactions } from "./offline/queue";
 import { PENDING_QUERY_KEY, usePendingSync } from "./offline/use-pending-sync";
-import { EditTransactionDialog } from "./EditTransactionDialog";
 import { summarizeByCurrency } from "./summarize";
 import { TransactionForm, type TransactionFormValues } from "./TransactionForm";
 import { TransactionHistoryDialog } from "./TransactionHistoryDialog";
@@ -36,6 +39,7 @@ function formatMinor(minor: bigint, currency: string): string {
 }
 
 export function LedgerPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<TransactionView | null>(null);
   const [voiding, setVoiding] = useState<TransactionView | null>(null);
@@ -86,7 +90,6 @@ export function LedgerPage() {
   const transactions = transactionsQuery.data ?? [];
   const pendingRows = (pendingQuery.data ?? []).map(toPendingView);
   const tableRows = [...pendingRows, ...transactions];
-  const categoryLabels = new Map(categories.map((c) => [c.id, c.label]));
   const summaries = summarizeByCurrency(transactions);
 
   const onSubmit = (values: TransactionFormValues) => {
@@ -97,36 +100,41 @@ export function LedgerPage() {
     <Container maxWidth="md" sx={{ py: 4 }}>
       <Stack spacing={3}>
         <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
-          <Typography variant="h4" component="h1">
-            Personal Finance — Ledger
+          <Typography variant="h4" component="h1" sx={{ flexGrow: 1 }}>
+            {t("app.title")}
           </Typography>
           {pendingRows.length > 0 ? (
             <Chip
               color="warning"
-              label={`${pendingRows.length} pending sync`}
+              label={t("pending.badge", { count: pendingRows.length })}
             />
           ) : null}
+          <LanguageSwitcher />
         </Stack>
 
         <Paper variant="outlined" sx={{ p: 3 }}>
           <Typography variant="h6" component="h2" gutterBottom>
-            New transaction
+            {t("form.newTransaction")}
           </Typography>
           <TransactionForm
             categories={categories}
             submitting={createMutation.isPending}
-            error={createMutation.error?.message ?? null}
+            error={
+              createMutation.error
+                ? errorMessage(createMutation.error, t)
+                : null
+            }
             onSubmit={onSubmit}
           />
         </Paper>
 
         <Paper variant="outlined" sx={{ p: 3 }}>
           <Typography variant="h6" component="h2" gutterBottom>
-            Summary by currency
+            {t("summary.title")}
           </Typography>
           {summaries.length === 0 ? (
             <Typography color="text.secondary">
-              No confirmed movements yet.
+              {t("summary.empty")}
             </Typography>
           ) : (
             <Stack direction="row" spacing={3} sx={{ flexWrap: "wrap" }}>
@@ -134,8 +142,9 @@ export function LedgerPage() {
                 <Box key={s.currency}>
                   <Typography variant="overline">{s.currency}</Typography>
                   <Typography>
-                    Income {formatMinor(s.incomeMinor, s.currency)} · Expenses{" "}
-                    {formatMinor(s.expenseMinor, s.currency)} · Net{" "}
+                    {t("summary.income")} {formatMinor(s.incomeMinor, s.currency)}{" "}
+                    · {t("summary.expenses")}{" "}
+                    {formatMinor(s.expenseMinor, s.currency)} · {t("summary.net")}{" "}
                     {formatMinor(s.netMinor, s.currency)}
                   </Typography>
                 </Box>
@@ -146,20 +155,20 @@ export function LedgerPage() {
 
         <Divider />
 
-        <section aria-label="Transactions">
+        <section aria-label={t("transactions.title")}>
           <Typography variant="h6" component="h2" gutterBottom>
-            Transactions
+            {t("transactions.title")}
           </Typography>
           {transactionsQuery.isLoading ? (
-            <Typography>Loading…</Typography>
+            <Typography>{t("transactions.loading")}</Typography>
           ) : transactionsQuery.isError ? (
             <Typography color="error">
-              Could not load transactions.
+              {t("transactions.loadError")}
             </Typography>
           ) : (
             <TransactionTable
               transactions={tableRows}
-              categoryLabels={categoryLabels}
+              categories={categories}
               onEdit={setEditing}
               onVoid={setVoiding}
               onHistory={setHistoryFor}
@@ -172,7 +181,9 @@ export function LedgerPage() {
         transaction={editing}
         categories={categories}
         submitting={reviseMutation.isPending}
-        error={reviseMutation.error?.message ?? null}
+        error={
+          reviseMutation.error ? errorMessage(reviseMutation.error, t) : null
+        }
         onClose={() => {
           setEditing(null);
           reviseMutation.reset();
@@ -182,7 +193,9 @@ export function LedgerPage() {
       <VoidTransactionDialog
         transaction={voiding}
         submitting={voidMutation.isPending}
-        error={voidMutation.error?.message ?? null}
+        error={
+          voidMutation.error ? errorMessage(voidMutation.error, t) : null
+        }
         onClose={() => {
           setVoiding(null);
           voidMutation.reset();
