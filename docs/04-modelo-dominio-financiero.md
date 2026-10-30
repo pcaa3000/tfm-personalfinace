@@ -48,7 +48,17 @@ Para repartir una cantidad entre bolsillos se redondea a la unidad menor de la m
 
 ### Conversión de moneda
 
-La conversión queda fuera del MVP. Los reportes agrupan por moneda y no muestran un total combinado.
+La conversión está contemplada pero acotada: el tipo de cambio se usa solo para totales derivados en la moneda por defecto del workspace (PEN de fábrica, configurable por la persona). El importe y la moneda originales nunca se sustituyen (INV-DIN-06). Los reportes agrupan por moneda y por cuenta; el total combinado requiere siempre una tasa con fecha y fuente.
+
+### Cuentas por moneda
+
+El dinero se guarda en cuentas nombradas por la persona ("BCP soles", "Interbank dólares"). Cada cuenta pertenece a una sola moneda y a un workspace.
+
+| INV-CTA-01 | Una transacción nueva requiere una cuenta, y su moneda debe coincidir con la de la cuenta |
+| INV-CTA-02 | Los nombres de cuenta son únicos por workspace |
+| INV-CTA-03 | Las transacciones previas a las cuentas quedan "Sin cuenta"; el usuario puede asignarles una en una edición futura |
+
+La conversión entre monedas (tipo de cambio almacenado con fecha y fuente) es el corte siguiente y no afecta estos invariantes.
 
 Una evolución futura deberá modelar una conversión como dato derivado con:
 

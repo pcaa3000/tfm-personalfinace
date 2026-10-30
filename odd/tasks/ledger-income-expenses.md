@@ -11,6 +11,8 @@ Branch: `feature/ledger-income-expenses` | Delivery: un commit por corte (mínim
 - S4 (L3): "proceder, considerar hacer al menos un commit en cada corte."
 - S5 (docs): La solución sigue la arquitectura ya definida en el repo: monolito modular + Clean Architecture + SOLID (`docs/03`), DDD táctico con invariantes de `docs/04` (INV-DIN-01..04, INV-TRX-01..05), roadmap por cortes verticales (`docs/06` Fases 0 y 1) y stack TS/NestJS/Prisma/PostgreSQL + React/Vite (`docs/02`).
 - S6 (decisión confirmada): PostgreSQL en Docker local y adaptador de identidad determinista en los primeros cortes; Supabase Auth llega en el Corte 4.
+- S7 (L4): "moneda por defecto los soles peruanos (PEN). Cada moneda debería tener su propia cuenta, pero no siempre es posible; generalmente se tienen dos (PEN y USD), por lo que se debe contemplar tipo de cambio." + "el usuario pueda cambiar su moneda por defecto". Cuentas reales con nombre ("BCP soles", "Interbank dólares"), no bolsillos virtuales.
+- S8 (L5): implementación con ODD + TDD estricto (red-green-refactor) y "mas ODD".
 
 ## Tasks
 
@@ -23,9 +25,14 @@ Branch: `feature/ledger-income-expenses` | Delivery: un commit por corte (mínim
 | T5 | Corte 3 — Edición, anulación y revisiones con trazabilidad | S1, S5 | inline | done | 756db32 |
 | T6 | Corte 4 — Supabase Auth OIDC + aislamiento multi-workspace | S1, S5 | inline | partial — API auth+aislamiento done; login web pendiente de proyecto Supabase real | ver log |
 | T7 | Corte 5 — PWA offline-first: cola Dexie, "pendiente de sincronización", sync idempotente | S1, S5 | inline | done | ver log |
+| T8a | Corte 6a — Cuentas por moneda (entidad Account, tx requiere cuenta con misma moneda, defaultCurrency PEN configurable vía GET/PATCH /workspace) | S5, S7 | inline | done | ver log |
+| T8b | Corte 6b — Tipo de cambio (tabla con fecha/fuente) + total combinado en PEN; respeta INV-DIN-06 (monto original nunca se reemplaza) | S5, S7 | inline | pending | — |
 
 ## Log
 
+- L4: requisito multi-moneda con cuentas reales + PEN default + tipo de cambio (ver S7).
+- T8a done: módulo accounts (entidad Account: name única por ws, currency ISO, kind bank|cash|wallet; GET/POST /api/v1/accounts) + Transaction.accountId (requerido en alta, invariante tx.currency===account.currency → ACCOUNT_NOT_FOUND 404 / ACCOUNT_CURRENCY_MISMATCH 400; columna nullable para rows legacy "Sin cuenta") + GET/PATCH /api/v1/workspace (defaultCurrency PEN de fábrica, modificable por usuario, validado CurrencyCode) + AccountValidationPort en ledger implementado por PrismaAccountRepository (misma costura que categorización). Web: selector de cuenta filtrado por moneda en el form, columna Cuenta, sección Cuentas + selector de moneda por defecto. Cobertura: specs de dominio/use-case para Account y UpdateDefaultCurrency + 8 e2e nuevos (cuentas, workspace, validaciones). TDD estricto aplicado en web (RED: specs de tabla/form antes de implementar; GREEN después). Gotchas: CurrencyCode valida formato no tabla ISO ("ZZZ" pasa, "US1" no); en dev-mode el header ausente cae a dev-user (no hay 401); zod rechaza kind inválido antes del dominio (INVALID_BODY); MUI select no expone .value — el spec usa getByRole combobox textContent.
+- L5: "aplica TDD estricto" + "mas ODD" — próximos cortes: spec que falla primero, implementación mínima después.
 - L1: "Usando ODD, explora y dame la propuesta mas adecuada para desarrollar la App de Finanzas Personales, como primer punto, la app deberá registrar los ingresos y gastos del usuario. Empezando de lo simple a lo complejo. Dime si tienes dudas."
 - L2: "Por ahora empezar con Docker local. Confirmame la arquitectura que usaras, diseño, patrones, TDD, DDD, SOLID, etc. Avisame antes de empezar a implementar codigo."
 - L3: "proceder, considerar hacer al menos un commit en cada corte."
