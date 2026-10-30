@@ -8,6 +8,6 @@ export {
   type WorkspaceContextPort,
 } from "./application/workspace-context.port.js";
 export {
-  callerFromHeaders,
-  DEV_USER_HEADER,
-} from "./infrastructure/http/dev-caller.js";
+  CALLER_RESOLVER,
+  type CallerResolverPort,
+} from "./application/caller-resolver.port.js";

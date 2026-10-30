@@ -1,8 +1,16 @@
-import { Controller, Get, Headers, Inject } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Headers,
+  HttpException,
+  HttpStatus,
+  Inject,
+} from "@nestjs/common";
 
 import {
-  callerFromHeaders,
+  CALLER_RESOLVER,
   WORKSPACE_CONTEXT,
+  type CallerResolverPort,
   type WorkspaceContextPort,
 } from "../../../identity-workspace/index.js";
 import {
@@ -13,6 +21,7 @@ import {
 @Controller("api/v1/categories")
 export class CategoriesController {
   constructor(
+    @Inject(CALLER_RESOLVER) private readonly callerResolver: CallerResolverPort,
     @Inject(WORKSPACE_CONTEXT) private readonly workspaceContext: WorkspaceContextPort,
     @Inject(CATEGORY_CATALOG) private readonly catalog: CategoryCatalogPort,
   ) {}
@@ -21,9 +30,14 @@ export class CategoriesController {
   async list(
     @Headers() headers: Record<string, string | string[] | undefined>,
   ): Promise<unknown> {
-    const context = await this.workspaceContext.resolve(
-      callerFromHeaders(headers),
-    );
+    const caller = await this.callerResolver.resolve(headers);
+    if (!caller) {
+      throw new HttpException(
+        { code: "UNAUTHENTICATED", message: "Authentication required" },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+    const context = await this.workspaceContext.resolve(caller);
     return this.catalog.listForWorkspace(context.workspaceId);
   }
 }

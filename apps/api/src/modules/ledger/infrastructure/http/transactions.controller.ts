@@ -15,8 +15,10 @@ import {
 import { z } from "zod";
 
 import {
-  callerFromHeaders,
+  CALLER_RESOLVER,
   WORKSPACE_CONTEXT,
+  type CallerIdentity,
+  type CallerResolverPort,
   type WorkspaceContextPort,
 } from "../../../identity-workspace/index.js";
 import { DomainError } from "../../../shared-kernel/index.js";
@@ -58,6 +60,14 @@ const listTransactionsSchema = z.object({
 
 type RequestHeaders = Record<string, string | string[] | undefined>;
 
+/** Generic 401 — never reveals whether the account exists. */
+function unauthenticated(): HttpException {
+  return new HttpException(
+    { code: "UNAUTHENTICATED", message: "Authentication required" },
+    HttpStatus.UNAUTHORIZED,
+  );
+}
+
 function toHttpError(error: DomainError): HttpException {
   const notFound = error.code.endsWith("_NOT_FOUND");
   return new HttpException(
@@ -69,6 +79,7 @@ function toHttpError(error: DomainError): HttpException {
 @Controller("api/v1/transactions")
 export class TransactionsController {
   constructor(
+    @Inject(CALLER_RESOLVER) private readonly callerResolver: CallerResolverPort,
     @Inject(WORKSPACE_CONTEXT) private readonly workspaceContext: WorkspaceContextPort,
     @Inject(RecordManualTransactionUseCase)
     private readonly recordManual: RecordManualTransactionUseCase,
@@ -81,6 +92,16 @@ export class TransactionsController {
     @Inject(ListTransactionRevisionsUseCase)
     private readonly listRevisions: ListTransactionRevisionsUseCase,
   ) {}
+
+  private async authenticatedCaller(
+    headers: RequestHeaders,
+  ): Promise<CallerIdentity> {
+    const caller = await this.callerResolver.resolve(headers);
+    if (!caller) {
+      throw unauthenticated();
+    }
+    return caller;
+  }
 
   @Post()
   async create(
@@ -104,7 +125,7 @@ export class TransactionsController {
       });
     }
 
-    const caller = callerFromHeaders(headers);
+    const caller = await this.authenticatedCaller(headers);
     const context = await this.workspaceContext.resolve(caller);
     const result = await this.recordManual.execute({
       workspaceId: context.workspaceId,
@@ -139,7 +160,7 @@ export class TransactionsController {
     }
 
     const context = await this.workspaceContext.resolve(
-      callerFromHeaders(headers),
+      await this.authenticatedCaller(headers),
     );
     const filter: TransactionFilter = {};
     if (parsed.data.from) Object.assign(filter, { from: parsed.data.from });
@@ -166,7 +187,7 @@ export class TransactionsController {
       });
     }
 
-    const caller = callerFromHeaders(headers);
+    const caller = await this.authenticatedCaller(headers);
     const context = await this.workspaceContext.resolve(caller);
     const result = await this.reviseTransaction.execute({
       workspaceId: context.workspaceId,
@@ -201,7 +222,7 @@ export class TransactionsController {
     @Param("id") id: string,
     @Headers() headers: RequestHeaders,
   ): Promise<unknown> {
-    const caller = callerFromHeaders(headers);
+    const caller = await this.authenticatedCaller(headers);
     const context = await this.workspaceContext.resolve(caller);
     const result = await this.voidTransaction.execute({
       workspaceId: context.workspaceId,
@@ -220,7 +241,7 @@ export class TransactionsController {
     @Headers() headers: RequestHeaders,
   ): Promise<unknown> {
     const context = await this.workspaceContext.resolve(
-      callerFromHeaders(headers),
+      await this.authenticatedCaller(headers),
     );
     const result = await this.listRevisions.execute(context.workspaceId, id);
     if (!result.ok) {

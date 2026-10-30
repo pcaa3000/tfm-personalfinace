@@ -1,8 +1,13 @@
 import { Module } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 
-import { WORKSPACE_CONTEXT } from "../modules/identity-workspace/index.js";
+import {
+  CALLER_RESOLVER,
+  WORKSPACE_CONTEXT,
+} from "../modules/identity-workspace/index.js";
 import { DeterministicWorkspaceAdapter } from "../modules/identity-workspace/infrastructure/deterministic-workspace.adapter.js";
+import { DevHeaderCallerResolver } from "../modules/identity-workspace/infrastructure/http/dev-header-caller.resolver.js";
+import { JwtCallerResolver } from "../modules/identity-workspace/infrastructure/http/jwt-caller.resolver.js";
 import { CATEGORY_CATALOG } from "../modules/categorization/index.js";
 import { CategoriesController } from "../modules/categorization/infrastructure/http/categories.controller.js";
 import { PrismaCategoryValidationAdapter } from "../modules/categorization/infrastructure/prisma-category-validation.adapter.js";
@@ -24,11 +29,30 @@ import { SystemClock } from "../modules/ledger/infrastructure/system-clock.adapt
 import { HealthController } from "./health.controller.js";
 import { PrismaService } from "./prisma.service.js";
 
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`AUTH_MODE=oidc requires ${name} to be set`);
+  }
+  return value;
+}
+
 @Module({
   controllers: [HealthController, TransactionsController, CategoriesController],
   providers: [
     PrismaService,
     { provide: PrismaClient, useExisting: PrismaService },
+    {
+      provide: CALLER_RESOLVER,
+      useFactory: () =>
+        process.env.AUTH_MODE === "oidc"
+          ? new JwtCallerResolver({
+              issuer: requiredEnv("OIDC_ISSUER"),
+              audience: requiredEnv("OIDC_AUDIENCE"),
+              jwksUri: requiredEnv("OIDC_JWKS_URI"),
+            })
+          : new DevHeaderCallerResolver(),
+    },
     {
       provide: WORKSPACE_CONTEXT,
       useClass: DeterministicWorkspaceAdapter,
