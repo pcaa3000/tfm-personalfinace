@@ -1,5 +1,8 @@
 import type {
+  AccountView,
   CategoryView,
+  CreateAccountInput,
+  WorkspaceView,
   CreateTransactionInput,
   ReviseTransactionInput,
   TransactionRevisionView,
@@ -54,6 +57,24 @@ export function listTransactions(): Promise<TransactionView[]> {
   return request<TransactionView[]>("/transactions");
 }
 
+export function listAccounts(): Promise<AccountView[]> {
+  return request<AccountView[]>("/accounts");
+}
+export function createAccount(input: CreateAccountInput): Promise<AccountView> {
+  return request<AccountView>("/accounts", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+export function getWorkspace(): Promise<WorkspaceView> {
+  return request<WorkspaceView>("/workspace");
+}
+export function updateDefaultCurrency(currency: string): Promise<WorkspaceView> {
+  return request<WorkspaceView>("/workspace", {
+    method: "PATCH",
+    body: JSON.stringify({ defaultCurrency: currency }),
+  });
+}
 export function listCategories(): Promise<CategoryView[]> {
   return request<CategoryView[]>("/categories");
 }

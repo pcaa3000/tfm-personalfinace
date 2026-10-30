@@ -2,11 +2,13 @@ import { Dialog, DialogContent, DialogTitle } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
 import { TransactionForm, type TransactionFormValues } from "./TransactionForm";
-import type { CategoryView, TransactionView } from "./types";
+import type { AccountView, CategoryView, TransactionView } from "./types";
 
 interface Props {
   transaction: TransactionView | null;
   categories: CategoryView[];
+  accounts: AccountView[];
+  defaultCurrency: string;
   submitting: boolean;
   error: string | null;
   onClose: () => void;
@@ -16,6 +18,8 @@ interface Props {
 export function EditTransactionDialog({
   transaction,
   categories,
+  accounts,
+  defaultCurrency,
   submitting,
   error,
   onClose,
@@ -29,6 +33,8 @@ export function EditTransactionDialog({
         {transaction ? (
           <TransactionForm
             categories={categories}
+            accounts={accounts}
+            defaultCurrency={defaultCurrency}
             submitting={submitting}
             error={error}
             submitLabel={t("form.saveChanges")}
@@ -38,6 +44,7 @@ export function EditTransactionDialog({
               currency: transaction.currency,
               businessDate: transaction.businessDate,
               concept: transaction.concept,
+              accountId: transaction.accountId ?? "",
               categoryId: transaction.categoryId,
             }}
             onSubmit={(values) => onSubmit(transaction.id, values)}

@@ -1,11 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Alert,
   Box,
+  Button,
   Chip,
   Container,
   Divider,
+  List,
+  ListItem,
+  ListItemText,
+  MenuItem,
   Paper,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 import { useState } from "react";
@@ -13,9 +20,13 @@ import { useTranslation } from "react-i18next";
 
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import {
+  createAccount,
+  getWorkspace,
+  listAccounts,
   listCategories,
   listTransactions,
   reviseTransaction,
+  updateDefaultCurrency,
   voidTransaction,
 } from "./api";
 import { EditTransactionDialog } from "./EditTransactionDialog";
@@ -44,6 +55,8 @@ export function LedgerPage() {
   const [editing, setEditing] = useState<TransactionView | null>(null);
   const [voiding, setVoiding] = useState<TransactionView | null>(null);
   const [historyFor, setHistoryFor] = useState<TransactionView | null>(null);
+  const [accountName, setAccountName] = useState("");
+  const [accountCurrency, setAccountCurrency] = useState("PEN");
   usePendingSync();
 
   const categoriesQuery = useQuery({
@@ -57,6 +70,14 @@ export function LedgerPage() {
   const pendingQuery = useQuery({
     queryKey: PENDING_QUERY_KEY,
     queryFn: listPendingTransactions,
+  });
+  const accountsQuery = useQuery({
+    queryKey: ["accounts"],
+    queryFn: listAccounts,
+  });
+  const workspaceQuery = useQuery({
+    queryKey: ["workspace"],
+    queryFn: getWorkspace,
   });
 
   const createMutation = useMutation({
@@ -78,6 +99,20 @@ export function LedgerPage() {
     },
   });
 
+  const accountMutation = useMutation({
+    mutationFn: createAccount,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    },
+  });
+
+  const currencyMutation = useMutation({
+    mutationFn: updateDefaultCurrency,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["workspace"] });
+    },
+  });
+
   const voidMutation = useMutation({
     mutationFn: voidTransaction,
     onSuccess: async () => {
@@ -87,6 +122,8 @@ export function LedgerPage() {
   });
 
   const categories = categoriesQuery.data ?? [];
+  const accounts = accountsQuery.data ?? [];
+  const workspace = workspaceQuery.data;
   const transactions = transactionsQuery.data ?? [];
   const pendingRows = (pendingQuery.data ?? []).map(toPendingView);
   const tableRows = [...pendingRows, ...transactions];
@@ -118,6 +155,8 @@ export function LedgerPage() {
           </Typography>
           <TransactionForm
             categories={categories}
+            accounts={accounts}
+            defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
             submitting={createMutation.isPending}
             error={
               createMutation.error
@@ -153,6 +192,83 @@ export function LedgerPage() {
           )}
         </Paper>
 
+        <Paper variant="outlined" sx={{ p: 3 }}>
+          <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+            <Typography variant="h6" component="h2" sx={{ flexGrow: 1 }}>
+              {t("accounts.title")}
+            </Typography>
+            <TextField
+              select
+              size="small"
+              label={t("settings.defaultCurrency")}
+              value={workspace?.defaultCurrency ?? "PEN"}
+              onChange={(e) => currencyMutation.mutate(e.target.value)}
+              sx={{ minWidth: 150 }}
+            >
+              {["PEN", "USD", "EUR", "ARS", "JPY", "BHD"].map((c) => (
+                <MenuItem key={c} value={c}>
+                  {c}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
+          {accountMutation.error ? (
+            <Alert severity="error" sx={{ mt: 1 }}>
+              {errorMessage(accountMutation.error, t)}
+            </Alert>
+          ) : null}
+          {accounts.length === 0 ? (
+            <Typography color="text.secondary" sx={{ mt: 1 }}>
+              {t("accounts.empty")}
+            </Typography>
+          ) : (
+            <List dense>
+              {accounts.map((a) => (
+                <ListItem key={a.id} disableGutters>
+                  <ListItemText
+                    primary={a.name}
+                    secondary={`${a.currency} · ${t(`accounts.kind.${a.kind}`)}`}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+            <TextField
+              size="small"
+              label={t("accounts.name")}
+              value={accountName}
+              onChange={(e) => setAccountName(e.target.value)}
+            />
+            <TextField
+              select
+              size="small"
+              label={t("accounts.currency")}
+              value={accountCurrency}
+              onChange={(e) => setAccountCurrency(e.target.value)}
+              sx={{ minWidth: 110 }}
+            >
+              {["PEN", "USD", "EUR", "ARS", "JPY", "BHD"].map((c) => (
+                <MenuItem key={c} value={c}>
+                  {c}
+                </MenuItem>
+              ))}
+            </TextField>
+            <Button
+              variant="outlined"
+              disabled={accountMutation.isPending || !accountName.trim()}
+              onClick={() =>
+                accountMutation.mutate(
+                  { name: accountName.trim(), currency: accountCurrency, kind: "bank" },
+                  { onSuccess: () => setAccountName("") },
+                )
+              }
+            >
+              {t("accounts.create")}
+            </Button>
+          </Stack>
+        </Paper>
+
         <Divider />
 
         <section aria-label={t("transactions.title")}>
@@ -169,6 +285,7 @@ export function LedgerPage() {
             <TransactionTable
               transactions={tableRows}
               categories={categories}
+              accounts={accounts}
               onEdit={setEditing}
               onVoid={setVoiding}
               onHistory={setHistoryFor}
@@ -180,6 +297,8 @@ export function LedgerPage() {
       <EditTransactionDialog
         transaction={editing}
         categories={categories}
+        accounts={accounts}
+        defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
         submitting={reviseMutation.isPending}
         error={
           reviseMutation.error ? errorMessage(reviseMutation.error, t) : null

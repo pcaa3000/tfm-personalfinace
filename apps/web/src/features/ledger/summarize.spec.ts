@@ -10,6 +10,7 @@ const trx = (partial: Partial<TransactionView>): TransactionView => ({
   amount: "0.00",
   currency: "EUR",
   businessDate: "2026-10-27",
+  accountId: "acc-1",
   timezone: "UTC",
   concept: "x",
   categoryId: null,

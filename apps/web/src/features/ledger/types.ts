@@ -7,6 +7,7 @@ export interface TransactionView {
   businessDate: string;
   timezone: string;
   concept: string;
+  accountId: string | null;
   categoryId: string | null;
   status: "confirmed" | "voided";
   origin: "manual" | "ticket" | "voice";
@@ -17,6 +18,24 @@ export interface TransactionView {
 /** Table row: a confirmed server transaction or a locally queued one. */
 export type LedgerRow = TransactionView & { pendingSync?: true };
 
+export interface AccountView {
+  id: string;
+  workspaceId: string;
+  name: string;
+  currency: string;
+  kind: string;
+}
+export interface CreateAccountInput {
+  name: string;
+  currency: string;
+  kind: string;
+}
+export interface WorkspaceView {
+  workspaceId: string;
+  locale: string;
+  timezone: string;
+  defaultCurrency: string;
+}
 export interface CategoryView {
   id: string;
   key: string;
@@ -31,6 +50,7 @@ export interface CreateTransactionInput {
   businessDate: string;
   timezone: string;
   concept: string;
+  accountId: string;
   categoryId: string | null;
   idempotencyKey: string;
 }

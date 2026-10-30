@@ -13,11 +13,12 @@ import { useTranslation } from "react-i18next";
 
 import { formatBusinessDate } from "./format";
 import { categoryLabel } from "./TransactionForm";
-import type { CategoryView, LedgerRow } from "./types";
+import type { AccountView, CategoryView, LedgerRow } from "./types";
 
 interface Props {
   transactions: LedgerRow[];
   categories: CategoryView[];
+  accounts: AccountView[];
   onEdit: (transaction: LedgerRow) => void;
   onVoid: (transaction: LedgerRow) => void;
   onHistory: (transaction: LedgerRow) => void;
@@ -26,6 +27,7 @@ interface Props {
 export function TransactionTable({
   transactions,
   categories,
+  accounts,
   onEdit,
   onVoid,
   onHistory,
@@ -34,6 +36,7 @@ export function TransactionTable({
   const categoryLabels = new Map(
     categories.map((c) => [c.id, categoryLabel(c, t)]),
   );
+  const accountLabels = new Map(accounts.map((a) => [a.id, a.name]));
 
   if (transactions.length === 0) {
     return <Typography color="text.secondary">{t("table.empty")}</Typography>;
@@ -46,6 +49,7 @@ export function TransactionTable({
           <TableCell>{t("table.date")}</TableCell>
           <TableCell>{t("table.type")}</TableCell>
           <TableCell>{t("table.concept")}</TableCell>
+          <TableCell>{t("table.account")}</TableCell>
           <TableCell>{t("table.category")}</TableCell>
           <TableCell>{t("table.status")}</TableCell>
           <TableCell align="right">{t("table.amount")}</TableCell>
@@ -63,6 +67,11 @@ export function TransactionTable({
               </TableCell>
               <TableCell>{t(`form.${trx.type}`)}</TableCell>
               <TableCell>{trx.concept}</TableCell>
+              <TableCell>
+                {trx.accountId
+                  ? (accountLabels.get(trx.accountId) ?? trx.accountId)
+                  : t("table.noAccount")}
+              </TableCell>
               <TableCell>
                 {trx.categoryId
                   ? (categoryLabels.get(trx.categoryId) ?? trx.categoryId)

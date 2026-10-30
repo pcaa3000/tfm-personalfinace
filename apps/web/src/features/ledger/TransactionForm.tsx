@@ -12,12 +12,13 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { z } from "zod";
 
-import type { CategoryView } from "./types";
+import type { AccountView, CategoryView } from "./types";
 
 type FormValues = {
   type: "income" | "expense";
   amount: string;
   currency: string;
+  accountId: string;
   businessDate: string;
   concept: string;
   categoryId: string | null;
@@ -27,7 +28,7 @@ export interface TransactionFormValues extends FormValues {
   timezone: string;
 }
 
-const CURRENCIES = ["USD", "EUR", "ARS", "JPY", "BHD"];
+const CURRENCIES = ["PEN", "USD", "EUR", "ARS", "JPY", "BHD"];
 
 /** Stable catalog key → localized label; custom categories keep their label. */
 export function categoryLabel(
@@ -39,6 +40,8 @@ export function categoryLabel(
 
 interface Props {
   categories: CategoryView[];
+  accounts: AccountView[];
+  defaultCurrency: string;
   submitting: boolean;
   error: string | null;
   initialValues?: Partial<FormValues>;
@@ -48,6 +51,8 @@ interface Props {
 
 export function TransactionForm({
   categories,
+  accounts,
+  defaultCurrency,
   submitting,
   error,
   initialValues,
@@ -65,6 +70,7 @@ export function TransactionForm({
           .min(1, t("form.validation.amountRequired"))
           .regex(/^\d+(\.\d+)?$/, t("form.validation.amountDecimal")),
         currency: z.string().length(3),
+        accountId: z.string().min(1, t("form.validation.accountRequired")),
         businessDate: z.string().min(10, t("form.validation.dateRequired")),
         concept: z
           .string()
@@ -81,19 +87,26 @@ export function TransactionForm({
     handleSubmit,
     control,
     reset,
+    watch,
     formState: { errors, isDirty },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       type: "expense",
       amount: "",
-      currency: "USD",
+      currency: defaultCurrency,
+      accountId: "",
       businessDate: new Date().toISOString().slice(0, 10),
       concept: "",
       categoryId: null,
       ...initialValues,
     },
   });
+
+  const selectedCurrency = watch("currency");
+  const currencyAccounts = accounts.filter(
+    (a) => a.currency === selectedCurrency,
+  );
 
   const submit = handleSubmit((values) => {
     onSubmit({
@@ -135,6 +148,31 @@ export function TransactionForm({
               {CURRENCIES.map((code) => (
                 <MenuItem key={code} value={code}>
                   {code}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+        />
+        <Controller
+          name="accountId"
+          control={control}
+          render={({ field }) => (
+            <TextField
+              {...field}
+              select
+              label={t("form.account")}
+              error={Boolean(errors.accountId)}
+              helperText={
+                errors.accountId?.message ??
+                (currencyAccounts.length === 0
+                  ? t("form.noAccountForCurrency")
+                  : undefined)
+              }
+              fullWidth
+            >
+              {currencyAccounts.map((account) => (
+                <MenuItem key={account.id} value={account.id}>
+                  {account.name}
                 </MenuItem>
               ))}
             </TextField>

@@ -15,12 +15,23 @@ const baseRow: LedgerRow = {
   businessDate: "2026-10-01",
   timezone: "UTC",
   concept: "almuerzo",
+  accountId: "acc-1",
   categoryId: null,
   status: "confirmed",
   origin: "manual",
   confirmedAt: "2026-10-01T12:00:00Z",
   revisionCount: 0,
 };
+
+const accounts = [
+  {
+    id: "acc-1",
+    workspaceId: "ws-1",
+    name: "BCP soles",
+    currency: "PEN",
+    kind: "bank",
+  },
+];
 
 beforeAll(async () => {
   await i18n.changeLanguage("es");
@@ -34,12 +45,15 @@ describe("TransactionTable (es)", () => {
       <TransactionTable
         transactions={[baseRow]}
         categories={[]}
+        accounts={accounts}
         onEdit={vi.fn()}
         onVoid={vi.fn()}
         onHistory={vi.fn()}
       />,
     );
     expect(screen.getByText("Concepto")).toBeTruthy();
+    expect(screen.getByText("Cuenta")).toBeTruthy();
+    expect(screen.getByText("BCP soles")).toBeTruthy();
     expect(screen.getByText("Sin categorizar")).toBeTruthy();
     expect(screen.getByText("confirmada")).toBeTruthy();
     expect(screen.getByText("Gasto")).toBeTruthy();
@@ -52,6 +66,7 @@ describe("TransactionTable (es)", () => {
       <TransactionTable
         transactions={[{ ...baseRow, id: "pending:x", pendingSync: true }]}
         categories={[]}
+        accounts={accounts}
         onEdit={vi.fn()}
         onVoid={vi.fn()}
         onHistory={vi.fn()}
@@ -60,5 +75,19 @@ describe("TransactionTable (es)", () => {
     expect(screen.getByText("Pendiente de sincronización")).toBeTruthy();
     expect(screen.getByText("Editar")).toHaveProperty("disabled", true);
     expect(screen.getByText("Anular")).toHaveProperty("disabled", true);
+  });
+
+  it("shows 'Sin cuenta' for a transaction without account", () => {
+    render(
+      <TransactionTable
+        transactions={[{ ...baseRow, accountId: null }]}
+        categories={[]}
+        accounts={accounts}
+        onEdit={vi.fn()}
+        onVoid={vi.fn()}
+        onHistory={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Sin cuenta")).toBeTruthy();
   });
 });

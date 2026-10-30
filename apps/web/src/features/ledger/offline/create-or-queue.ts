@@ -16,6 +16,7 @@ export function toPendingView(item: PendingTransaction): LedgerRow {
     amount: item.input.amount,
     currency: item.input.currency,
     businessDate: item.input.businessDate,
+    accountId: item.input.accountId,
     timezone: item.input.timezone,
     concept: item.input.concept,
     categoryId: item.input.categoryId,
