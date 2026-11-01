@@ -25,6 +25,7 @@ export const en: TranslationShape = {
     validation: {
       amountRequired: "Amount is required",
       amountDecimal: "Amount must be a positive decimal",
+      accountRequired: "Account is required",
       dateRequired: "Date is required",
       conceptRequired: "Concept is required",
     },
@@ -94,6 +95,8 @@ export const en: TranslationShape = {
     businessDate: "business date",
     timezone: "timezone",
     concept: "concept",
+    accountId: "account",
+    category: "category",
     categoryId: "category",
     status: "status",
   },

@@ -281,6 +281,41 @@ describe("PATCH /api/v1/transactions/:id", () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("TRANSACTION_ALREADY_VOIDED");
   });
+
+  it("rejects changing currency when it mismatches the stored account currency (INV-CTA-01)", async () => {
+    const created = await createTx();
+    const res = await api<ApiError>(`/api/v1/transactions/${created.body.id}`, {
+      method: "PATCH",
+      headers: ALICE,
+      body: { currency: "EUR" },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("ACCOUNT_CURRENCY_MISMATCH");
+  });
+
+  it("revises currency and accountId together and persists the account change (INV-CTA-01, INV-CTA-03)", async () => {
+    const created = await createTx();
+    const res = await api<TxView>(`/api/v1/transactions/${created.body.id}`, {
+      method: "PATCH",
+      headers: ALICE,
+      body: { currency: "EUR", accountId: eurAccountId, amount: "15.00" },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.currency).toBe("EUR");
+    expect(res.body.accountId).toBe(eurAccountId);
+
+    const revisions = await api<RevisionView[]>(
+      `/api/v1/transactions/${created.body.id}/revisions`,
+      { headers: ALICE },
+    );
+    expect(revisions.status).toBe(200);
+    expect(revisions.body[0]?.changes).toEqual(
+      expect.arrayContaining([
+        { field: "accountId", previous: accountId, next: eurAccountId },
+        { field: "currency", previous: "PEN", next: "EUR" },
+      ]),
+    );
+  });
 });
 
 describe("POST /api/v1/transactions/:id/void", () => {

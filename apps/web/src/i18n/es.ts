@@ -21,6 +21,7 @@ export const es = {
     validation: {
       amountRequired: "El importe es obligatorio",
       amountDecimal: "El importe debe ser un decimal positivo",
+      accountRequired: "La cuenta es obligatoria",
       dateRequired: "La fecha es obligatoria",
       conceptRequired: "El concepto es obligatorio",
     },
@@ -90,6 +91,8 @@ export const es = {
     businessDate: "fecha",
     timezone: "zona horaria",
     concept: "concepto",
+    accountId: "cuenta",
+    category: "categoría",
     categoryId: "categoría",
     status: "estado",
   },

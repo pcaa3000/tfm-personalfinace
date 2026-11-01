@@ -6,6 +6,7 @@ export type RevisionField =
   | "currency"
   | "businessDate"
   | "concept"
+  | "accountId"
   | "category"
   | "status";
 

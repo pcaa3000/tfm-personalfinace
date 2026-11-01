@@ -6,7 +6,7 @@ import {
   Stack,
   TextField,
 } from "@mui/material";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -87,6 +87,7 @@ export function TransactionForm({
     handleSubmit,
     control,
     reset,
+    setValue,
     watch,
     formState: { errors, isDirty },
   } = useForm<FormValues>({
@@ -104,9 +105,16 @@ export function TransactionForm({
   });
 
   const selectedCurrency = watch("currency");
+  const selectedAccountId = watch("accountId");
   const currencyAccounts = accounts.filter(
     (a) => a.currency === selectedCurrency,
   );
+
+  useEffect(() => {
+    if (initialValues?.currency === undefined && !isDirty) {
+      setValue("currency", defaultCurrency, { shouldDirty: false });
+    }
+  }, [defaultCurrency, initialValues?.currency, isDirty, setValue]);
 
   const submit = handleSubmit((values) => {
     onSubmit({
@@ -114,7 +122,15 @@ export function TransactionForm({
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     });
     if (!initialValues) {
-      reset();
+      reset({
+        type: "expense",
+        amount: "",
+        currency: defaultCurrency,
+        accountId: "",
+        businessDate: new Date().toISOString().slice(0, 10),
+        concept: "",
+        categoryId: null,
+      });
     }
   });
 
@@ -144,7 +160,22 @@ export function TransactionForm({
           name="currency"
           control={control}
           render={({ field }) => (
-            <TextField {...field} select label={t("form.currency")} fullWidth>
+            <TextField
+              {...field}
+              select
+              label={t("form.currency")}
+              onChange={(event) => {
+                const nextCurrency = event.target.value;
+                field.onChange(nextCurrency);
+                const currentAccount = accounts.find(
+                  (a) => a.id === selectedAccountId,
+                );
+                if (currentAccount && currentAccount.currency !== nextCurrency) {
+                  setValue("accountId", "", { shouldValidate: false });
+                }
+              }}
+              fullWidth
+            >
               {CURRENCIES.map((code) => (
                 <MenuItem key={code} value={code}>
                   {code}
@@ -159,6 +190,11 @@ export function TransactionForm({
           render={({ field }) => (
             <TextField
               {...field}
+              value={
+                currencyAccounts.some((a) => a.id === field.value)
+                  ? field.value
+                  : ""
+              }
               select
               label={t("form.account")}
               error={Boolean(errors.accountId)}

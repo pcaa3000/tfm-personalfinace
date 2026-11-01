@@ -154,10 +154,16 @@ function requiredEnv(name: string): string {
       provide: ReviseTransactionUseCase,
       useFactory: (
         transactions: PrismaTransactionRepository,
+        accounts: PrismaAccountRepository,
         categories: PrismaCategoryValidationAdapter,
         clock: SystemClock,
-      ) => new ReviseTransactionUseCase(transactions, categories, clock),
-      inject: [TRANSACTION_REPOSITORY, CATEGORY_VALIDATION, CLOCK],
+      ) => new ReviseTransactionUseCase(transactions, accounts, categories, clock),
+      inject: [
+        TRANSACTION_REPOSITORY,
+        ACCOUNT_VALIDATION,
+        CATEGORY_VALIDATION,
+        CLOCK,
+      ],
     },
     {
       provide: VoidTransactionUseCase,

@@ -12,6 +12,7 @@ import {
   categorized,
   type CategoryAssignment,
 } from "../domain/transaction.js";
+import type { AccountValidationPort } from "./ports/account-validation.port.js";
 import type { CategoryValidationPort } from "./ports/category-validation.port.js";
 import type { Clock } from "./ports/clock.port.js";
 import type { TransactionRepositoryPort } from "./ports/transaction-repository.port.js";
@@ -31,6 +32,7 @@ export interface ReviseTransactionCommand {
   readonly businessDate?: string;
   readonly timezone?: string;
   readonly concept?: string;
+  readonly accountId?: string;
   readonly categoryId?: string | null;
   readonly actor: string;
 }
@@ -38,6 +40,7 @@ export interface ReviseTransactionCommand {
 export class ReviseTransactionUseCase {
   constructor(
     private readonly transactions: TransactionRepositoryPort,
+    private readonly accounts: AccountValidationPort,
     private readonly categories: CategoryValidationPort,
     private readonly clock: Clock,
   ) {}
@@ -68,6 +71,34 @@ export class ReviseTransactionUseCase {
         return created;
       }
       amount = created.value;
+    }
+
+    const effectiveAccountId = command.accountId ?? transaction.accountId;
+    if (
+      command.accountId !== undefined ||
+      (command.currency !== undefined && effectiveAccountId !== null)
+    ) {
+      const accountCurrency = await this.accounts.accountCurrency(
+        command.workspaceId,
+        effectiveAccountId!,
+      );
+      if (accountCurrency === null) {
+        return err(
+          new DomainError(
+            "ACCOUNT_NOT_FOUND",
+            `Account does not exist in this workspace: ${effectiveAccountId}`,
+          ),
+        );
+      }
+      const effectiveCurrency = (amount ?? transaction.amount).currency.code;
+      if (accountCurrency !== effectiveCurrency) {
+        return err(
+          new DomainError(
+            "ACCOUNT_CURRENCY_MISMATCH",
+            `Transaction currency ${effectiveCurrency} does not match account currency ${accountCurrency}`,
+          ),
+        );
+      }
     }
 
     let businessDate: BusinessDate | undefined;
@@ -112,6 +143,7 @@ export class ReviseTransactionUseCase {
       ...(amount !== undefined ? { amount } : {}),
       ...(businessDate !== undefined ? { businessDate } : {}),
       ...(command.concept !== undefined ? { concept: command.concept } : {}),
+      ...(command.accountId !== undefined ? { accountId: command.accountId } : {}),
       ...(category !== undefined ? { category } : {}),
       revisedAt: this.clock.now(),
       revisedBy: command.actor,

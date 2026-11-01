@@ -48,6 +48,7 @@ const reviseTransactionSchema = z.object({
   businessDate: z.string().min(10).max(10).optional(),
   timezone: z.string().min(1).max(64).optional(),
   concept: z.string().min(1).max(500).optional(),
+  accountId: z.string().min(1).optional(),
   categoryId: z.string().nullable().optional(),
 });
 
@@ -207,6 +208,9 @@ export class TransactionsController {
         : {}),
       ...(parsed.data.concept !== undefined
         ? { concept: parsed.data.concept }
+        : {}),
+      ...(parsed.data.accountId !== undefined
+        ? { accountId: parsed.data.accountId }
         : {}),
       ...(parsed.data.categoryId !== undefined
         ? { categoryId: parsed.data.categoryId }

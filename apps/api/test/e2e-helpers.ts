@@ -50,6 +50,7 @@ export interface RevisionView {
   kind: string;
   revisionNumber: number;
   actor: string;
+  changes: Array<{ field: string; previous: string; next: string }>;
 }
 
 export interface CategoryView {

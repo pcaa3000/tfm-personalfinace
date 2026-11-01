@@ -161,6 +161,30 @@ describe("Transaction.revise", () => {
     ]);
     expect(created.value.amount.currency.code).toBe("USD");
   });
+
+  it("assigns or changes accountId and records the field change (INV-CTA-03)", () => {
+    const legacy = Transaction.reconstitute({
+      ...baseInput,
+      accountId: null,
+      status: "confirmed",
+      origin: "manual",
+      originReference: null,
+      revisions: [],
+    });
+
+    const first = legacy.revise({
+      accountId: "acc-1",
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.value.changes).toEqual([
+      { field: "accountId", previous: "none", next: "acc-1" },
+    ]);
+    expect(legacy.accountId).toBe("acc-1");
+  });
 });
 
 describe("Transaction.void", () => {

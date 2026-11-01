@@ -74,6 +74,7 @@ export interface ReviseInput {
   readonly amount?: Money;
   readonly businessDate?: BusinessDate;
   readonly concept?: string;
+  readonly accountId?: string;
   readonly category?: CategoryAssignment;
   readonly revisedAt: Date;
   readonly revisedBy: string;
@@ -95,7 +96,7 @@ export class Transaction {
     private _amount: Money,
     private _businessDate: BusinessDate,
     private _concept: string,
-    readonly accountId: string | null,
+    private _accountId: string | null,
     private _category: CategoryAssignment,
     private _status: TransactionStatus,
     readonly origin: TransactionOrigin,
@@ -179,6 +180,9 @@ export class Transaction {
   get concept(): string {
     return this._concept;
   }
+  get accountId(): string | null {
+    return this._accountId;
+  }
   get category(): CategoryAssignment {
     return this._category;
   }
@@ -245,6 +249,13 @@ export class Transaction {
     if (nextConcept !== null && nextConcept !== this._concept) {
       changes.push({ field: "concept", previous: this._concept, next: nextConcept });
     }
+    if (input.accountId !== undefined && input.accountId !== this._accountId) {
+      changes.push({
+        field: "accountId",
+        previous: this._accountId ?? "none",
+        next: input.accountId,
+      });
+    }
     if (
       input.category !== undefined &&
       describeCategory(input.category) !== describeCategory(this._category)
@@ -270,6 +281,7 @@ export class Transaction {
     if (input.amount !== undefined) this._amount = input.amount;
     if (input.businessDate !== undefined) this._businessDate = input.businessDate;
     if (nextConcept !== null) this._concept = nextConcept;
+    if (input.accountId !== undefined) this._accountId = input.accountId;
     if (input.category !== undefined) this._category = input.category;
 
     return ok(revision);
