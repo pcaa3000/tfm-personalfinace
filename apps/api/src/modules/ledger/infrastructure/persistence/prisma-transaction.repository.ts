@@ -114,6 +114,9 @@ export class PrismaTransactionRepository implements TransactionRepositoryPort {
           : filter.category
             ? { categoryId: filter.category }
             : {}),
+        ...(filter.q
+          ? { concept: { contains: filter.q, mode: "insensitive" as const } }
+          : {}),
       },
       include: { revisions: { orderBy: { revisionNumber: "asc" } } },
       orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }],

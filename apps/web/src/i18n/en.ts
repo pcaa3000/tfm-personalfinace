@@ -73,6 +73,10 @@ export const en: TranslationShape = {
   pending: {
     badge: "{{count}} pending sync",
   },
+  filters: {
+    search: "Search concept",
+    all: "All",
+  },
   dialog: {
     editTitle: "Edit transaction",
     voidTitle: "Void transaction",

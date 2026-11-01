@@ -241,6 +241,18 @@ describe("GET /api/v1/transactions", () => {
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("INVALID_QUERY");
   });
+
+  it("filters by q matching concept case-insensitively (RF-013)", async () => {
+    await createTx(ALICE, { concept: "e2e almuerzo polleria" });
+    await createTx(ALICE, { concept: "e2e taxi nocturno" });
+
+    const res = await api<TxView[]>("/api/v1/transactions?q=POLLERIA", {
+      headers: ALICE,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]?.concept).toBe("e2e almuerzo polleria");
+  });
 });
 
 describe("PATCH /api/v1/transactions/:id", () => {

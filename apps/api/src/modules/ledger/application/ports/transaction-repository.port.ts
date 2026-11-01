@@ -8,6 +8,8 @@ export interface TransactionFilter {
   readonly currency?: string;
   /** "uncategorized" filters the explicit uncategorized state. */
   readonly category?: string;
+  /** Case-insensitive substring match on concept. */
+  readonly q?: string;
 }
 
 /** Write-side and query-side access to ledger transactions (ISP). */

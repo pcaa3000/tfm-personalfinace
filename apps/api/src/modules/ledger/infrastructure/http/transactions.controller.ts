@@ -58,6 +58,7 @@ const listTransactionsSchema = z.object({
   type: z.enum(["income", "expense"]).optional(),
   currency: z.string().length(3).optional(),
   category: z.string().optional(),
+  q: z.string().min(1).max(100).optional(),
 });
 
 type RequestHeaders = Record<string, string | string[] | undefined>;
@@ -171,6 +172,7 @@ export class TransactionsController {
     if (parsed.data.type) Object.assign(filter, { type: parsed.data.type });
     if (parsed.data.currency) Object.assign(filter, { currency: parsed.data.currency });
     if (parsed.data.category) Object.assign(filter, { category: parsed.data.category });
+    if (parsed.data.q) Object.assign(filter, { q: parsed.data.q });
 
     return this.listTransactions.execute(context.workspaceId, filter);
   }

@@ -53,8 +53,24 @@ export function createTransaction(input: CreateTransactionInput): Promise<Transa
   });
 }
 
-export function listTransactions(): Promise<TransactionView[]> {
-  return request<TransactionView[]>("/transactions");
+export interface TransactionListFilters {
+  q?: string | undefined;
+  type?: "income" | "expense" | undefined;
+  currency?: string | undefined;
+  category?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+}
+
+export function listTransactions(
+  filters: TransactionListFilters = {},
+): Promise<TransactionView[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return request<TransactionView[]>(`/transactions${qs ? `?${qs}` : ""}`);
 }
 
 export function listAccounts(): Promise<AccountView[]> {

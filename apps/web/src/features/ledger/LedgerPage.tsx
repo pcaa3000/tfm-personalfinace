@@ -28,6 +28,7 @@ import {
   reviseTransaction,
   updateDefaultCurrency,
   voidTransaction,
+  type TransactionListFilters,
 } from "./api";
 import { EditTransactionDialog } from "./EditTransactionDialog";
 import { errorMessage } from "./errors";
@@ -37,6 +38,7 @@ import { PENDING_QUERY_KEY, usePendingSync } from "./offline/use-pending-sync";
 import { summarizeByCurrency } from "./summarize";
 import { TransactionForm, type TransactionFormValues } from "./TransactionForm";
 import { TransactionHistoryDialog } from "./TransactionHistoryDialog";
+import { TransactionFilters } from "./TransactionFilters";
 import { TransactionTable } from "./TransactionTable";
 import { VoidTransactionDialog } from "./VoidTransactionDialog";
 import type { TransactionView } from "./types";
@@ -57,6 +59,7 @@ export function LedgerPage() {
   const [historyFor, setHistoryFor] = useState<TransactionView | null>(null);
   const [accountName, setAccountName] = useState("");
   const [accountCurrency, setAccountCurrency] = useState("PEN");
+  const [filters, setFilters] = useState<TransactionListFilters>({});
   usePendingSync();
 
   const categoriesQuery = useQuery({
@@ -64,8 +67,8 @@ export function LedgerPage() {
     queryFn: listCategories,
   });
   const transactionsQuery = useQuery({
-    queryKey: ["transactions"],
-    queryFn: listTransactions,
+    queryKey: ["transactions", filters],
+    queryFn: () => listTransactions(filters),
   });
   const pendingQuery = useQuery({
     queryKey: PENDING_QUERY_KEY,
@@ -275,6 +278,11 @@ export function LedgerPage() {
           <Typography variant="h6" component="h2" gutterBottom>
             {t("transactions.title")}
           </Typography>
+          <TransactionFilters
+            categories={categories}
+            value={filters}
+            onChange={setFilters}
+          />
           {transactionsQuery.isLoading ? (
             <Typography>{t("transactions.loading")}</Typography>
           ) : transactionsQuery.isError ? (

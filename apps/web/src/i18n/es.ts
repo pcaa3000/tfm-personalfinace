@@ -69,6 +69,10 @@ export const es = {
   pending: {
     badge: "{{count}} pendiente(s) de sincronizar",
   },
+  filters: {
+    search: "Buscar concepto",
+    all: "Todas",
+  },
   dialog: {
     editTitle: "Editar movimiento",
     voidTitle: "Anular movimiento",
