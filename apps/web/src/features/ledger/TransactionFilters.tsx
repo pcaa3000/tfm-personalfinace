@@ -28,6 +28,22 @@ export function TransactionFilters({ categories, value, onChange }: Props) {
       />
       <TextField
         size="small"
+        type="date"
+        label={t("filters.from")}
+        value={value.from ?? ""}
+        onChange={(e) => update({ from: e.target.value || undefined })}
+        slotProps={{ inputLabel: { shrink: true } }}
+      />
+      <TextField
+        size="small"
+        type="date"
+        label={t("filters.to")}
+        value={value.to ?? ""}
+        onChange={(e) => update({ to: e.target.value || undefined })}
+        slotProps={{ inputLabel: { shrink: true } }}
+      />
+      <TextField
+        size="small"
         select
         label={t("form.type")}
         value={value.type ?? ""}

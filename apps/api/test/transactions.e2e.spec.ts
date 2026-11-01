@@ -253,6 +253,28 @@ describe("GET /api/v1/transactions", () => {
     expect(res.body).toHaveLength(1);
     expect(res.body[0]?.concept).toBe("e2e almuerzo polleria");
   });
+
+  it("rejects an over-long q filter (RF-013)", async () => {
+    const res = await api<ApiError>(
+      `/api/v1/transactions?q=${"x".repeat(101)}`,
+      { headers: ALICE },
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_QUERY");
+  });
+
+  it("filters by business date period (RF-013)", async () => {
+    await createTx(ALICE, { businessDate: "2026-10-05", concept: "e2e dentro" });
+    await createTx(ALICE, { businessDate: "2026-11-20", concept: "e2e fuera" });
+
+    const res = await api<TxView[]>(
+      "/api/v1/transactions?from=2026-10-01&to=2026-10-31",
+      { headers: ALICE },
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]?.concept).toBe("e2e dentro");
+  });
 });
 
 describe("PATCH /api/v1/transactions/:id", () => {

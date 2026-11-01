@@ -72,6 +72,8 @@ export const es = {
   filters: {
     search: "Buscar concepto",
     all: "Todas",
+    from: "Desde",
+    to: "Hasta",
   },
   dialog: {
     editTitle: "Editar movimiento",

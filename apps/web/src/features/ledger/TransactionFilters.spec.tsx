@@ -45,4 +45,59 @@ describe("TransactionFilters", () => {
       expect(onChange).toHaveBeenLastCalledWith({ category: "uncategorized" });
     });
   });
+
+  it("emits the currency selection as a filter (RF-013)", () => {
+    const onChange = vi.fn();
+    render(
+      <TransactionFilters categories={categories} value={{}} onChange={onChange} />,
+    );
+
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Moneda" }));
+    fireEvent.click(screen.getByRole("option", { name: "USD" }));
+
+    expect(onChange).toHaveBeenLastCalledWith({ currency: "USD" });
+  });
+
+  it("emits the period bounds as from/to filters (RF-013)", () => {
+    const onChange = vi.fn();
+    render(
+      <TransactionFilters categories={categories} value={{}} onChange={onChange} />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Desde"), {
+      target: { value: "2026-10-01" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ from: "2026-10-01" });
+
+    fireEvent.change(screen.getByLabelText("Hasta"), {
+      target: { value: "2026-10-31" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ to: "2026-10-31" });
+  });
+
+  it("clears a filter back to all as undefined", () => {
+    const onChange = vi.fn();
+    render(
+      <TransactionFilters
+        categories={categories}
+        value={{ type: "income", from: "2026-10-01" }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Tipo" }));
+    fireEvent.click(screen.getByRole("option", { name: "Todas" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      type: undefined,
+      from: "2026-10-01",
+    });
+
+    fireEvent.change(screen.getByLabelText("Desde"), {
+      target: { value: "" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith({
+      type: "income",
+      from: undefined,
+    });
+  });
 });

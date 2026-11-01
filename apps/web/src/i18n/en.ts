@@ -76,6 +76,8 @@ export const en: TranslationShape = {
   filters: {
     search: "Search concept",
     all: "All",
+    from: "From",
+    to: "To",
   },
   dialog: {
     editTitle: "Edit transaction",
