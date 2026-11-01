@@ -17,7 +17,7 @@ Cada feature tiene un documento en `odd/tasks/<feature>.md` con tres secciones:
 3. Toda tarea nueva se registra como `T#` con sus `S#` antes de implementar.
 4. Al cerrar una `T#`: estado + hash(es) de commit + evidencia (conteo de specs, RED→GREEN, riesgo).
 5. El Log se mantiene cronológico (L1, L2, ... en orden; sin huecos ni reordenamientos).
-6. **Espejo Engram**: el documento completo se sincroniza al topic `odd/<feature>/tasks` cada vez que se cierra una tarea (no solo al final de la sesión).
+6. **Espejo Engram**: el documento completo se sincroniza al topic `odd/<feature>/tasks` cada vez que se cierra una tarea (no solo al final de la sesión). **Ese `topic_key` es exclusivo del espejo**: jamás reutilizarlo para notas bugfix/audit/decision — sobrescribe el documento (lección T9).
 7. Trabajo que no encaja en una `T#` existente (ej. localización, fix transversal) **también** recibe `T#`/`S#` propios — nada queda sin tracking.
 
 ## TDD estricto
