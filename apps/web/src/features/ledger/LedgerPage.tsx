@@ -25,16 +25,20 @@ import { useTranslation } from "react-i18next";
 
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import {
+  archiveCategory,
   createAccount,
+  createCategory,
   getWorkspace,
   listAccounts,
   listCategories,
   listTransactions,
+  reviseCategory,
   reviseTransaction,
   updateDefaultCurrency,
   voidTransaction,
   type TransactionListFilters,
 } from "./api";
+import { CategoriesSection } from "./CategoriesSection";
 import { EditTransactionDialog } from "./EditTransactionDialog";
 import { errorMessage } from "./errors";
 import { createTransactionOrQueue, toPendingView } from "./offline/create-or-queue";
@@ -139,6 +143,22 @@ export function LedgerPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["transactions"] });
       setVoiding(null);
+    },
+  });
+
+  const categoryMutation = useMutation({
+    mutationFn: async (
+      action:
+        | { kind: "create"; input: { label: string; nature: string } }
+        | { kind: "revise"; id: string; input: { label?: string; nature?: string } }
+        | { kind: "archive"; id: string },
+    ) => {
+      if (action.kind === "create") return createCategory(action.input);
+      if (action.kind === "revise") return reviseCategory(action.id, action.input);
+      return archiveCategory(action.id);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["categories"] });
     },
   });
 
@@ -289,6 +309,23 @@ export function LedgerPage() {
             </Button>
           </Stack>
         </Paper>
+
+        <CategoriesSection
+          categories={categories}
+          submitting={categoryMutation.isPending}
+          error={
+            categoryMutation.error
+              ? errorMessage(categoryMutation.error, t)
+              : null
+          }
+          onCreate={(input) =>
+            categoryMutation.mutate({ kind: "create", input })
+          }
+          onRevise={(id, input) =>
+            categoryMutation.mutate({ kind: "revise", id, input })
+          }
+          onArchive={(id) => categoryMutation.mutate({ kind: "archive", id })}
+        />
 
         <Divider />
 

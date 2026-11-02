@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { listTransactions } from "./api";
+import {
+  archiveCategory,
+  createCategory,
+  listTransactions,
+  reviseCategory,
+} from "./api";
 
 const fetchMock = vi.fn<typeof fetch>(
   async () =>
@@ -50,5 +55,39 @@ describe("listTransactions", () => {
     await listTransactions({ q: "", currency: "USD", category: undefined });
 
     expect(calledUrl()).toBe("/api/v1/transactions?currency=USD");
+  });
+});
+
+describe("custom categories (RF-040, RF-044)", () => {
+  it("creates a category with POST /categories", async () => {
+    await createCategory({ label: "Mascotas", nature: "discretionary" });
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/categories");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      label: "Mascotas",
+      nature: "discretionary",
+    });
+  });
+
+  it("revises a category with PATCH /categories/:id", async () => {
+    await reviseCategory("cat-1", { label: "Mis mascotas", nature: "essential" });
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/categories/cat-1");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      label: "Mis mascotas",
+      nature: "essential",
+    });
+  });
+
+  it("archives a category with POST /categories/:id/archive", async () => {
+    await archiveCategory("cat-1");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/categories/cat-1/archive");
+    expect(init?.method).toBe("POST");
   });
 });

@@ -2,6 +2,8 @@ import type {
   AccountView,
   CategoryView,
   CreateAccountInput,
+  CreateCategoryInput,
+  ReviseCategoryInput,
   WorkspaceView,
   CreateTransactionInput,
   ReviseTransactionInput,
@@ -95,6 +97,28 @@ export function updateDefaultCurrency(currency: string): Promise<WorkspaceView> 
 }
 export function listCategories(): Promise<CategoryView[]> {
   return request<CategoryView[]>("/categories");
+}
+export function createCategory(
+  input: CreateCategoryInput,
+): Promise<CategoryView> {
+  return request<CategoryView>("/categories", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+export function reviseCategory(
+  id: string,
+  input: ReviseCategoryInput,
+): Promise<CategoryView> {
+  return request<CategoryView>(`/categories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+export function archiveCategory(id: string): Promise<CategoryView> {
+  return request<CategoryView>(`/categories/${id}/archive`, {
+    method: "POST",
+  });
 }
 
 export function reviseTransaction(

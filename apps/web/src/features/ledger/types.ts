@@ -41,6 +41,17 @@ export interface CategoryView {
   key: string;
   label: string;
   nature: string;
+  custom: boolean;
+}
+
+export interface CreateCategoryInput {
+  label: string;
+  nature: string;
+}
+
+export interface ReviseCategoryInput {
+  label?: string;
+  nature?: string;
 }
 
 export interface CreateTransactionInput {

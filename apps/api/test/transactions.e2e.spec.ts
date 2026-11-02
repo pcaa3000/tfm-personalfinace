@@ -463,6 +463,132 @@ describe("GET /api/v1/categories", () => {
   });
 });
 
+describe("custom categories (RF-040, RF-041, RF-044)", () => {
+  it("creates a workspace category and lists it as custom", async () => {
+    const created = await api<CategoryView>("/api/v1/categories", {
+      method: "POST",
+      headers: ALICE,
+      body: { label: "e2e Mascotas", nature: "discretionary" },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.key).toBe("e2e_mascotas");
+    expect(created.body.custom).toBe(true);
+
+    const list = await api<CategoryView[]>("/api/v1/categories", {
+      headers: ALICE,
+    });
+    const mine = list.body.find((c) => c.id === created.body.id);
+    expect(mine?.label).toBe("e2e Mascotas");
+    expect(mine?.custom).toBe(true);
+  });
+
+  it("rejects a duplicated key inside the same workspace", async () => {
+    const first = await api<CategoryView>("/api/v1/categories", {
+      method: "POST",
+      headers: ALICE,
+      body: { key: "e2e_dup", label: "e2e dup", nature: "essential" },
+    });
+    expect(first.status).toBe(201);
+
+    const dup = await api<ApiError>("/api/v1/categories", {
+      method: "POST",
+      headers: ALICE,
+      body: { key: "e2e_dup", label: "e2e dup again", nature: "essential" },
+    });
+    expect(dup.status).toBe(409);
+    expect(dup.body.code).toBe("CATEGORY_KEY_TAKEN");
+  });
+
+  it("rejects an invalid nature or body", async () => {
+    const res = await api<ApiError>("/api/v1/categories", {
+      method: "POST",
+      headers: ALICE,
+      body: { label: "e2e x", nature: "uncategorized" },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("INVALID_BODY");
+  });
+
+  it("edits label and nature of a workspace category", async () => {
+    const created = await api<CategoryView>("/api/v1/categories", {
+      method: "POST",
+      headers: ALICE,
+      body: { label: "e2e editable", nature: "discretionary" },
+    });
+
+    const edited = await api<CategoryView>(
+      `/api/v1/categories/${created.body.id}`,
+      {
+        method: "PATCH",
+        headers: ALICE,
+        body: { label: "e2e editada", nature: "essential" },
+      },
+    );
+    expect(edited.status).toBe(200);
+    expect(edited.body.label).toBe("e2e editada");
+    expect(edited.body.nature).toBe("essential");
+  });
+
+  it("archiving keeps historical transactions but blocks new usage (RF-044)", async () => {
+    const created = await api<CategoryView>("/api/v1/categories", {
+      method: "POST",
+      headers: ALICE,
+      body: { label: "e2e archivable", nature: "essential" },
+    });
+    const tx = await createTx(ALICE, { categoryId: created.body.id });
+    expect(tx.status).toBe(201);
+
+    const archived = await api<CategoryView>(
+      `/api/v1/categories/${created.body.id}/archive`,
+      { method: "POST", headers: ALICE },
+    );
+    expect(archived.status).toBe(201);
+
+    const list = await api<TxView[]>("/api/v1/transactions", {
+      headers: ALICE,
+    });
+    const kept = list.body.find((t) => t.id === tx.body.id);
+    expect(kept?.categoryId).toBe(created.body.id);
+
+    const reuse = await api<ApiError>("/api/v1/transactions", {
+      method: "POST",
+      headers: ALICE,
+      body: txPayload({ categoryId: created.body.id }),
+    });
+    expect(reuse.status).toBe(404);
+    expect(reuse.body.code).toBe("CATEGORY_NOT_FOUND");
+  });
+
+  it("protects global and foreign categories from edits and archive", async () => {
+    const globalPatch = await api<ApiError>(
+      `/api/v1/categories/${categoryId}`,
+      { method: "PATCH", headers: ALICE, body: { label: "hijack" } },
+    );
+    expect(globalPatch.status).toBe(404);
+
+    const mine = await api<CategoryView>("/api/v1/categories", {
+      method: "POST",
+      headers: ALICE,
+      body: { label: "e2e privada", nature: "essential" },
+    });
+    const bobPatch = await api<ApiError>(
+      `/api/v1/categories/${mine.body.id}`,
+      { method: "PATCH", headers: BOB, body: { label: "hijack" } },
+    );
+    expect(bobPatch.status).toBe(404);
+    const bobArchive = await api<ApiError>(
+      `/api/v1/categories/${mine.body.id}/archive`,
+      { method: "POST", headers: BOB },
+    );
+    expect(bobArchive.status).toBe(404);
+
+    const bobList = await api<CategoryView[]>("/api/v1/categories", {
+      headers: BOB,
+    });
+    expect(bobList.body.map((c) => c.id)).not.toContain(mine.body.id);
+  });
+});
+
 describe("workspace isolation", () => {
   it("a transaction owned by alice is invisible and untouchable for bob", async () => {
     const created = await createTx(ALICE);

@@ -6,7 +6,13 @@ import i18n from "../../i18n";
 import { TransactionFilters } from "./TransactionFilters";
 
 const categories = [
-  { id: "cat-food", key: "food", label: "Comida", nature: "essential" },
+  {
+    id: "cat-food",
+    key: "food",
+    label: "Comida",
+    nature: "essential",
+    custom: false,
+  },
 ];
 
 beforeAll(async () => {

@@ -18,8 +18,12 @@ import { CreateAccountUseCase } from "../modules/accounts/application/create-acc
 import { ListAccountsUseCase } from "../modules/accounts/application/list-accounts.use-case.js";
 import { AccountsController } from "../modules/accounts/infrastructure/http/accounts.controller.js";
 import { PrismaAccountRepository } from "../modules/accounts/infrastructure/prisma-account.repository.js";
-import { CATEGORY_CATALOG } from "../modules/categorization/index.js";
+import { CATEGORY_CATALOG, CATEGORY_REPOSITORY } from "../modules/categorization/index.js";
+import { ArchiveCategoryUseCase } from "../modules/categorization/application/archive-category.use-case.js";
+import { CreateCategoryUseCase } from "../modules/categorization/application/create-category.use-case.js";
+import { ReviseCategoryUseCase } from "../modules/categorization/application/revise-category.use-case.js";
 import { CategoriesController } from "../modules/categorization/infrastructure/http/categories.controller.js";
+import { PrismaCategoryRepository } from "../modules/categorization/infrastructure/prisma-category.repository.js";
 import { PrismaCategoryValidationAdapter } from "../modules/categorization/infrastructure/prisma-category-validation.adapter.js";
 import { ACCOUNT_VALIDATION } from "../modules/ledger/application/ports/account-validation.port.js";
 import {
@@ -103,6 +107,30 @@ function requiredEnv(name: string): string {
     {
       provide: CATEGORY_CATALOG,
       useClass: PrismaCategoryValidationAdapter,
+    },
+    {
+      provide: CATEGORY_REPOSITORY,
+      useClass: PrismaCategoryRepository,
+    },
+    {
+      provide: CreateCategoryUseCase,
+      useFactory: (
+        categories: PrismaCategoryRepository,
+        ids: CryptoIdGenerator,
+      ) => new CreateCategoryUseCase(categories, ids),
+      inject: [CATEGORY_REPOSITORY, ID_GENERATOR],
+    },
+    {
+      provide: ReviseCategoryUseCase,
+      useFactory: (categories: PrismaCategoryRepository) =>
+        new ReviseCategoryUseCase(categories),
+      inject: [CATEGORY_REPOSITORY],
+    },
+    {
+      provide: ArchiveCategoryUseCase,
+      useFactory: (categories: PrismaCategoryRepository) =>
+        new ArchiveCategoryUseCase(categories),
+      inject: [CATEGORY_REPOSITORY],
     },
     { provide: CLOCK, useClass: SystemClock },
     { provide: ID_GENERATOR, useClass: CryptoIdGenerator },

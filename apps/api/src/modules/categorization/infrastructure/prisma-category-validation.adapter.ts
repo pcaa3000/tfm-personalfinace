@@ -43,6 +43,7 @@ export class PrismaCategoryValidationAdapter
       key: row.key,
       label: row.label,
       nature: row.nature,
+      custom: row.workspaceId !== null,
     }));
   }
 }

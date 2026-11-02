@@ -56,6 +56,9 @@ export interface RevisionView {
 export interface CategoryView {
   id: string;
   key: string;
+  label: string;
+  nature: string;
+  custom: boolean;
 }
 
 let baseUrl = "";

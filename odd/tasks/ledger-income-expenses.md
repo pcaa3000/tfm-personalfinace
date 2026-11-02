@@ -34,7 +34,7 @@ Branch: `feature/ledger-income-expenses` | Delivery: `single-pr` con commits por
 | T9 | Filtros y búsqueda del libro (RF-013): API `q` sobre concepto + filtros período/tipo/moneda/categoría ya soportados + barra de filtros en web | S1, S5 | inline | done | `6920f4e` · RED→GREEN 153 api + 27 web · Risk: none |
 | T9-fix | Remediación ODD + TDD estricto de `T9` (RF-013): período (`from`/`to`) en `TransactionFilters` + specs que faltaban (use case unitario, e2e `q` inválido, `currency`/limpieza/`from`/`to` en web, `listTransactions` querystring) + orden del Log y `L9` + espejo Engram restaurado | S5, S9, S10 | inline | done | `dd0355f` · RED→GREEN 157 api + 33 web · Risk: none |
 | T10 | Paginación del listado (RF-013): `limit`/`offset` en API + control "cargar más" en web | S1, S5 | inline | done | `f7d5d7d` · RED→GREEN 159 api + 35 web · Risk: none |
-| T11 | Categorías personalizadas por workspace y naturaleza financiera (RF-040, RF-041, RF-044): alta/edición/archivado sin tocar histórico | S1, S5 | inline | pending | — |
+| T11 | Categorías personalizadas por workspace y naturaleza financiera (RF-040, RF-041, RF-044): alta/edición/archivado sin tocar histórico | S1, S5 | inline | in-progress | — |
 | T12 | Preferencias del workspace (RF-003, RF-004): `timezone` y `locale` configurables vía GET/PATCH `/workspace` | S1, S5 | inline | pending | — |
 
 ## Log
