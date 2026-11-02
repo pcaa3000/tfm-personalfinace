@@ -34,7 +34,11 @@ export const es = {
     empty: "Sin cuentas. Creá una por moneda.",
     kind: { bank: "Bancaria", cash: "Efectivo", wallet: "Billetera" },
   },
-  settings: { defaultCurrency: "Moneda por defecto" },
+  settings: {
+    defaultCurrency: "Moneda por defecto",
+    timezone: "Zona horaria",
+    locale: "Locale",
+  },
   summary: {
     title: "Resumen por moneda",
     empty: "Todavía no hay movimientos confirmados.",
@@ -164,6 +168,8 @@ export const es = {
     CATEGORY_INVALID_LABEL: "El nombre de la categoría no es válido.",
     CATEGORY_INVALID_NATURE: "La naturaleza de la categoría no es válida.",
     CATEGORY_NO_CHANGES: "No hay cambios para guardar.",
+    LOCALE_INVALID: "El locale no es válido.",
+    WORKSPACE_NO_CHANGES: "No hay cambios para guardar.",
     WORKSPACE_ID_INVALID: "Error interno de espacio de trabajo.",
   },
 };

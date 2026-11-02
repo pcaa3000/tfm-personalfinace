@@ -6,9 +6,9 @@ import {
   WORKSPACE_CONTEXT,
 } from "../modules/identity-workspace/index.js";
 import {
-  UpdateDefaultCurrencyUseCase,
+  UpdateWorkspacePreferencesUseCase,
   WORKSPACE_SETTINGS,
-} from "../modules/identity-workspace/application/update-default-currency.use-case.js";
+} from "../modules/identity-workspace/application/update-workspace-preferences.use-case.js";
 import { DeterministicWorkspaceAdapter } from "../modules/identity-workspace/infrastructure/deterministic-workspace.adapter.js";
 import { WorkspaceController } from "../modules/identity-workspace/infrastructure/http/workspace.controller.js";
 import { DevHeaderCallerResolver } from "../modules/identity-workspace/infrastructure/http/dev-header-caller.resolver.js";
@@ -83,9 +83,9 @@ function requiredEnv(name: string): string {
       useClass: DeterministicWorkspaceAdapter,
     },
     {
-      provide: UpdateDefaultCurrencyUseCase,
+      provide: UpdateWorkspacePreferencesUseCase,
       useFactory: (settings: DeterministicWorkspaceAdapter) =>
-        new UpdateDefaultCurrencyUseCase(settings),
+        new UpdateWorkspacePreferencesUseCase(settings),
       inject: [WORKSPACE_SETTINGS],
     },
     {

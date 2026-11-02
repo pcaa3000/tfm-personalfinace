@@ -2,7 +2,10 @@ import { Inject, Injectable } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 
 import { WorkspaceId } from "../../shared-kernel/index.js";
-import type { WorkspaceSettingsPort } from "../application/update-default-currency.use-case.js";
+import type {
+  WorkspacePreferencesPatch,
+  WorkspaceSettingsPort,
+} from "../application/update-workspace-preferences.use-case.js";
 import type {
   CallerIdentity,
   WorkspaceContext,
@@ -48,13 +51,13 @@ export class DeterministicWorkspaceAdapter
     };
   }
 
-  async updateDefaultCurrency(
+  async updatePreferences(
     workspaceId: WorkspaceId,
-    currency: string,
+    patch: WorkspacePreferencesPatch,
   ): Promise<WorkspaceContext> {
     const workspace = await this.prisma.workspace.update({
       where: { id: workspaceId.value },
-      data: { defaultCurrency: currency },
+      data: patch,
     });
     return {
       workspaceId,

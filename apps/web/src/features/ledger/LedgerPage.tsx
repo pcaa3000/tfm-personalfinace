@@ -34,7 +34,7 @@ import {
   listTransactions,
   reviseCategory,
   reviseTransaction,
-  updateDefaultCurrency,
+  updateWorkspace,
   voidTransaction,
   type TransactionListFilters,
 } from "./api";
@@ -131,8 +131,8 @@ export function LedgerPage() {
     },
   });
 
-  const currencyMutation = useMutation({
-    mutationFn: updateDefaultCurrency,
+  const settingsMutation = useMutation({
+    mutationFn: updateWorkspace,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["workspace"] });
     },
@@ -243,12 +243,55 @@ export function LedgerPage() {
               size="small"
               label={t("settings.defaultCurrency")}
               value={workspace?.defaultCurrency ?? "PEN"}
-              onChange={(e) => currencyMutation.mutate(e.target.value)}
+              onChange={(e) =>
+                settingsMutation.mutate({ defaultCurrency: e.target.value })
+              }
               sx={{ minWidth: 150 }}
             >
               {["PEN", "USD", "EUR", "ARS", "JPY", "BHD"].map((c) => (
                 <MenuItem key={c} value={c}>
                   {c}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
+              label={t("settings.timezone")}
+              value={workspace?.timezone ?? "UTC"}
+              onChange={(e) =>
+                settingsMutation.mutate({ timezone: e.target.value })
+              }
+              sx={{ minWidth: 170 }}
+            >
+              {[
+                "UTC",
+                "America/Lima",
+                "America/Bogota",
+                "America/Mexico_City",
+                "America/Santiago",
+                "America/Argentina/Buenos_Aires",
+                "America/New_York",
+                "Europe/Madrid",
+              ].map((tz) => (
+                <MenuItem key={tz} value={tz}>
+                  {tz}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
+              label={t("settings.locale")}
+              value={workspace?.locale ?? "es-PE"}
+              onChange={(e) =>
+                settingsMutation.mutate({ locale: e.target.value })
+              }
+              sx={{ minWidth: 130 }}
+            >
+              {["es-PE", "es-ES", "es-MX", "en-US", "en-GB"].map((l) => (
+                <MenuItem key={l} value={l}>
+                  {l}
                 </MenuItem>
               ))}
             </TextField>

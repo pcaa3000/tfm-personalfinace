@@ -5,6 +5,7 @@ import {
   createCategory,
   listTransactions,
   reviseCategory,
+  updateWorkspace,
 } from "./api";
 
 const fetchMock = vi.fn<typeof fetch>(
@@ -89,5 +90,28 @@ describe("custom categories (RF-040, RF-044)", () => {
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(String(url)).toBe("/api/v1/categories/cat-1/archive");
     expect(init?.method).toBe("POST");
+  });
+});
+
+describe("workspace preferences (RF-003)", () => {
+  it("sends the preference patch with PATCH /workspace", async () => {
+    await updateWorkspace({ timezone: "America/Lima", locale: "es-PE" });
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/workspace");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      timezone: "America/Lima",
+      locale: "es-PE",
+    });
+  });
+
+  it("sends a partial patch with only the changed field", async () => {
+    await updateWorkspace({ defaultCurrency: "USD" });
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(init?.body))).toEqual({
+      defaultCurrency: "USD",
+    });
   });
 });

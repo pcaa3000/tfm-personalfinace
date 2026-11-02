@@ -89,10 +89,18 @@ export function createAccount(input: CreateAccountInput): Promise<AccountView> {
 export function getWorkspace(): Promise<WorkspaceView> {
   return request<WorkspaceView>("/workspace");
 }
-export function updateDefaultCurrency(currency: string): Promise<WorkspaceView> {
+export interface WorkspacePreferencesPatch {
+  defaultCurrency?: string;
+  locale?: string;
+  timezone?: string;
+}
+
+export function updateWorkspace(
+  patch: WorkspacePreferencesPatch,
+): Promise<WorkspaceView> {
   return request<WorkspaceView>("/workspace", {
     method: "PATCH",
-    body: JSON.stringify({ defaultCurrency: currency }),
+    body: JSON.stringify(patch),
   });
 }
 export function listCategories(): Promise<CategoryView[]> {

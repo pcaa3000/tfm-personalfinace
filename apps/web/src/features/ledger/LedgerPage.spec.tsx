@@ -10,7 +10,7 @@ import {
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import i18n from "../../i18n";
-import { listTransactions } from "./api";
+import { listTransactions, updateWorkspace } from "./api";
 import { LedgerPage, TRANSACTIONS_PAGE_SIZE } from "./LedgerPage";
 import type { TransactionView } from "./types";
 
@@ -23,8 +23,14 @@ vi.mock("./api", async (importOriginal) => {
     listCategories: vi.fn(async () => []),
     getWorkspace: vi.fn(async () => ({
       workspaceId: "ws-1",
-      locale: "es",
-      timezone: "America/Lima",
+      locale: "es-PE",
+      timezone: "UTC",
+      defaultCurrency: "PEN",
+    })),
+    updateWorkspace: vi.fn(async () => ({
+      workspaceId: "ws-1",
+      locale: "es-PE",
+      timezone: "UTC",
       defaultCurrency: "PEN",
     })),
   };
@@ -120,5 +126,27 @@ describe("LedgerPage pagination (RF-013)", () => {
     expect(
       screen.queryByRole("button", { name: "Cargar más" }),
     ).toBeNull();
+  });
+});
+
+describe("LedgerPage workspace preferences (RF-003)", () => {
+  it("sends the timezone patch when the preference changes", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    const timezoneSelect = await screen.findByRole("combobox", {
+      name: "Zona horaria",
+    });
+    fireEvent.mouseDown(timezoneSelect);
+    fireEvent.click(
+      await screen.findByRole("option", { name: "America/Bogota" }),
+    );
+
+    await waitFor(() => {
+      expect(vi.mocked(updateWorkspace).mock.calls[0]?.[0]).toEqual({
+        timezone: "America/Bogota",
+      });
+    });
   });
 });

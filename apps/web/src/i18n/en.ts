@@ -38,7 +38,11 @@ export const en: TranslationShape = {
     empty: "No accounts. Create one per currency.",
     kind: { bank: "Bank", cash: "Cash", wallet: "Wallet" },
   },
-  settings: { defaultCurrency: "Default currency" },
+  settings: {
+    defaultCurrency: "Default currency",
+    timezone: "Timezone",
+    locale: "Locale",
+  },
   summary: {
     title: "Summary by currency",
     empty: "No confirmed movements yet.",
@@ -168,6 +172,8 @@ export const en: TranslationShape = {
     CATEGORY_INVALID_LABEL: "The category name is not valid.",
     CATEGORY_INVALID_NATURE: "The category nature is not valid.",
     CATEGORY_NO_CHANGES: "There are no changes to save.",
+    LOCALE_INVALID: "The locale is not valid.",
+    WORKSPACE_NO_CHANGES: "There are no changes to save.",
     WORKSPACE_ID_INVALID: "Internal workspace error.",
   },
 };

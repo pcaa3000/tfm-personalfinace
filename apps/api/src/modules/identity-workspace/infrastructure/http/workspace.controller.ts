@@ -19,11 +19,20 @@ import {
   type WorkspaceContextPort,
 } from "../../index.js";
 import { DomainError } from "../../../shared-kernel/index.js";
-import { UpdateDefaultCurrencyUseCase } from "../../application/update-default-currency.use-case.js";
+import { UpdateWorkspacePreferencesUseCase } from "../../application/update-workspace-preferences.use-case.js";
 
-const updateSchema = z.object({
-  defaultCurrency: z.string().length(3),
-});
+const updateSchema = z
+  .object({
+    defaultCurrency: z.string().length(3).optional(),
+    locale: z.string().min(2).max(35).optional(),
+    timezone: z.string().min(1).max(64).optional(),
+  })
+  .refine(
+    (data) =>
+      data.defaultCurrency !== undefined ||
+      data.locale !== undefined ||
+      data.timezone !== undefined,
+  );
 
 type RequestHeaders = Record<string, string | string[] | undefined>;
 
@@ -32,8 +41,8 @@ export class WorkspaceController {
   constructor(
     @Inject(CALLER_RESOLVER) private readonly callerResolver: CallerResolverPort,
     @Inject(WORKSPACE_CONTEXT) private readonly workspaceContext: WorkspaceContextPort,
-    @Inject(UpdateDefaultCurrencyUseCase)
-    private readonly updateDefaultCurrency: UpdateDefaultCurrencyUseCase,
+    @Inject(UpdateWorkspacePreferencesUseCase)
+    private readonly updatePreferences: UpdateWorkspacePreferencesUseCase,
   ) {}
 
   private async caller(headers: RequestHeaders): Promise<CallerIdentity> {
@@ -74,10 +83,17 @@ export class WorkspaceController {
     }
     const caller = await this.caller(headers);
     const context = await this.workspaceContext.resolve(caller);
-    const result = await this.updateDefaultCurrency.execute(
-      context.workspaceId,
-      parsed.data.defaultCurrency,
-    );
+    const result = await this.updatePreferences.execute(context.workspaceId, {
+      ...(parsed.data.defaultCurrency !== undefined
+        ? { defaultCurrency: parsed.data.defaultCurrency }
+        : {}),
+      ...(parsed.data.locale !== undefined
+        ? { locale: parsed.data.locale }
+        : {}),
+      ...(parsed.data.timezone !== undefined
+        ? { timezone: parsed.data.timezone }
+        : {}),
+    });
     if (!result.ok) {
       const error: DomainError = result.error;
       throw new HttpException(
