@@ -60,6 +60,8 @@ export interface TransactionListFilters {
   category?: string | undefined;
   from?: string | undefined;
   to?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
 }
 
 export function listTransactions(
@@ -67,7 +69,7 @@ export function listTransactions(
 ): Promise<TransactionView[]> {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
-    if (value) params.set(key, value);
+    if (value !== undefined && value !== "") params.set(key, String(value));
   }
   const qs = params.toString();
   return request<TransactionView[]>(`/transactions${qs ? `?${qs}` : ""}`);

@@ -50,6 +50,7 @@ export const en: TranslationShape = {
     title: "Transactions",
     loading: "Loading…",
     loadError: "Could not load transactions.",
+    loadMore: "Load more",
   },
   table: {
     date: "Date",

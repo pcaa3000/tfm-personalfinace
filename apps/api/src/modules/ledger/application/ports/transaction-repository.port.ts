@@ -10,6 +10,10 @@ export interface TransactionFilter {
   readonly category?: string;
   /** Case-insensitive substring match on concept. */
   readonly q?: string;
+  /** Page size (RF-013); unbounded when omitted. */
+  readonly limit?: number;
+  /** Rows to skip before the page (RF-013). */
+  readonly offset?: number;
 }
 
 /** Write-side and query-side access to ledger transactions (ISP). */

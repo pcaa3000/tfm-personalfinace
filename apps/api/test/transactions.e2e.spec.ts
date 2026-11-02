@@ -275,6 +275,42 @@ describe("GET /api/v1/transactions", () => {
     expect(res.body).toHaveLength(1);
     expect(res.body[0]?.concept).toBe("e2e dentro");
   });
+
+  it("paginates with limit and offset over the date-desc ordering (RF-013)", async () => {
+    await createTx(ALICE, { businessDate: "2026-10-01", concept: "e2e pag-1" });
+    await createTx(ALICE, { businessDate: "2026-10-02", concept: "e2e pag-2" });
+    await createTx(ALICE, { businessDate: "2026-10-03", concept: "e2e pag-3" });
+    await createTx(ALICE, { businessDate: "2026-10-04", concept: "e2e pag-4" });
+
+    const first = await api<TxView[]>("/api/v1/transactions?limit=2", {
+      headers: ALICE,
+    });
+    expect(first.status).toBe(200);
+    expect(first.body.map((t) => t.concept)).toEqual([
+      "e2e pag-4",
+      "e2e pag-3",
+    ]);
+
+    const second = await api<TxView[]>(
+      "/api/v1/transactions?limit=2&offset=2",
+      { headers: ALICE },
+    );
+    expect(second.status).toBe(200);
+    expect(second.body.map((t) => t.concept)).toEqual([
+      "e2e pag-2",
+      "e2e pag-1",
+    ]);
+  });
+
+  it("rejects invalid pagination params (RF-013)", async () => {
+    for (const qs of ["limit=0", "limit=201", "limit=abc", "offset=-1"]) {
+      const res = await api<ApiError>(`/api/v1/transactions?${qs}`, {
+        headers: ALICE,
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("INVALID_QUERY");
+    }
+  });
 });
 
 describe("PATCH /api/v1/transactions/:id", () => {

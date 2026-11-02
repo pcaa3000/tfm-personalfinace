@@ -59,6 +59,8 @@ const listTransactionsSchema = z.object({
   currency: z.string().length(3).optional(),
   category: z.string().optional(),
   q: z.string().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
 });
 
 type RequestHeaders = Record<string, string | string[] | undefined>;
@@ -173,6 +175,10 @@ export class TransactionsController {
     if (parsed.data.currency) Object.assign(filter, { currency: parsed.data.currency });
     if (parsed.data.category) Object.assign(filter, { category: parsed.data.category });
     if (parsed.data.q) Object.assign(filter, { q: parsed.data.q });
+    if (parsed.data.limit !== undefined)
+      Object.assign(filter, { limit: parsed.data.limit });
+    if (parsed.data.offset !== undefined)
+      Object.assign(filter, { offset: parsed.data.offset });
 
     return this.listTransactions.execute(context.workspaceId, filter);
   }

@@ -46,6 +46,7 @@ export const es = {
     title: "Movimientos",
     loading: "Cargando…",
     loadError: "No se pudieron cargar los movimientos.",
+    loadMore: "Cargar más",
   },
   table: {
     date: "Fecha",

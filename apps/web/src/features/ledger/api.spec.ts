@@ -37,10 +37,12 @@ describe("listTransactions", () => {
       category: "uncategorized",
       from: "2026-10-01",
       to: "2026-10-31",
+      limit: 25,
+      offset: 50,
     });
 
     expect(calledUrl()).toBe(
-      "/api/v1/transactions?q=polleria&type=expense&currency=PEN&category=uncategorized&from=2026-10-01&to=2026-10-31",
+      "/api/v1/transactions?q=polleria&type=expense&currency=PEN&category=uncategorized&from=2026-10-01&to=2026-10-31&limit=25&offset=50",
     );
   });
 

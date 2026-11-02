@@ -120,6 +120,8 @@ export class PrismaTransactionRepository implements TransactionRepositoryPort {
       },
       include: { revisions: { orderBy: { revisionNumber: "asc" } } },
       orderBy: [{ businessDate: "desc" }, { createdAt: "desc" }],
+      ...(filter.limit !== undefined ? { take: filter.limit } : {}),
+      ...(filter.offset !== undefined ? { skip: filter.offset } : {}),
     });
     return rows.map(toDomain);
   }

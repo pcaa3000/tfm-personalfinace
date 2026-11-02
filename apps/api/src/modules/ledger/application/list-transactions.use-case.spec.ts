@@ -68,6 +68,8 @@ describe("ListTransactionsUseCase", () => {
       category: "uncategorized",
       from: "2026-10-01",
       to: "2026-10-31",
+      limit: 25,
+      offset: 50,
     };
 
     await useCase.execute(ws, filter);

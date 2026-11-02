@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   Alert,
   Box,
@@ -43,6 +48,9 @@ import { TransactionTable } from "./TransactionTable";
 import { VoidTransactionDialog } from "./VoidTransactionDialog";
 import type { TransactionView } from "./types";
 
+/** Rows fetched per "load more" round trip (RF-013). */
+export const TRANSACTIONS_PAGE_SIZE = 25;
+
 function formatMinor(minor: bigint, currency: string): string {
   const exponent = ({ JPY: 0, KRW: 0, BHD: 3, KWD: 3, CLF: 4 })[currency] ?? 2;
   const sign = minor < 0n ? "-" : "";
@@ -66,9 +74,19 @@ export function LedgerPage() {
     queryKey: ["categories"],
     queryFn: listCategories,
   });
-  const transactionsQuery = useQuery({
+  const transactionsQuery = useInfiniteQuery({
     queryKey: ["transactions", filters],
-    queryFn: () => listTransactions(filters),
+    queryFn: ({ pageParam }) =>
+      listTransactions({
+        ...filters,
+        limit: TRANSACTIONS_PAGE_SIZE,
+        offset: pageParam,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === TRANSACTIONS_PAGE_SIZE
+        ? allPages.length * TRANSACTIONS_PAGE_SIZE
+        : undefined,
   });
   const pendingQuery = useQuery({
     queryKey: PENDING_QUERY_KEY,
@@ -127,7 +145,7 @@ export function LedgerPage() {
   const categories = categoriesQuery.data ?? [];
   const accounts = accountsQuery.data ?? [];
   const workspace = workspaceQuery.data;
-  const transactions = transactionsQuery.data ?? [];
+  const transactions = transactionsQuery.data?.pages.flat() ?? [];
   const pendingRows = (pendingQuery.data ?? []).map(toPendingView);
   const tableRows = [...pendingRows, ...transactions];
   const summaries = summarizeByCurrency(transactions);
@@ -299,6 +317,18 @@ export function LedgerPage() {
               onHistory={setHistoryFor}
             />
           )}
+          {transactionsQuery.hasNextPage ? (
+            <Button
+              variant="outlined"
+              disabled={transactionsQuery.isFetchingNextPage}
+              onClick={() => void transactionsQuery.fetchNextPage()}
+              sx={{ mt: 2 }}
+            >
+              {transactionsQuery.isFetchingNextPage
+                ? t("transactions.loading")
+                : t("transactions.loadMore")}
+            </Button>
+          ) : null}
         </section>
       </Stack>
 
