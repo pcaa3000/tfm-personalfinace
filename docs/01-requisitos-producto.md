@@ -199,6 +199,9 @@ Si la PWA está sin conexión, el registro confirmado por la persona entra en la
 | RF-014 | La aplicación debe distinguir borrador, confirmado y anulado; solo confirmado participa en cálculos |
 | RF-015 | La categoría `Sin categorizar` debe ser visible y filtrable, nunca un valor ausente oculto |
 | RF-016 | Toda operación de creación susceptible de repetición debe aceptar una clave de idempotencia o un identificador equivalente; los registros encolados offline la generan en el cliente |
+| RF-017 | La persona debe poder crear una cuenta dentro de su workspace con nombre único, moneda ISO 4217, tipo (`efectivo`, `cuenta bancaria`, `tarjeta de crédito`, `cuenta virtual`, `inversiones`, `préstamo`, `seguro`, `ahorro`, `otro`) y saldo inicial declarado por la persona |
+| RF-018 | La persona debe poder editar nombre, tipo y saldo inicial de una cuenta, y archivarla; archivar o editar una cuenta no debe eliminar ni alterar las transacciones históricas asociadas |
+| RF-019 | La persona debe poder registrar una transferencia entre dos cuentas propias distintas; ambas cuentas deben compartir la moneda del importe transferido, y la transferencia no debe clasificarse como ingreso ni gasto del workspace |
 
 ### Tickets y OCR
 
@@ -304,6 +307,13 @@ Si la PWA está sin conexión, el registro confirmado por la persona entra en la
 | RF-093 | El sistema debe señalar cuando la ejecución supera un umbral configurable (por ejemplo 80%) o el 100% del presupuesto, con lenguaje informativo y sin culpabilizar |
 | RF-094 | Los presupuestos deben incluirse en reportes y exportaciones, y una revisión de transacción debe actualizar la ejecución afectada |
 
+### Experiencia de uso y navegación
+
+| ID | Requisito |
+|---|---|
+| RF-098 | La interfaz debe ser responsive para móvil, tablet y escritorio, y debe mantener visible de forma fija el balance general por moneda y los filtros de visualización mientras se recorre el libro de transacciones |
+| RF-099 | La aplicación debe implementar un sistema de diseño financiero consistente con soporte de modo claro y modo oscuro, y la persona debe poder gestionar cuentas y categorías mediante un menú de opciones que permita crear, editar y archivar elementos |
+
 ### Sincronización offline de la PWA
 
 | ID | Requisito |
@@ -339,6 +349,9 @@ Si la PWA está sin conexión, el registro confirmado por la persona entra en la
 | RN-018 | Un workspace demo terminado nunca se reactiva; un nuevo login materializa la semilla original en otro workspace |
 | RN-019 | Un ítem de la cola local no participa en reportes, presupuestos ni recomendaciones hasta confirmarse en servidor |
 | RN-020 | Ninguna modificación de una sesión demo se materializa como estado persistente; la limpieza descarta datos, medios, jobs y cola local |
+| RN-021 | El saldo inicial de una cuenta es un dato declarado por la persona; nunca es negativo |
+| RN-022 | Una transferencia solo existe entre dos cuentas distintas del mismo workspace y compartiendo exactamente la misma moneda del importe |
+| RN-023 | Una transferencia no afecta ingresos, gastos ni el saldo total del workspace; solo altera el saldo de la cuenta de origen y de la cuenta de destino |
 
 ## Requisitos no funcionales
 
@@ -365,6 +378,7 @@ Si la PWA está sin conexión, el registro confirmado por la persona entra en la
 | RNF-019 | Aislamiento | Persistencia, objetos, jobs, cachés, eventos y proyecciones deben incluir y validar el workspace; las pruebas deben cubrir accesos cruzados |
 | RNF-020 | Demo | La revocación del workspace demo debe ser inmediata (logout, cierre de la aplicación o 10 minutos de inactividad) y su limpieza física idempotente/reconciliable; ninguna ruta demo puede invocar proveedores de pago |
 | RNF-021 | Offline | La cola local debe sobrevivir recargas de la PWA, conservar orden de captura y sincronizarse de forma idempotente; su contenido se descarta al terminar la sesión |
+| RNF-022 | Interfaz | El diseño debe implementar un sistema consistente para una app financiera (tipografía tabular en importes), ser usable y accesible en móvil y tablet, mantener fijos el balance general por moneda y los filtros, y soportar modo claro y oscuro con contraste WCAG AA |
 
 ## Criterios de aceptación del MVP
 
@@ -394,6 +408,7 @@ Si la PWA está sin conexión, el registro confirmado por la persona entra en la
 | CA-022 | La exportación produce archivos `.csv` y `.xlsx` con monedas, zonas horarias y estados inequívocos |
 | CA-023 | Un presupuesto por categoría muestra ejecución confirmada, alerta al superar el umbral configurado y admite ajuste versionado sin reescribir el histórico |
 | CA-024 | La autenticación admite usuario/contraseña, al menos un proveedor social (Google o Facebook) y passkey, resolviendo siempre el mismo workspace personal |
+| CA-025 | Una transferencia entre dos cuentas de la misma moneda se registra una sola vez, descuenta el saldo de origen, aumenta el de destino y no altera los ingresos ni los gastos del balance general de la moneda |
 
 ## Datos mínimos para una recomendación
 

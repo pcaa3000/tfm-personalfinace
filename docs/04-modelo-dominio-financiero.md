@@ -54,9 +54,36 @@ La conversión queda fuera del MVP. Los reportes agrupan por moneda y por cuenta
 
 El dinero se guarda en cuentas nombradas por la persona ("BCP soles", "Interbank dólares"). Cada cuenta pertenece a una sola moneda y a un workspace.
 
-| INV-CTA-01 | Una transacción nueva requiere una cuenta, y su moneda debe coincidir con la de la cuenta |
+Una cuenta contiene:
+
+- Nombre único por workspace.
+- Moneda ISO 4217.
+- Tipo: `efectivo` (`cash`), `cuenta bancaria` (`bank`), `ahorro` (`savings`), `tarjeta de crédito` (`credit_card`), `cuenta virtual o billetera` (`virtual`), `inversiones` (`investment`), `préstamo` (`loan`), `seguro` (`insurance`).
+- Saldo inicial declarado por la persona como valor de dinero no negativo; es un dato de arranque, no una transacción.
+- Estado: activa o archivada. Archivar una cuenta conserva su historial y las transacciones asociadas.
+
+El tipo describe el instrumento que representa la cuenta (organización y visualización); no altera la aritmética: el saldo actual siempre se calcula igual — saldo inicial más ingresos y transferencias entrantes, menos gastos y transferencias salientes confirmados y no anulados.
+
+| ID | Invariante |
+|---|---|
+| INV-CTA-01 | Una transacción nueva de ingreso o gasto requiere una cuenta activa, y su moneda debe coincidir con la de la cuenta |
 | INV-CTA-02 | Los nombres de cuenta son únicos por workspace |
 | INV-CTA-03 | Las transacciones previas a las cuentas quedan "Sin cuenta"; el usuario puede asignarles una en una edición futura |
+| INV-CTA-04 | El saldo inicial de una cuenta es un valor de dinero no negativo en la moneda de la cuenta |
+
+### Transferencias entre cuentas
+
+Una transferencia es un tipo de movimiento que traslada un importe entre dos cuentas propias. Referencia una cuenta de origen y una cuenta de destino distinta, ambas en la misma moneda del importe.
+
+| ID | Invariante |
+|---|---|
+| INV-TFR-01 | Una transferencia requiere cuenta de origen y cuenta de destino, ambas activas y del mismo workspace |
+| INV-TFR-02 | La cuenta de origen y la de destino son siempre distintas |
+| INV-TFR-03 | El importe, la cuenta de origen y la cuenta de destino comparten exactamente la misma moneda |
+| INV-TFR-04 | Una transferencia no es ingreso ni gasto del workspace: su efecto neto sobre el total de la moneda es cero |
+| INV-TFR-05 | Una transferencia descuenta el saldo de la cuenta de origen e incrementa el de la de destino por el mismo importe |
+
+El saldo actual de una cuenta es: `saldo inicial + ingresos confirmados + transferencias entrantes confirmadas − gastos confirmados − transferencias salientes confirmadas`. El saldo actual del workspace por moneda es `∑ saldos iniciales + ingresos confirmados − gastos confirmados`; las transferencias se cancelan dentro de la suma.
 
 La conversión entre monedas (tipo de cambio almacenado con fecha y fuente) queda pospuesta fuera del MVP y no afecta estos invariantes.
 
@@ -110,11 +137,12 @@ El sistema no infiere una situación fiscal a partir del comercio, país o profe
 Una transacción confirmada contiene como mínimo:
 
 - Workspace propietario.
-- Tipo ingreso o gasto.
+- Tipo ingreso, gasto o transferencia.
 - Dinero.
 - Fecha de negocio y zona horaria de origen.
 - Concepto o contraparte.
-- Categoría o estado explícito `Sin categorizar`.
+- Cuenta asociada; en una transferencia actúa como cuenta de origen y se añade la cuenta de destino.
+- Categoría o estado explícito `Sin categorizar` (las transferencias no consumen categoría).
 - Origen manual, ticket o voz; el registro manual creado offline se confirma igualmente, conservando su clave de idempotencia de cliente.
 - Instante y actor de confirmación.
 - Revisión vigente y trazabilidad de cambios.
@@ -123,10 +151,11 @@ Una transacción confirmada contiene como mínimo:
 |---|---|
 | INV-TRX-01 | Solo el estado confirmado participa en agregados; un ítem `pendiente de sincronización` en la cola local de la PWA todavía no es una transacción |
 | INV-TRX-02 | Una anulación no borra el historial; deja de participar desde la revisión que la registra |
-| INV-TRX-03 | Editar importe, moneda, fecha, tipo o categoría crea una revisión y desencadena invalidación |
+| INV-TRX-03 | Editar importe, moneda, fecha, tipo, cuenta, cuenta destino o categoría crea una revisión y desencadena invalidación |
 | INV-TRX-04 | Una referencia de captura puede originar como máximo una transacción confirmada |
 | INV-TRX-05 | Una transacción pertenece a un workspace y nunca se reasigna |
 | INV-TRX-06 | La procedencia inferida se conserva aunque la persona corrija el valor |
+| INV-TRX-07 | Solo `income` y `expense` participan en los agregados de ingresos y gastos; `transfer` queda fuera de ambos totales (INV-TFR-04) |
 
 ### Borrador de transacción
 

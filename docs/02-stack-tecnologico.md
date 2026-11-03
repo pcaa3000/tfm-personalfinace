@@ -103,6 +103,9 @@ Para usuarios personales, `(issuer, subject)` resuelve el único workspace persi
 - La cola local se vacía al cerrar sesión y, en modo demo, al terminar la sesión por logout, cierre de la aplicación o 10 minutos de inactividad.
 - Los tokens no se persisten en `localStorage`. El flujo exacto debe mantener credenciales fuera de almacenamiento accesible a scripts y cumplir la política del proveedor OIDC.
 - Las tablas, navegación por teclado, estados de foco y mensajes de error forman parte de la aceptación, no de una fase estética posterior.
+- La interfaz implementa un **sistema de diseño financiero** sobre Material UI: tokens de color semánticos para ingreso, gasto y transferencia (nunca solo color para distinguirlos), tipografía `tabular-nums` en importes y saldos, y **modo claro/oscuro** persistido en el dispositivo con detección de `prefers-color-scheme` y contraste WCAG AA.
+- La pantalla principal prioriza el **balance general por moneda** (ingresos, gastos y saldo actual) seguido del libro de transacciones del período; el resumen de balance y los filtros permanecen fijos (`sticky`) durante el desplazamiento, y el período por defecto es el mes en curso de la zona horaria del workspace.
+- El layout es **responsive mobile-first**: móvil y tablet presentan movimientos como tarjetas compactas con acciones en menú contextual; escritorio usa tablas densas. La gestión de cuentas y categorías se concentra en un menú de opciones con diálogos de crear, editar y archivar.
 
 ## API y backend
 

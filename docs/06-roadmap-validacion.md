@@ -106,14 +106,18 @@ Entregar el núcleo financiero sin depender de OCR o voz.
 7. Conservar revisiones, origen e idempotencia.
 8. Aplicar autorización por workspace en caso de uso y repositorio.
 9. Añadir tabla accesible y estados vacíos/error.
+10. Cuentas por moneda con saldo inicial, tipos de instrumento, edición y archivado sin tocar historial.
+11. Transferencias entre cuentas propias de la misma moneda con trazabilidad, fuera de los agregados de ingresos y gastos.
+12. Sistema de diseño financiero con modo claro/oscuro, balance general por moneda y filtros fijos, período por defecto en mes en curso y layout responsive móvil/tablet/desktop.
 
 ### Requisitos cubiertos
 
-- RF-001 a RF-016.
+- RF-001 a RF-019 (incluye cuentas RF-017/RF-018 y transferencias RF-019).
+- RF-098 y RF-099 (experiencia responsive, design system y modo oscuro).
 - RF-100 a RF-102 y RF-104 (cola offline de registros manuales).
 - Base de RF-040, RF-041 y RF-044.
-- RN-001 a RN-005 y RN-019.
-- RNF-001 a RNF-006, RNF-009, RNF-010, RNF-014, RNF-018 y RNF-021.
+- RN-001 a RN-005, RN-019 y RN-021 a RN-023.
+- RNF-001 a RNF-006, RNF-009, RNF-010, RNF-014, RNF-018, RNF-021 y RNF-022.
 
 ### Validación
 
@@ -129,11 +133,13 @@ Entregar el núcleo financiero sin depender de OCR o voz.
 
 ### Puerta de salida
 
-- CA-001 y CA-005 completos.
+- CA-001, CA-005 y CA-025 completos.
 - Una petición repetida devuelve la misma transacción.
 - Solo confirmado participa en una consulta de resumen básica.
 - Editar/anular deja revisión y no rompe propiedad.
 - No existe acceso a Prisma desde dominio/aplicación.
+- Una transferencia entre cuentas de la misma moneda mueve saldo entre ambas sin alterar ingresos ni gastos del balance.
+- El balance general por moneda muestra ingresos, gastos y saldo actual; balance y filtros permanecen visibles al desplazarse en móvil, tablet y escritorio.
 
 ## Fase 2 — Tickets, archivos y OCR
 

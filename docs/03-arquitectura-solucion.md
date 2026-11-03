@@ -60,7 +60,8 @@ Los módulos son fronteras de negocio, no microservicios anticipados.
 | Módulo | Responsabilidad | Datos que posee | Interfaz pública interna |
 |---|---|---|---|
 | Perfil e identidad | Vincular identidad externa (usuario/contraseña, social, passkey), preferencias, locale, zona horaria, workspace y consentimientos | Perfil, vínculo issuer–subject, preferencias, workspace y consentimientos | Consultar contexto del workspace y actualizar preferencias |
-| Libro de transacciones | Crear, confirmar, revisar, anular y consultar ingresos/gastos | Transacción, revisiones y referencias de origen | Registrar, revisar, anular y resumir movimientos confirmados |
+| Libro de transacciones | Crear, confirmar, revisar, anular y consultar ingresos, gastos y transferencias | Transacción, revisiones y referencias de origen | Registrar, revisar, anular y resumir movimientos confirmados |
+| Cuentas | Mantener cuentas por moneda con saldo inicial, tipo de instrumento y estado activo/archivado | Cuenta, saldo inicial, tipo y estado | Validar cuenta, consultar cuentas y resolver moneda por cuenta |
 | Captura | Gestionar activos, trabajos, respuestas de proveedor y borradores | Activo, trabajo, ejecución, extracción y borrador | Crear captura, finalizar subida, procesar, revisar y descartar |
 | Categorización | Mantener categorías y sugerencias explicables | Categoría, regla, alias de comercio y preferencia | Validar categoría y sugerir clasificación |
 | Insights | Crear proyecciones y detectar patrones | Resumen mensual, insight, evidencia y descarte | Consultar reportes, detalle y calidad del dato |
