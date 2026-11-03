@@ -50,6 +50,19 @@ Para repartir una cantidad entre bolsillos se redondea a la unidad menor de la m
 
 La conversión queda fuera del MVP. Los reportes agrupan por moneda y por cuenta y no muestran un total combinado (INV-DIN-06, CA-006). El tipo de cambio con fecha y fuente es una evolución futura, contemplada por el producto pero fuera del alcance actual.
 
+### Monedas del workspace
+
+El workspace mantiene un catálogo de monedas activas que gobierna los selectores y la creación de cuentas.
+
+| ID | Invariante |
+|---|---|
+| INV-MON-01 | Las monedas del catálogo son códigos ISO 4217 válidos y únicos por workspace; un código ausente de la tabla ISO no puede darse de alta |
+| INV-MON-02 | Una moneda no puede archivarse si es la moneda por defecto del workspace, si alguna cuenta o transacción la usa, o si es la última activa |
+| INV-MON-03 | Una cuenta solo puede crearse con una moneda activa del workspace |
+| INV-MON-04 | El código de una moneda solo puede cambiarse cuando ninguna cuenta ni transacción la utiliza: renombrarla en uso corrompería la aritmética cuando el exponente difiere |
+
+Las monedas personalizadas fuera de ISO 4217 (alias propios, puntos, tokens) quedan fuera del MVP.
+
 ### Cuentas por moneda
 
 El dinero se guarda en cuentas nombradas por la persona ("BCP soles", "Interbank dólares"). Cada cuenta pertenece a una sola moneda y a un workspace.

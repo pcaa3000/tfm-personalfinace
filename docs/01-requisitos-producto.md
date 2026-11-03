@@ -60,6 +60,7 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 - Recomendaciones presentadas como asesoramiento financiero, fiscal, legal o de inversión.
 - Clasificación o planificación dependientes de un LLM.
 - Microservicios distribuidos, Kubernetes, Kafka o un data warehouse en la primera versión.
+- Monedas personalizadas fuera de ISO 4217 (alias propios, puntos o tokens).
 
 ## Actores y sistemas externos
 
@@ -307,6 +308,14 @@ Si la PWA está sin conexión, el registro confirmado por la persona entra en la
 | RF-093 | El sistema debe señalar cuando la ejecución supera un umbral configurable (por ejemplo 80%) o el 100% del presupuesto, con lenguaje informativo y sin culpabilizar |
 | RF-094 | Los presupuestos deben incluirse en reportes y exportaciones, y una revisión de transacción debe actualizar la ejecución afectada |
 
+### Monedas del workspace
+
+| ID | Requisito |
+|---|---|
+| RF-095 | La persona debe poder activar monedas ISO 4217 en su workspace y ver el catálogo activo; el alta valida el código contra la tabla ISO completa y la interfaz sugiere el código más cercano al tipear |
+| RF-096 | La persona debe poder editar el código de una moneda propia solo cuando ninguna cuenta ni transacción la utiliza |
+| RF-097 | La persona debe poder archivar una moneda, salvo que sea la moneda por defecto, esté en uso por cuentas o transacciones, o sea la última activa |
+
 ### Experiencia de uso y navegación
 
 | ID | Requisito |
@@ -352,6 +361,9 @@ Si la PWA está sin conexión, el registro confirmado por la persona entra en la
 | RN-021 | El saldo inicial de una cuenta es un dato declarado por la persona; nunca es negativo |
 | RN-022 | Una transferencia solo existe entre dos cuentas distintas del mismo workspace y compartiendo exactamente la misma moneda del importe |
 | RN-023 | Una transferencia no afecta ingresos, gastos ni el saldo total del workspace; solo altera el saldo de la cuenta de origen y de la cuenta de destino |
+| RN-024 | Una moneda no puede archivarse si es la moneda por defecto del workspace, si alguna cuenta o transacción la usa, o si es la última moneda activa |
+| RN-025 | Una cuenta solo puede crearse con una moneda activa del workspace |
+| RN-026 | Solo se admiten códigos ISO 4217 válidos; una moneda cuyo código no existe en la tabla ISO no puede crearse |
 
 ## Requisitos no funcionales
 
@@ -409,6 +421,7 @@ Si la PWA está sin conexión, el registro confirmado por la persona entra en la
 | CA-023 | Un presupuesto por categoría muestra ejecución confirmada, alerta al superar el umbral configurado y admite ajuste versionado sin reescribir el histórico |
 | CA-024 | La autenticación admite usuario/contraseña, al menos un proveedor social (Google o Facebook) y passkey, resolviendo siempre el mismo workspace personal |
 | CA-025 | Una transferencia entre dos cuentas de la misma moneda se registra una sola vez, descuenta el saldo de origen, aumenta el de destino y no altera los ingresos ni los gastos del balance general de la moneda |
+| CA-026 | Una moneda en uso por una cuenta o transacción, la moneda por defecto o la última activa no puede archivarse; una cuenta nueva solo admite monedas activas del workspace y un código inexistente en la tabla ISO se rechaza al crearla |
 
 ## Datos mínimos para una recomendación
 
