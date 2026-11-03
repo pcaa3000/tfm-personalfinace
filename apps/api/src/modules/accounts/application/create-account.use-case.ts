@@ -1,5 +1,6 @@
 import {
   DomainError,
+  Money,
   WorkspaceId,
   err,
   ok,
@@ -15,6 +16,7 @@ export interface CreateAccountCommand {
   readonly name: string;
   readonly currency: string;
   readonly kind: string;
+  readonly initialBalance?: string;
 }
 
 export class CreateAccountUseCase {
@@ -33,12 +35,21 @@ export class CreateAccountUseCase {
         ),
       );
     }
+    let initialBalance: Money | undefined;
+    if (command.initialBalance !== undefined) {
+      const money = Money.create(command.initialBalance, command.currency);
+      if (!money.ok) {
+        return money;
+      }
+      initialBalance = money.value;
+    }
     const account = Account.create({
       id: this.ids.next(),
       workspaceId: command.workspaceId,
       name: command.name,
       currency: command.currency,
       kind: command.kind,
+      ...(initialBalance !== undefined ? { initialBalance } : {}),
     });
     if (!account.ok) {
       return account;

@@ -6,6 +6,8 @@ export interface AccountView {
   readonly name: string;
   readonly currency: string;
   readonly kind: string;
+  readonly initialBalance: string;
+  readonly archivedAt: string | null;
 }
 
 export function toAccountView(account: Account): AccountView {
@@ -15,5 +17,7 @@ export function toAccountView(account: Account): AccountView {
     name: account.name,
     currency: account.currency.code,
     kind: account.kind,
+    initialBalance: account.initialBalance.toDecimalString(),
+    archivedAt: account.archivedAt?.toISOString() ?? null,
   };
 }

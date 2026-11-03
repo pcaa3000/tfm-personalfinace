@@ -9,6 +9,11 @@ export interface AccountRepositoryPort {
     workspaceId: WorkspaceId,
     accountId: string,
   ): Promise<string | null>;
+  /** Active account or null when absent/archived/other workspace. */
+  findById(
+    workspaceId: WorkspaceId,
+    accountId: string,
+  ): Promise<Account | null>;
 }
 
 export const ACCOUNT_REPOSITORY = Symbol("ACCOUNT_REPOSITORY");

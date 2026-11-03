@@ -44,6 +44,7 @@ export interface AccountView {
   name: string;
   currency: string;
   kind: string;
+  initialBalance: string;
 }
 
 export interface RevisionView {

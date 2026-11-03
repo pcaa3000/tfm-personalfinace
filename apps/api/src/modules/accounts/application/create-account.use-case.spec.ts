@@ -16,6 +16,9 @@ class InMemoryAccounts implements AccountRepositoryPort {
   async accountCurrency() {
     return null;
   }
+  async findById(_workspaceId: unknown, accountId: string) {
+    return this.saved.find((a) => a.id === accountId) ?? null;
+  }
 }
 
 const ids = { next: () => "acc-generated" };
@@ -72,5 +75,35 @@ describe("CreateAccountUseCase", () => {
       expect(result.error.code).toBe("ACCOUNT_INVALID_KIND");
     }
     expect(repo.saved).toHaveLength(0);
+  });
+});
+
+describe("CreateAccountUseCase initialBalance", () => {
+  it("persists a declared initial balance", async () => {
+    const repo = new InMemoryAccounts();
+    const useCase = new CreateAccountUseCase(repo, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      initialBalance: "1500.50",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.initialBalance).toBe("1500.50");
+    }
+  });
+
+  it("rejects a negative initial balance", async () => {
+    const repo = new InMemoryAccounts();
+    const useCase = new CreateAccountUseCase(repo, ids);
+    const result = await useCase.execute({
+      ...command,
+      initialBalance: "-5.00",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("ACCOUNT_NEGATIVE_INITIAL_BALANCE");
+    }
   });
 });

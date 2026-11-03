@@ -14,8 +14,10 @@ import { WorkspaceController } from "../modules/identity-workspace/infrastructur
 import { DevHeaderCallerResolver } from "../modules/identity-workspace/infrastructure/http/dev-header-caller.resolver.js";
 import { JwtCallerResolver } from "../modules/identity-workspace/infrastructure/http/jwt-caller.resolver.js";
 import { ACCOUNT_REPOSITORY } from "../modules/accounts/index.js";
+import { ArchiveAccountUseCase } from "../modules/accounts/application/archive-account.use-case.js";
 import { CreateAccountUseCase } from "../modules/accounts/application/create-account.use-case.js";
 import { ListAccountsUseCase } from "../modules/accounts/application/list-accounts.use-case.js";
+import { ReviseAccountUseCase } from "../modules/accounts/application/revise-account.use-case.js";
 import { AccountsController } from "../modules/accounts/infrastructure/http/accounts.controller.js";
 import { PrismaAccountRepository } from "../modules/accounts/infrastructure/prisma-account.repository.js";
 import { CATEGORY_CATALOG, CATEGORY_REPOSITORY } from "../modules/categorization/index.js";
@@ -170,6 +172,18 @@ function requiredEnv(name: string): string {
       provide: ListAccountsUseCase,
       useFactory: (accounts: PrismaAccountRepository) =>
         new ListAccountsUseCase(accounts),
+      inject: [ACCOUNT_REPOSITORY],
+    },
+    {
+      provide: ReviseAccountUseCase,
+      useFactory: (accounts: PrismaAccountRepository) =>
+        new ReviseAccountUseCase(accounts),
+      inject: [ACCOUNT_REPOSITORY],
+    },
+    {
+      provide: ArchiveAccountUseCase,
+      useFactory: (accounts: PrismaAccountRepository) =>
+        new ArchiveAccountUseCase(accounts),
       inject: [ACCOUNT_REPOSITORY],
     },
     {

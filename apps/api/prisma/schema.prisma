@@ -42,7 +42,8 @@ model Account {
   workspaceId String
   name        String // e.g. "BCP soles", "Interbank dólares"
   currency    String // ISO 4217 — one account holds one currency
-  kind        String    @default("bank") // bank | cash | wallet
+  kind        String    @default("bank") // cash | bank | savings | credit_card | virtual | investment | loan | insurance
+  initialBalanceMinor BigInt @default(0)
   archivedAt  DateTime?
   createdAt   DateTime  @default(now())
   transactions Transaction[]

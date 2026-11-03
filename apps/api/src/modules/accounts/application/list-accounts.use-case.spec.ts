@@ -25,6 +25,7 @@ describe("ListAccountsUseCase", () => {
       list: async (workspaceId) =>
         workspaceId.equals(ws) ? [account.value] : [],
       accountCurrency: async () => null,
+      findById: async () => null,
     };
     const useCase = new ListAccountsUseCase(repo);
 
@@ -37,6 +38,8 @@ describe("ListAccountsUseCase", () => {
         name: "BCP soles",
         currency: "PEN",
         kind: "bank",
+        initialBalance: "0.00",
+        archivedAt: null,
       },
     ]);
   });
