@@ -312,7 +312,7 @@ Si la PWA está sin conexión, el registro confirmado por la persona entra en la
 
 | ID | Requisito |
 |---|---|
-| RF-095 | La persona debe poder activar monedas ISO 4217 en su workspace y ver el catálogo activo; el alta valida el código contra la tabla ISO completa y la interfaz sugiere el código más cercano al tipear |
+| RF-095 | La persona debe poder activar monedas ISO 4217 en su workspace y ver el catálogo activo; el alta valida el código contra la tabla ISO completa expuesta por la API (código + nombre localizable) y la interfaz permite buscar por código o nombre básico de la moneda y agregar la elegida |
 | RF-096 | La persona debe poder editar el código de una moneda propia solo cuando ninguna cuenta ni transacción la utiliza |
 | RF-097 | La persona debe poder archivar una moneda, salvo que sea la moneda por defecto, esté en uso por cuentas o transacciones, o sea la última activa |
 
