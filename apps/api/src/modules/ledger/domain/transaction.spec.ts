@@ -46,6 +46,8 @@ describe("Transaction.recordManual", () => {
     expect(trx.amount.toDecimalString()).toBe("25.50");
     expect(trx.amount.currency.code).toBe("EUR");
     expect(trx.concept).toBe("Grocery run");
+    expect(trx.accountId).toBe("acc-1");
+    expect(trx.destinationAccountId).toBeNull();
     expect(trx.category).toEqual({ kind: "categorized", categoryId: "cat-food" });
     expect(trx.origin).toBe("manual");
     expect(trx.workspaceId.equals(workspaceId.value)).toBe(true);
@@ -93,6 +95,64 @@ describe("Transaction.recordManual", () => {
       expect(result.value.category).toEqual({ kind: "uncategorized" });
     }
   });
+
+  it("creates a transfer with destinationAccountId and forces uncategorized (INV-TFR-01, INV-TFR-04)", () => {
+    const result = Transaction.recordManual({
+      ...baseInput,
+      type: "transfer",
+      accountId: "acc-1",
+      destinationAccountId: "acc-2",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.type).toBe("transfer");
+    expect(result.value.accountId).toBe("acc-1");
+    expect(result.value.destinationAccountId).toBe("acc-2");
+    expect(result.value.category).toEqual(UNCATEGORIZED);
+  });
+
+  it("rejects a transfer without destinationAccountId (INV-TFR-01)", () => {
+    const result = Transaction.recordManual({
+      ...baseInput,
+      type: "transfer",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_DESTINATION_REQUIRED");
+    }
+  });
+
+  it("rejects a transfer when destinationAccountId equals source accountId (INV-TFR-02)", () => {
+    const result = Transaction.recordManual({
+      ...baseInput,
+      type: "transfer",
+      accountId: "acc-1",
+      destinationAccountId: "acc-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_SAME_ACCOUNT");
+    }
+  });
+
+  it.each(["income", "expense"] as const)(
+    "rejects destinationAccountId when type is %s",
+    (type) => {
+      const result = Transaction.recordManual({
+        ...baseInput,
+        type,
+        destinationAccountId: "acc-2",
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("TRANSFER_DESTINATION_FORBIDDEN");
+      }
+    },
+  );
 });
 
 describe("Transaction.revise", () => {
@@ -184,6 +244,140 @@ describe("Transaction.revise", () => {
       { field: "accountId", previous: "none", next: "acc-1" },
     ]);
     expect(legacy.accountId).toBe("acc-1");
+  });
+
+  it("revises an expense to transfer with destinationAccountId and clears category (INV-TFR-01, INV-TRX-03)", () => {
+    const created = Transaction.recordManual(baseInput);
+    if (!created.ok) throw new Error("setup failed");
+    const trx = created.value;
+
+    const result = trx.revise({
+      type: "transfer",
+      destinationAccountId: "acc-2",
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(trx.type).toBe("transfer");
+    expect(trx.destinationAccountId).toBe("acc-2");
+    expect(trx.category).toEqual(UNCATEGORIZED);
+    expect(result.value.changes).toEqual(
+      expect.arrayContaining([
+        { field: "type", previous: "expense", next: "transfer" },
+        { field: "destinationAccountId", previous: "none", next: "acc-2" },
+        { field: "category", previous: "categorized:cat-food", next: "uncategorized" },
+      ]),
+    );
+  });
+
+  it("rejects revising type to transfer without destinationAccountId (INV-TFR-01)", () => {
+    const created = Transaction.recordManual(baseInput);
+    if (!created.ok) throw new Error("setup failed");
+
+    const result = created.value.revise({
+      type: "transfer",
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_DESTINATION_REQUIRED");
+    }
+  });
+
+  it("rejects revising to transfer when destination equals source account (INV-TFR-02)", () => {
+    const created = Transaction.recordManual(baseInput);
+    if (!created.ok) throw new Error("setup failed");
+
+    const result = created.value.revise({
+      type: "transfer",
+      destinationAccountId: "acc-1",
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_SAME_ACCOUNT");
+    }
+  });
+
+  it("rejects setting destinationAccountId on an income or expense revision", () => {
+    const created = Transaction.recordManual({ ...baseInput, type: "income" });
+    if (!created.ok) throw new Error("setup failed");
+
+    const result = created.value.revise({
+      destinationAccountId: "acc-2",
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_DESTINATION_FORBIDDEN");
+    }
+  });
+
+  it("revises transfer fields and re-validates destination rules when revising from transfer", () => {
+    const created = Transaction.recordManual({
+      ...baseInput,
+      type: "transfer",
+      accountId: "acc-1",
+      destinationAccountId: "acc-2",
+    });
+    if (!created.ok) throw new Error("setup failed");
+    const trx = created.value;
+
+    const sameAccount = trx.revise({
+      destinationAccountId: "acc-1",
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+    expect(sameAccount.ok).toBe(false);
+    if (!sameAccount.ok) {
+      expect(sameAccount.error.code).toBe("TRANSFER_SAME_ACCOUNT");
+    }
+
+    const changeDest = trx.revise({
+      destinationAccountId: "acc-3",
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+    expect(changeDest.ok).toBe(true);
+    if (changeDest.ok) {
+      expect(changeDest.value.changes).toEqual([
+        { field: "destinationAccountId", previous: "acc-2", next: "acc-3" },
+      ]);
+    }
+
+    const toExpenseWithoutClearing = trx.revise({
+      type: "expense",
+      revisedAt: new Date("2026-10-28T10:00:00Z"),
+      revisedBy: "subject-1",
+    });
+    expect(toExpenseWithoutClearing.ok).toBe(false);
+    if (!toExpenseWithoutClearing.ok) {
+      expect(toExpenseWithoutClearing.error.code).toBe("TRANSFER_DESTINATION_FORBIDDEN");
+    }
+
+    const toExpenseCleared = trx.revise({
+      type: "expense",
+      destinationAccountId: null,
+      revisedAt: new Date("2026-10-28T10:00:00Z"),
+      revisedBy: "subject-1",
+    });
+    expect(toExpenseCleared.ok).toBe(true);
+    if (toExpenseCleared.ok) {
+      expect(trx.type).toBe("expense");
+      expect(trx.destinationAccountId).toBeNull();
+      expect(toExpenseCleared.value.changes).toEqual([
+        { field: "type", previous: "transfer", next: "expense" },
+        { field: "destinationAccountId", previous: "acc-3", next: "none" },
+      ]);
+    }
   });
 });
 

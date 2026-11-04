@@ -32,7 +32,11 @@ class InMemoryTransactions implements TransactionRepositoryPort {
 }
 
 const accounts: AccountValidationPort = {
-  accountCurrency: async (_ws, id) => (id === "acc-1" ? "EUR" : null),
+  accountCurrency: async (_ws, id) => {
+    if (id === "acc-1" || id === "acc-2") return "EUR";
+    if (id === "acc-usd") return "USD";
+    return null;
+  },
 };
 
 const categories: CategoryValidationPort = {
@@ -150,5 +154,117 @@ describe("RecordManualTransactionUseCase", () => {
     if (result.ok) {
       expect(result.value.categoryId).toBeNull();
     }
+  });
+
+  it("records a transfer between two accounts of the same currency (INV-TFR-01..04)", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      type: "transfer",
+      accountId: "acc-1",
+      destinationAccountId: "acc-2",
+      categoryId: null,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.type).toBe("transfer");
+    expect(result.value.accountId).toBe("acc-1");
+    expect(result.value.destinationAccountId).toBe("acc-2");
+    expect(result.value.categoryId).toBeNull();
+    expect(repo.saved).toHaveLength(1);
+  });
+
+  it("rejects a transfer without destinationAccountId (INV-TFR-01)", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      type: "transfer",
+      categoryId: null,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_DESTINATION_REQUIRED");
+    }
+    expect(repo.saved).toHaveLength(0);
+  });
+
+  it("rejects a transfer where destination equals source account (INV-TFR-02)", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      type: "transfer",
+      accountId: "acc-1",
+      destinationAccountId: "acc-1",
+      categoryId: null,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_SAME_ACCOUNT");
+    }
+    expect(repo.saved).toHaveLength(0);
+  });
+
+  it("rejects destinationAccountId on income or expense", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      type: "income",
+      destinationAccountId: "acc-2",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_DESTINATION_FORBIDDEN");
+    }
+    expect(repo.saved).toHaveLength(0);
+  });
+
+  it("rejects a transfer when destinationAccountId does not exist in workspace (INV-TFR-01)", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      type: "transfer",
+      accountId: "acc-1",
+      destinationAccountId: "acc-missing",
+      categoryId: null,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("ACCOUNT_NOT_FOUND");
+    }
+    expect(repo.saved).toHaveLength(0);
+  });
+
+  it("rejects a transfer when destinationAccountId currency differs from transaction currency (INV-TFR-03)", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      type: "transfer",
+      accountId: "acc-1",
+      destinationAccountId: "acc-usd",
+      categoryId: null,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("ACCOUNT_CURRENCY_MISMATCH");
+    }
+    expect(repo.saved).toHaveLength(0);
   });
 });

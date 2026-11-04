@@ -47,6 +47,7 @@ model Account {
   archivedAt  DateTime?
   createdAt   DateTime  @default(now())
   transactions Transaction[]
+  incomingTransfers Transaction[] @relation("TransactionDestinationAccount")
 
   @@unique([workspaceId, name])
   @@index([workspaceId])
@@ -59,7 +60,7 @@ model Transaction {
   id             String   @id @default(uuid())
   workspaceId    String
   idempotencyKey String
-  type           String // income | expense
+  type           String // income | expense | transfer
   amountMinor    BigInt
   currency       String // ISO 4217
   businessDate   DateTime @db.Date
@@ -67,6 +68,8 @@ model Transaction {
   concept        String
   accountId      String?
   account        Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  destinationAccountId String?
+  destinationAccount   Account? @relation("TransactionDestinationAccount", fields: [destinationAccountId], references: [id], onDelete: SetNull)
   categoryId     String? // null = explicit "Sin categorizar"
   status         String   @default("confirmed") // confirmed | voided
   origin         String   @default("manual") // manual | ticket | voice

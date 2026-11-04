@@ -1,10 +1,10 @@
 import type { WorkspaceId } from "../../../shared-kernel/index.js";
-import type { Transaction } from "../../domain/transaction.js";
+import type { Transaction, TransactionType } from "../../domain/transaction.js";
 
 export interface TransactionFilter {
   readonly from?: string; // YYYY-MM-DD inclusive
   readonly to?: string; // YYYY-MM-DD inclusive
-  readonly type?: "income" | "expense";
+  readonly type?: TransactionType;
   readonly currency?: string;
   /** "uncategorized" filters the explicit uncategorized state. */
   readonly category?: string;

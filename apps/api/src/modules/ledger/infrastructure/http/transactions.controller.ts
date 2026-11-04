@@ -30,32 +30,34 @@ import { VoidTransactionUseCase } from "../../application/void-transaction.use-c
 import type { TransactionFilter } from "../../application/ports/transaction-repository.port.js";
 
 const createTransactionSchema = z.object({
-  type: z.enum(["income", "expense"]),
+  type: z.enum(["income", "expense", "transfer"]),
   amount: z.string().min(1).max(48),
   currency: z.string().length(3),
   businessDate: z.string().min(10).max(10),
   timezone: z.string().min(1).max(64),
   concept: z.string().min(1).max(500),
   accountId: z.string().min(1),
+  destinationAccountId: z.string().min(1).nullable().optional(),
   categoryId: z.string().nullable().optional(),
   idempotencyKey: z.string().min(8).max(128).optional(),
 });
 
 const reviseTransactionSchema = z.object({
-  type: z.enum(["income", "expense"]).optional(),
+  type: z.enum(["income", "expense", "transfer"]).optional(),
   amount: z.string().min(1).max(48).optional(),
   currency: z.string().length(3).optional(),
   businessDate: z.string().min(10).max(10).optional(),
   timezone: z.string().min(1).max(64).optional(),
   concept: z.string().min(1).max(500).optional(),
   accountId: z.string().min(1).optional(),
+  destinationAccountId: z.string().min(1).nullable().optional(),
   categoryId: z.string().nullable().optional(),
 });
 
 const listTransactionsSchema = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
-  type: z.enum(["income", "expense"]).optional(),
+  type: z.enum(["income", "expense", "transfer"]).optional(),
   currency: z.string().length(3).optional(),
   category: z.string().optional(),
   q: z.string().min(1).max(100).optional(),
@@ -142,6 +144,7 @@ export class TransactionsController {
       timezone: parsed.data.timezone,
       concept: parsed.data.concept,
       accountId: parsed.data.accountId,
+      destinationAccountId: parsed.data.destinationAccountId ?? null,
       categoryId: parsed.data.categoryId ?? null,
       actor: caller.subject,
     });
@@ -219,6 +222,9 @@ export class TransactionsController {
         : {}),
       ...(parsed.data.accountId !== undefined
         ? { accountId: parsed.data.accountId }
+        : {}),
+      ...(parsed.data.destinationAccountId !== undefined
+        ? { destinationAccountId: parsed.data.destinationAccountId }
         : {}),
       ...(parsed.data.categoryId !== undefined
         ? { categoryId: parsed.data.categoryId }

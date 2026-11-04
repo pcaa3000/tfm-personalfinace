@@ -7,7 +7,12 @@ import {
   ok,
   type Result,
 } from "../../shared-kernel/index.js";
-import { Transaction, UNCATEGORIZED, categorized } from "../domain/transaction.js";
+import {
+  Transaction,
+  UNCATEGORIZED,
+  categorized,
+  type TransactionType,
+} from "../domain/transaction.js";
 import type { AccountValidationPort } from "./ports/account-validation.port.js";
 import type { CategoryValidationPort } from "./ports/category-validation.port.js";
 import type { Clock } from "./ports/clock.port.js";
@@ -18,7 +23,7 @@ import { toTransactionView, type TransactionView } from "./transaction.view.js";
 export interface RecordManualTransactionCommand {
   readonly workspaceId: WorkspaceId;
   readonly idempotencyKey: string;
-  readonly type: "income" | "expense";
+  readonly type: TransactionType;
   readonly amount: string;
   readonly currency: string;
   readonly businessDate: string;
@@ -26,6 +31,8 @@ export interface RecordManualTransactionCommand {
   readonly concept: string;
   /** Account holding the money; must exist and share the amount's currency. */
   readonly accountId: string;
+  /** Destination account for transfers; required on transfer, forbidden on income/expense. */
+  readonly destinationAccountId?: string | null;
   /** null = explicit uncategorized choice. */
   readonly categoryId: string | null;
   readonly actor: string;
@@ -80,7 +87,59 @@ export class RecordManualTransactionUseCase {
         ),
       );
     }
+
+    const destinationAccountId = command.destinationAccountId ?? null;
+    if (command.type === "transfer") {
+      if (
+        destinationAccountId === null ||
+        destinationAccountId.trim().length === 0
+      ) {
+        return err(
+          new DomainError(
+            "TRANSFER_DESTINATION_REQUIRED",
+            "A transfer requires a destination account (INV-TFR-01)",
+          ),
+        );
+      }
+      if (destinationAccountId === command.accountId) {
+        return err(
+          new DomainError(
+            "TRANSFER_SAME_ACCOUNT",
+            "Transfer source and destination accounts must differ (INV-TFR-02)",
+          ),
+        );
+      }
+      const destinationCurrency = await this.accounts.accountCurrency(
+        command.workspaceId,
+        destinationAccountId,
+      );
+      if (destinationCurrency === null) {
+        return err(
+          new DomainError(
+            "ACCOUNT_NOT_FOUND",
+            `Destination account does not exist in this workspace: ${destinationAccountId}`,
+          ),
+        );
+      }
+      if (destinationCurrency !== money.value.currency.code) {
+        return err(
+          new DomainError(
+            "ACCOUNT_CURRENCY_MISMATCH",
+            `Transaction currency ${money.value.currency.code} does not match destination account currency ${destinationCurrency}`,
+          ),
+        );
+      }
+    } else if (destinationAccountId !== null) {
+      return err(
+        new DomainError(
+          "TRANSFER_DESTINATION_FORBIDDEN",
+          "Only transfer transactions may specify a destination account",
+        ),
+      );
+    }
+
     if (
+      command.type !== "transfer" &&
       command.categoryId !== null &&
       !(await this.categories.existsForWorkspace(command.workspaceId, command.categoryId))
     ) {
@@ -101,8 +160,9 @@ export class RecordManualTransactionUseCase {
       businessDate: businessDate.value,
       concept: command.concept,
       accountId: command.accountId,
+      destinationAccountId,
       category:
-        command.categoryId === null
+        command.type === "transfer" || command.categoryId === null
           ? UNCATEGORIZED
           : categorized(command.categoryId),
       confirmedAt: this.clock.now(),

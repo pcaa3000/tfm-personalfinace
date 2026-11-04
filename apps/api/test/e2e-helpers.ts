@@ -33,6 +33,7 @@ export interface TxView {
   currency: string;
   concept: string;
   accountId: string | null;
+  destinationAccountId: string | null;
   categoryId: string | null;
   status: string;
   revisionCount: number;

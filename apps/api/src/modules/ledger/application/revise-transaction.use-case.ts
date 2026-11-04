@@ -11,6 +11,7 @@ import {
   UNCATEGORIZED,
   categorized,
   type CategoryAssignment,
+  type TransactionType,
 } from "../domain/transaction.js";
 import type { AccountValidationPort } from "./ports/account-validation.port.js";
 import type { CategoryValidationPort } from "./ports/category-validation.port.js";
@@ -26,13 +27,14 @@ import { toTransactionView, type TransactionView } from "./transaction.view.js";
 export interface ReviseTransactionCommand {
   readonly workspaceId: WorkspaceId;
   readonly transactionId: string;
-  readonly type?: "income" | "expense";
+  readonly type?: TransactionType;
   readonly amount?: string;
   readonly currency?: string;
   readonly businessDate?: string;
   readonly timezone?: string;
   readonly concept?: string;
   readonly accountId?: string;
+  readonly destinationAccountId?: string | null;
   readonly categoryId?: string | null;
   readonly actor: string;
 }
@@ -73,14 +75,30 @@ export class ReviseTransactionUseCase {
       amount = created.value;
     }
 
+    const effectiveType = command.type ?? transaction.type;
+    const effectiveCurrency = (amount ?? transaction.amount).currency.code;
     const effectiveAccountId = command.accountId ?? transaction.accountId;
+    const effectiveDestinationAccountId =
+      command.destinationAccountId !== undefined
+        ? command.destinationAccountId
+        : transaction.destinationAccountId;
+
     if (
       command.accountId !== undefined ||
-      (command.currency !== undefined && effectiveAccountId !== null)
+      (command.currency !== undefined && effectiveAccountId !== null) ||
+      (effectiveType === "transfer" && command.type !== undefined)
     ) {
+      if (effectiveAccountId === null) {
+        return err(
+          new DomainError(
+            "ACCOUNT_NOT_FOUND",
+            "A transfer requires an existing source account (INV-TFR-01)",
+          ),
+        );
+      }
       const accountCurrency = await this.accounts.accountCurrency(
         command.workspaceId,
-        effectiveAccountId!,
+        effectiveAccountId,
       );
       if (accountCurrency === null) {
         return err(
@@ -90,7 +108,6 @@ export class ReviseTransactionUseCase {
           ),
         );
       }
-      const effectiveCurrency = (amount ?? transaction.amount).currency.code;
       if (accountCurrency !== effectiveCurrency) {
         return err(
           new DomainError(
@@ -99,6 +116,61 @@ export class ReviseTransactionUseCase {
           ),
         );
       }
+    }
+
+    if (effectiveType === "transfer") {
+      if (
+        effectiveDestinationAccountId === null ||
+        effectiveDestinationAccountId.trim().length === 0
+      ) {
+        return err(
+          new DomainError(
+            "TRANSFER_DESTINATION_REQUIRED",
+            "A transfer requires a destination account (INV-TFR-01)",
+          ),
+        );
+      }
+      if (effectiveDestinationAccountId === effectiveAccountId) {
+        return err(
+          new DomainError(
+            "TRANSFER_SAME_ACCOUNT",
+            "Transfer source and destination accounts must differ (INV-TFR-02)",
+          ),
+        );
+      }
+      if (
+        command.destinationAccountId !== undefined ||
+        command.currency !== undefined ||
+        command.type !== undefined
+      ) {
+        const destinationCurrency = await this.accounts.accountCurrency(
+          command.workspaceId,
+          effectiveDestinationAccountId,
+        );
+        if (destinationCurrency === null) {
+          return err(
+            new DomainError(
+              "ACCOUNT_NOT_FOUND",
+              `Destination account does not exist in this workspace: ${effectiveDestinationAccountId}`,
+            ),
+          );
+        }
+        if (destinationCurrency !== effectiveCurrency) {
+          return err(
+            new DomainError(
+              "ACCOUNT_CURRENCY_MISMATCH",
+              `Transaction currency ${effectiveCurrency} does not match destination account currency ${destinationCurrency}`,
+            ),
+          );
+        }
+      }
+    } else if (effectiveDestinationAccountId !== null) {
+      return err(
+        new DomainError(
+          "TRANSFER_DESTINATION_FORBIDDEN",
+          "Only transfer transactions may specify a destination account",
+        ),
+      );
     }
 
     let businessDate: BusinessDate | undefined;
@@ -117,7 +189,7 @@ export class ReviseTransactionUseCase {
     }
 
     let category: CategoryAssignment | undefined;
-    if (command.categoryId !== undefined) {
+    if (command.categoryId !== undefined && effectiveType !== "transfer") {
       if (command.categoryId === null) {
         category = UNCATEGORIZED;
       } else {
@@ -144,6 +216,9 @@ export class ReviseTransactionUseCase {
       ...(businessDate !== undefined ? { businessDate } : {}),
       ...(command.concept !== undefined ? { concept: command.concept } : {}),
       ...(command.accountId !== undefined ? { accountId: command.accountId } : {}),
+      ...(command.destinationAccountId !== undefined
+        ? { destinationAccountId: command.destinationAccountId }
+        : {}),
       ...(category !== undefined ? { category } : {}),
       revisedAt: this.clock.now(),
       revisedBy: command.actor,

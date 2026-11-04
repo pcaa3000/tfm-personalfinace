@@ -40,6 +40,7 @@ const BOB = { "x-dev-user": "e2e-dev-bob" };
 let app: INestApplication;
 let categoryId: string;
 let accountId: string;
+let secondPenAccountId: string;
 let eurAccountId: string;
 let bobAccountId: string;
 
@@ -93,6 +94,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await cleanE2eData(MARKER);
   accountId = await createAccount(ALICE, "e2e BCP soles", "PEN");
+  secondPenAccountId = await createAccount(ALICE, "e2e BBVA soles", "PEN");
   eurAccountId = await createAccount(ALICE, "e2e Cuenta euros", "EUR");
   bobAccountId = await createAccount(BOB, "e2e Interbank dolares", "PEN");
 });
@@ -129,11 +131,103 @@ describe("POST /api/v1/transactions", () => {
     const res = await api<ApiError>("/api/v1/transactions", {
       method: "POST",
       headers: ALICE,
-      body: txPayload({ type: "transfer" }),
+      body: txPayload({ type: "invalid" }),
     });
     expect(res.status).toBe(400);
     expect(res.body.code).toBe("INVALID_BODY");
   });
+
+  it("creates a transfer between two accounts of the same currency (INV-TFR-01..04)", async () => {
+    const res = await createTx(ALICE, {
+      type: "transfer",
+      accountId,
+      destinationAccountId: secondPenAccountId,
+      amount: "50.00",
+      concept: "e2e ahorro",
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.type).toBe("transfer");
+    expect(res.body.accountId).toBe(accountId);
+    expect(res.body.destinationAccountId).toBe(secondPenAccountId);
+    expect(res.body.categoryId).toBeNull();
+
+    const transfers = await api<TxView[]>("/api/v1/transactions?type=transfer", {
+      headers: ALICE,
+    });
+    expect(transfers.status).toBe(200);
+    expect(transfers.body).toHaveLength(1);
+    expect(transfers.body[0]?.id).toBe(res.body.id);
+    expect(transfers.body[0]?.destinationAccountId).toBe(secondPenAccountId);
+  });
+
+  it("rejects a transfer without destinationAccountId (INV-TFR-01)", async () => {
+    const res = await api<ApiError>("/api/v1/transactions", {
+      method: "POST",
+      headers: ALICE,
+      body: txPayload({ type: "transfer" }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("TRANSFER_DESTINATION_REQUIRED");
+  });
+
+  it("rejects a transfer where destination equals source account (INV-TFR-02)", async () => {
+    const res = await api<ApiError>("/api/v1/transactions", {
+      method: "POST",
+      headers: ALICE,
+      body: txPayload({
+        type: "transfer",
+        accountId,
+        destinationAccountId: accountId,
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("TRANSFER_SAME_ACCOUNT");
+  });
+
+  it("rejects a transfer when destination account has a different currency (INV-TFR-03)", async () => {
+    const res = await api<ApiError>("/api/v1/transactions", {
+      method: "POST",
+      headers: ALICE,
+      body: txPayload({
+        type: "transfer",
+        accountId,
+        destinationAccountId: eurAccountId,
+        currency: "PEN",
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("ACCOUNT_CURRENCY_MISMATCH");
+  });
+
+  it("rejects a transfer when destination account belongs to another workspace (INV-TFR-01)", async () => {
+    const res = await api<ApiError>("/api/v1/transactions", {
+      method: "POST",
+      headers: ALICE,
+      body: txPayload({
+        type: "transfer",
+        accountId,
+        destinationAccountId: bobAccountId,
+      }),
+    });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe("ACCOUNT_NOT_FOUND");
+  });
+
+  it.each(["income", "expense"] as const)(
+    "rejects destinationAccountId on %s creation",
+    async (type) => {
+      const res = await api<ApiError>("/api/v1/transactions", {
+        method: "POST",
+        headers: ALICE,
+        body: txPayload({
+          type,
+          destinationAccountId: secondPenAccountId,
+        }),
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("TRANSFER_DESTINATION_FORBIDDEN");
+    },
+  );
 
   it("replays the same idempotencyKey returning the same transaction", async () => {
     const payload = txPayload();
@@ -235,7 +329,7 @@ describe("GET /api/v1/transactions", () => {
   });
 
   it("rejects invalid filters", async () => {
-    const res = await api<ApiError>("/api/v1/transactions?type=transfer", {
+    const res = await api<ApiError>("/api/v1/transactions?type=invalid", {
       headers: ALICE,
     });
     expect(res.status).toBe(400);
@@ -385,6 +479,105 @@ describe("PATCH /api/v1/transactions/:id", () => {
         { field: "currency", previous: "PEN", next: "EUR" },
       ]),
     );
+  });
+
+  it("revises an expense to transfer and audits destinationAccountId (INV-TFR-01, INV-TRX-03)", async () => {
+    const created = await createTx(ALICE, { categoryId });
+    const res = await api<TxView>(`/api/v1/transactions/${created.body.id}`, {
+      method: "PATCH",
+      headers: ALICE,
+      body: {
+        type: "transfer",
+        destinationAccountId: secondPenAccountId,
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.type).toBe("transfer");
+    expect(res.body.destinationAccountId).toBe(secondPenAccountId);
+    expect(res.body.categoryId).toBeNull();
+
+    const revisions = await api<RevisionView[]>(
+      `/api/v1/transactions/${created.body.id}/revisions`,
+      { headers: ALICE },
+    );
+    expect(revisions.status).toBe(200);
+    expect(revisions.body[0]?.changes).toEqual(
+      expect.arrayContaining([
+        { field: "type", previous: "expense", next: "transfer" },
+        {
+          field: "destinationAccountId",
+          previous: "none",
+          next: secondPenAccountId,
+        },
+      ]),
+    );
+  });
+
+  it("revises transfer fields and enforces destination invariants on PATCH", async () => {
+    const created = await createTx(ALICE, {
+      type: "transfer",
+      accountId,
+      destinationAccountId: secondPenAccountId,
+      amount: "40.00",
+    });
+    expect(created.status).toBe(201);
+
+    const updated = await api<TxView>(
+      `/api/v1/transactions/${created.body.id}`,
+      {
+        method: "PATCH",
+        headers: ALICE,
+        body: { concept: "e2e transferencia editada", amount: "45.00" },
+      },
+    );
+    expect(updated.status).toBe(200);
+    expect(updated.body.concept).toBe("e2e transferencia editada");
+    expect(updated.body.amount).toBe("45.00");
+    expect(updated.body.destinationAccountId).toBe(secondPenAccountId);
+
+    const sameAcc = await api<ApiError>(
+      `/api/v1/transactions/${created.body.id}`,
+      {
+        method: "PATCH",
+        headers: ALICE,
+        body: { destinationAccountId: accountId },
+      },
+    );
+    expect(sameAcc.status).toBe(400);
+    expect(sameAcc.body.code).toBe("TRANSFER_SAME_ACCOUNT");
+
+    const wrongCurrency = await api<ApiError>(
+      `/api/v1/transactions/${created.body.id}`,
+      {
+        method: "PATCH",
+        headers: ALICE,
+        body: { destinationAccountId: eurAccountId },
+      },
+    );
+    expect(wrongCurrency.status).toBe(400);
+    expect(wrongCurrency.body.code).toBe("ACCOUNT_CURRENCY_MISMATCH");
+
+    const foreignAcc = await api<ApiError>(
+      `/api/v1/transactions/${created.body.id}`,
+      {
+        method: "PATCH",
+        headers: ALICE,
+        body: { destinationAccountId: bobAccountId },
+      },
+    );
+    expect(foreignAcc.status).toBe(404);
+    expect(foreignAcc.body.code).toBe("ACCOUNT_NOT_FOUND");
+  });
+
+  it("rejects PATCH with destinationAccountId on an income transaction with 400", async () => {
+    const created = await createTx(ALICE, { type: "income" });
+    const res = await api<ApiError>(`/api/v1/transactions/${created.body.id}`, {
+      method: "PATCH",
+      headers: ALICE,
+      body: { destinationAccountId: secondPenAccountId },
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe("TRANSFER_DESTINATION_FORBIDDEN");
   });
 });
 

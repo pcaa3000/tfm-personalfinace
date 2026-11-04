@@ -95,6 +95,7 @@ describe("ListTransactionsUseCase", () => {
         timezone: "UTC",
         concept: "Grocery run",
         accountId: "acc-1",
+        destinationAccountId: null,
         categoryId: "cat-food",
         status: "confirmed",
         origin: "manual",

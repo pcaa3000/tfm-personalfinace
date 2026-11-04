@@ -1,16 +1,17 @@
-import type { Transaction } from "../domain/transaction.js";
+import type { Transaction, TransactionType } from "../domain/transaction.js";
 
 /** Flat, serializable read model returned by ledger use cases. */
 export interface TransactionView {
   readonly id: string;
   readonly workspaceId: string;
-  readonly type: "income" | "expense";
+  readonly type: TransactionType;
   readonly amount: string; // decimal string, never a float
   readonly currency: string;
   readonly businessDate: string; // YYYY-MM-DD
   readonly timezone: string;
   readonly concept: string;
   readonly accountId: string | null; // null = legacy pre-accounts row
+  readonly destinationAccountId: string | null; // non-null only for transfers
   readonly categoryId: string | null; // null = uncategorized
   readonly status: "confirmed" | "voided";
   readonly origin: "manual" | "ticket" | "voice";
@@ -29,6 +30,7 @@ export function toTransactionView(trx: Transaction): TransactionView {
     timezone: trx.businessDate.timezone,
     concept: trx.concept,
     accountId: trx.accountId,
+    destinationAccountId: trx.destinationAccountId,
     categoryId:
       trx.category.kind === "categorized" ? trx.category.categoryId : null,
     status: trx.status,

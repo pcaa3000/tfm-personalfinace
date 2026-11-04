@@ -9,7 +9,7 @@ import {
 } from "../../shared-kernel/index.js";
 import { TransactionRevision, type FieldChange } from "./transaction-revision.js";
 
-export type TransactionType = "income" | "expense";
+export type TransactionType = "income" | "expense" | "transfer";
 export type TransactionStatus = "confirmed" | "voided";
 export type TransactionOrigin = "manual" | "ticket" | "voice";
 
@@ -41,9 +41,11 @@ export interface RecordManualInput {
   readonly amount: Money;
   readonly businessDate: BusinessDate;
   readonly concept: string;
-  /** Account holding the money; its currency must match the amount's. */
+  /** Account holding the money (source account on transfers); its currency must match the amount's. */
   readonly accountId: string;
-  readonly category: CategoryAssignment;
+  /** Destination account for transfers; required on transfer, forbidden on income/expense (INV-TFR-01). */
+  readonly destinationAccountId?: string | null;
+  readonly category?: CategoryAssignment;
   readonly originReference?: string;
   readonly confirmedAt: Date;
   readonly confirmedBy: string;
@@ -60,6 +62,8 @@ export interface TransactionState {
   readonly concept: string;
   /** Null only for rows recorded before accounts existed. */
   readonly accountId: string | null;
+  /** Non-null only for transfer transactions. */
+  readonly destinationAccountId?: string | null;
   readonly category: CategoryAssignment;
   readonly status: TransactionStatus;
   readonly origin: TransactionOrigin;
@@ -75,12 +79,49 @@ export interface ReviseInput {
   readonly businessDate?: BusinessDate;
   readonly concept?: string;
   readonly accountId?: string;
+  readonly destinationAccountId?: string | null;
   readonly category?: CategoryAssignment;
   readonly revisedAt: Date;
   readonly revisedBy: string;
 }
 
 const CONCEPT_MAX_LENGTH = 500;
+
+function validateTransferAccounts(
+  type: TransactionType,
+  accountId: string | null,
+  destinationAccountId: string | null,
+): Result<void, DomainError> {
+  if (type === "transfer") {
+    if (destinationAccountId === null || destinationAccountId.trim().length === 0) {
+      return err(
+        new DomainError(
+          "TRANSFER_DESTINATION_REQUIRED",
+          "A transfer requires a destination account (INV-TFR-01)",
+        ),
+      );
+    }
+    if (accountId !== null && destinationAccountId === accountId) {
+      return err(
+        new DomainError(
+          "TRANSFER_SAME_ACCOUNT",
+          "Transfer source and destination accounts must differ (INV-TFR-02)",
+        ),
+      );
+    }
+    return ok(undefined);
+  }
+
+  if (destinationAccountId !== null) {
+    return err(
+      new DomainError(
+        "TRANSFER_DESTINATION_FORBIDDEN",
+        "Only transfer transactions may specify a destination account",
+      ),
+    );
+  }
+  return ok(undefined);
+}
 
 /**
  * Ledger aggregate root. Created only in `confirmed` state (INV-TRX-01):
@@ -97,6 +138,7 @@ export class Transaction {
     private _businessDate: BusinessDate,
     private _concept: string,
     private _accountId: string | null,
+    private _destinationAccountId: string | null,
     private _category: CategoryAssignment,
     private _status: TransactionStatus,
     readonly origin: TransactionOrigin,
@@ -126,6 +168,21 @@ export class Transaction {
       );
     }
 
+    const destinationAccountId = input.destinationAccountId ?? null;
+    const transferCheck = validateTransferAccounts(
+      input.type,
+      input.accountId,
+      destinationAccountId,
+    );
+    if (!transferCheck.ok) {
+      return transferCheck;
+    }
+
+    const category =
+      input.type === "transfer"
+        ? UNCATEGORIZED
+        : (input.category ?? UNCATEGORIZED);
+
     return ok(
       new Transaction(
         input.id,
@@ -136,7 +193,8 @@ export class Transaction {
         input.businessDate,
         concept,
         input.accountId,
-        input.category,
+        destinationAccountId,
+        category,
         "confirmed",
         "manual",
         input.originReference ?? null,
@@ -158,6 +216,7 @@ export class Transaction {
       state.businessDate,
       state.concept,
       state.accountId,
+      state.destinationAccountId ?? null,
       state.category,
       state.status,
       state.origin,
@@ -182,6 +241,9 @@ export class Transaction {
   }
   get accountId(): string | null {
     return this._accountId;
+  }
+  get destinationAccountId(): string | null {
+    return this._destinationAccountId;
   }
   get category(): CategoryAssignment {
     return this._category;
@@ -221,6 +283,25 @@ export class Transaction {
       );
     }
 
+    const effectiveType = input.type ?? this._type;
+    const effectiveAccountId = input.accountId ?? this._accountId;
+    const effectiveDestinationAccountId =
+      input.destinationAccountId !== undefined
+        ? input.destinationAccountId
+        : this._destinationAccountId;
+
+    const transferCheck = validateTransferAccounts(
+      effectiveType,
+      effectiveAccountId,
+      effectiveDestinationAccountId,
+    );
+    if (!transferCheck.ok) {
+      return transferCheck;
+    }
+
+    const nextCategory =
+      effectiveType === "transfer" ? UNCATEGORIZED : input.category;
+
     const changes: FieldChange[] = [];
     if (input.type !== undefined && input.type !== this._type) {
       changes.push({ field: "type", previous: this._type, next: input.type });
@@ -257,13 +338,23 @@ export class Transaction {
       });
     }
     if (
-      input.category !== undefined &&
-      describeCategory(input.category) !== describeCategory(this._category)
+      input.destinationAccountId !== undefined &&
+      input.destinationAccountId !== this._destinationAccountId
+    ) {
+      changes.push({
+        field: "destinationAccountId",
+        previous: this._destinationAccountId ?? "none",
+        next: input.destinationAccountId ?? "none",
+      });
+    }
+    if (
+      nextCategory !== undefined &&
+      describeCategory(nextCategory) !== describeCategory(this._category)
     ) {
       changes.push({
         field: "category",
         previous: describeCategory(this._category),
-        next: describeCategory(input.category),
+        next: describeCategory(nextCategory),
       });
     }
 
@@ -282,7 +373,10 @@ export class Transaction {
     if (input.businessDate !== undefined) this._businessDate = input.businessDate;
     if (nextConcept !== null) this._concept = nextConcept;
     if (input.accountId !== undefined) this._accountId = input.accountId;
-    if (input.category !== undefined) this._category = input.category;
+    if (input.destinationAccountId !== undefined) {
+      this._destinationAccountId = input.destinationAccountId;
+    }
+    if (nextCategory !== undefined) this._category = nextCategory;
 
     return ok(revision);
   }

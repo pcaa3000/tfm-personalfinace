@@ -41,6 +41,7 @@ export function toDomain(row: TransactionRow): Transaction {
     ),
     concept: row.concept,
     accountId: row.accountId,
+    destinationAccountId: row.destinationAccountId,
     category: row.categoryId ? categorized(row.categoryId) : UNCATEGORIZED,
     status: row.status as TransactionStatus,
     origin: row.origin as TransactionOrigin,

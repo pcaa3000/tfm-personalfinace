@@ -53,6 +53,7 @@ export class PrismaTransactionRepository implements TransactionRepositoryPort {
           timezone: transaction.businessDate.timezone,
           concept: transaction.concept,
           accountId: transaction.accountId,
+          destinationAccountId: transaction.destinationAccountId,
           categoryId:
             transaction.category.kind === "categorized"
               ? transaction.category.categoryId
@@ -71,6 +72,7 @@ export class PrismaTransactionRepository implements TransactionRepositoryPort {
           timezone: transaction.businessDate.timezone,
           concept: transaction.concept,
           accountId: transaction.accountId,
+          destinationAccountId: transaction.destinationAccountId,
           categoryId:
             transaction.category.kind === "categorized"
               ? transaction.category.categoryId

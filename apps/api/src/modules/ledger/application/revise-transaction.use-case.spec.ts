@@ -338,4 +338,118 @@ describe("ReviseTransactionUseCase", () => {
     expect(result.value.currency).toBe("USD");
     expect(result.value.accountId).toBe("acc-usd");
   });
+
+  it("revises an expense to transfer with a valid destinationAccountId (INV-TFR-01..04)", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      type: "transfer",
+      destinationAccountId: "acc-eur-2",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.type).toBe("transfer");
+    expect(result.value.accountId).toBe("acc-1");
+    expect(result.value.destinationAccountId).toBe("acc-eur-2");
+    expect(result.value.categoryId).toBeNull();
+  });
+
+  it("rejects revising to transfer without destinationAccountId (INV-TFR-01)", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      type: "transfer",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_DESTINATION_REQUIRED");
+    }
+  });
+
+  it("rejects revising to transfer when destination equals source account (INV-TFR-02)", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      type: "transfer",
+      destinationAccountId: "acc-1",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_SAME_ACCOUNT");
+    }
+  });
+
+  it("rejects revising to transfer when destination account does not exist (INV-TFR-01)", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      type: "transfer",
+      destinationAccountId: "acc-missing",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("ACCOUNT_NOT_FOUND");
+    }
+  });
+
+  it("rejects revising to transfer when destination account currency mismatches (INV-TFR-03)", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      type: "transfer",
+      destinationAccountId: "acc-usd",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("ACCOUNT_CURRENCY_MISMATCH");
+    }
+  });
+
+  it("rejects passing destinationAccountId on an income/expense revision", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      destinationAccountId: "acc-eur-2",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_DESTINATION_FORBIDDEN");
+    }
+  });
 });
