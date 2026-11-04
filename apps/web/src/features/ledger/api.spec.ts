@@ -1,10 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  addCurrency,
+  archiveAccount,
   archiveCategory,
+  archiveCurrency,
+  createAccount,
   createCategory,
+  listCurrencies,
+  listCurrencyCatalog,
   listTransactions,
+  reviseAccount,
   reviseCategory,
+  reviseCurrency,
   updateWorkspace,
 } from "./api";
 
@@ -89,6 +97,94 @@ describe("custom categories (RF-040, RF-044)", () => {
 
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(String(url)).toBe("/api/v1/categories/cat-1/archive");
+    expect(init?.method).toBe("POST");
+  });
+});
+
+describe("accounts (S12-2)", () => {
+  it("creates an account with kind and initialBalance", async () => {
+    await createAccount({
+      name: "BCP soles",
+      currency: "PEN",
+      kind: "bank",
+      initialBalance: "1500.00",
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/accounts");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "BCP soles",
+      currency: "PEN",
+      kind: "bank",
+      initialBalance: "1500.00",
+    });
+  });
+
+  it("revises an account with PATCH /accounts/:id", async () => {
+    await reviseAccount("acc-1", {
+      name: "BCP principal",
+      kind: "savings",
+      initialBalance: "200.00",
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/accounts/acc-1");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "BCP principal",
+      kind: "savings",
+      initialBalance: "200.00",
+    });
+  });
+
+  it("archives an account with POST /accounts/:id/archive", async () => {
+    await archiveAccount("acc-1");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/accounts/acc-1/archive");
+    expect(init?.method).toBe("POST");
+  });
+});
+
+describe("workspace currencies (S12-4)", () => {
+  it("lists the active workspace currencies", async () => {
+    await listCurrencies();
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/currencies");
+    expect(init?.method ?? "GET").toBe("GET");
+  });
+
+  it("lists the ISO 4217 catalog for the searchable selector", async () => {
+    await listCurrencyCatalog();
+
+    expect(calledUrl()).toBe("/api/v1/currencies/catalog");
+  });
+
+  it("adds a currency with POST /currencies", async () => {
+    await addCurrency({ code: "USD" });
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/currencies");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ code: "USD" });
+  });
+
+  it("revises a currency code with PATCH /currencies/:id", async () => {
+    await reviseCurrency("cur-1", { code: "EUR" });
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/currencies/cur-1");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({ code: "EUR" });
+  });
+
+  it("archives a currency with POST /currencies/:id/archive", async () => {
+    await archiveCurrency("cur-1");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/currencies/cur-1/archive");
     expect(init?.method).toBe("POST");
   });
 });

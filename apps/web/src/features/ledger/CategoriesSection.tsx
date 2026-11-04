@@ -32,6 +32,9 @@ interface CategoriesSectionProps {
   categories: CategoryView[];
   submitting?: boolean;
   error?: string | null;
+  /** When false, renders the manager without its Paper frame and
+   *  heading — used inside the Gestión dialog (S12-1). */
+  framed?: boolean;
   onCreate: (input: CreateCategoryInput) => void;
   onRevise: (id: string, input: ReviseCategoryInput) => void;
   onArchive: (id: string) => void;
@@ -46,6 +49,7 @@ export function CategoriesSection({
   categories,
   submitting,
   error,
+  framed = true,
   onCreate,
   onRevise,
   onArchive,
@@ -76,11 +80,13 @@ export function CategoriesSection({
     resetForm();
   };
 
-  return (
-    <Paper variant="outlined" sx={{ p: 3 }}>
-      <Typography variant="h6" component="h2" gutterBottom>
-        {t("categories.manage.title")}
-      </Typography>
+  const content = (
+    <>
+      {framed ? (
+        <Typography variant="h6" component="h2" gutterBottom>
+          {t("categories.manage.title")}
+        </Typography>
+      ) : null}
       {error ? (
         <Alert severity="error" sx={{ mb: 1 }}>
           {error}
@@ -151,6 +157,14 @@ export function CategoriesSection({
           <Button onClick={resetForm}>{t("categories.manage.cancel")}</Button>
         ) : null}
       </Stack>
+    </>
+  );
+
+  return framed ? (
+    <Paper variant="outlined" sx={{ p: 3 }}>
+      {content}
     </Paper>
+  ) : (
+    content
   );
 }

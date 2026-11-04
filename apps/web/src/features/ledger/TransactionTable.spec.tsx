@@ -16,6 +16,7 @@ const baseRow: LedgerRow = {
   timezone: "UTC",
   concept: "almuerzo",
   accountId: "acc-1",
+  destinationAccountId: null,
   categoryId: null,
   status: "confirmed",
   origin: "manual",
@@ -30,6 +31,17 @@ const accounts = [
     name: "BCP soles",
     currency: "PEN",
     kind: "bank",
+    initialBalance: "0.00",
+    archivedAt: null,
+  },
+  {
+    id: "acc-2",
+    workspaceId: "ws-1",
+    name: "Efectivo",
+    currency: "PEN",
+    kind: "cash",
+    initialBalance: "0.00",
+    archivedAt: null,
   },
 ];
 
@@ -75,6 +87,30 @@ describe("TransactionTable (es)", () => {
     expect(screen.getByText("Pendiente de sincronización")).toBeTruthy();
     expect(screen.getByText("Editar")).toHaveProperty("disabled", true);
     expect(screen.getByText("Anular")).toHaveProperty("disabled", true);
+  });
+
+  it("renders a transfer with the origin → destination account pair (S12-3)", () => {
+    render(
+      <TransactionTable
+        transactions={[
+          {
+            ...baseRow,
+            id: "tx-transfer",
+            type: "transfer",
+            concept: "Retiro a efectivo",
+            currency: "PEN",
+            destinationAccountId: "acc-2",
+          },
+        ]}
+        categories={[]}
+        accounts={accounts}
+        onEdit={vi.fn()}
+        onVoid={vi.fn()}
+        onHistory={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Transferencia")).toBeTruthy();
+    expect(screen.getByText(/BCP soles\s*→\s*Efectivo/)).toBeTruthy();
   });
 
   it("shows 'Sin cuenta' for a transaction without account", () => {

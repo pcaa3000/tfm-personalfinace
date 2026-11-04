@@ -9,6 +9,8 @@ interface Props {
   categories: CategoryView[];
   accounts: AccountView[];
   defaultCurrency: string;
+  /** Workspace currency codes for the currency selector. */
+  currencies?: string[];
   submitting: boolean;
   error: string | null;
   onClose: () => void;
@@ -20,6 +22,7 @@ export function EditTransactionDialog({
   categories,
   accounts,
   defaultCurrency,
+  currencies,
   submitting,
   error,
   onClose,
@@ -35,6 +38,7 @@ export function EditTransactionDialog({
             categories={categories}
             accounts={accounts}
             defaultCurrency={defaultCurrency}
+            currencies={currencies}
             submitting={submitting}
             error={error}
             submitLabel={t("form.saveChanges")}
@@ -45,6 +49,7 @@ export function EditTransactionDialog({
               businessDate: transaction.businessDate,
               concept: transaction.concept,
               accountId: transaction.accountId ?? "",
+              destinationAccountId: transaction.destinationAccountId ?? "",
               categoryId: transaction.categoryId,
             }}
             onSubmit={(values) => onSubmit(transaction.id, values)}

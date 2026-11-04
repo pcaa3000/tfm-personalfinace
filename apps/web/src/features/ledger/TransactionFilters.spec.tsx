@@ -52,6 +52,22 @@ describe("TransactionFilters", () => {
     });
   });
 
+  it("emits transfer as a type filter (S12-3)", async () => {
+    const onChange = vi.fn();
+    render(
+      <TransactionFilters categories={categories} value={{}} onChange={onChange} />,
+    );
+
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Tipo" }));
+    fireEvent.click(
+      screen.getByRole("option", { name: "Transferencia" }),
+    );
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenLastCalledWith({ type: "transfer" });
+    });
+  });
+
   it("emits the currency selection as a filter (RF-013)", () => {
     const onChange = vi.fn();
     render(

@@ -5,73 +5,93 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
-  Alert,
   Box,
   Button,
-  Chip,
-  Container,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
-  MenuItem,
-  Paper,
-  Stack,
-  TextField,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import {
+  addCurrency,
+  archiveAccount,
   archiveCategory,
+  archiveCurrency,
   createAccount,
   createCategory,
   getWorkspace,
   listAccounts,
   listCategories,
+  listCurrencies,
+  listCurrencyCatalog,
   listTransactions,
+  reviseAccount,
   reviseCategory,
+  reviseCurrency,
   reviseTransaction,
   updateWorkspace,
   voidTransaction,
   type TransactionListFilters,
 } from "./api";
-import { CategoriesSection } from "./CategoriesSection";
+import { AccountsDialog } from "./AccountsDialog";
+import { BalanceStrip } from "./BalanceStrip";
+import { CategoriesDialog } from "./CategoriesDialog";
+import { CurrenciesDialog } from "./CurrenciesDialog";
 import { EditTransactionDialog } from "./EditTransactionDialog";
 import { errorMessage } from "./errors";
+import { currencyExponentResolver } from "./format";
+import { MobileNav } from "./MobileNav";
+import { NewMovementDialog } from "./NewMovementDialog";
 import { createTransactionOrQueue, toPendingView } from "./offline/create-or-queue";
 import { listPendingTransactions } from "./offline/queue";
 import { PENDING_QUERY_KEY, usePendingSync } from "./offline/use-pending-sync";
+import { currentMonthRange } from "./period";
+import { PreferencesDialog } from "./PreferencesDialog";
+import {
+  persistRailCollapsed,
+  Sidebar,
+  storedRailCollapsed,
+} from "./Sidebar";
 import { summarizeByCurrency } from "./summarize";
-import { TransactionForm, type TransactionFormValues } from "./TransactionForm";
-import { TransactionHistoryDialog } from "./TransactionHistoryDialog";
+import { TransactionDayCards } from "./TransactionDayCards";
 import { TransactionFilters } from "./TransactionFilters";
+import {
+  TopBar,
+  TOPBAR_HEIGHT,
+  type ManagementSection,
+} from "./TopBar";
 import { TransactionTable } from "./TransactionTable";
+import { TransactionHistoryDialog } from "./TransactionHistoryDialog";
 import { VoidTransactionDialog } from "./VoidTransactionDialog";
-import type { TransactionView } from "./types";
+import type {
+  CreateAccountInput,
+  ReviseAccountInput,
+  TransactionView,
+} from "./types";
+import type { TransactionFormValues } from "./TransactionForm";
 
 /** Rows fetched per "load more" round trip (RF-013). */
 export const TRANSACTIONS_PAGE_SIZE = 25;
 
-function formatMinor(minor: bigint, currency: string): string {
-  const exponent = ({ JPY: 0, KRW: 0, BHD: 3, KWD: 3, CLF: 4 })[currency] ?? 2;
-  const sign = minor < 0n ? "-" : "";
-  const digits = minor.toString().replace("-", "").padStart(exponent + 1, "0");
-  if (exponent === 0) return `${sign}${digits}`;
-  return `${sign}${digits.slice(0, -exponent)}.${digits.slice(-exponent)}`;
-}
+/** Desktop breakpoint of the hybrid artboard (S12-6). */
+const DESKTOP_QUERY = "(min-width:960px)";
 
 export function LedgerPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const desktop = useMediaQuery(DESKTOP_QUERY);
   const [editing, setEditing] = useState<TransactionView | null>(null);
   const [voiding, setVoiding] = useState<TransactionView | null>(null);
   const [historyFor, setHistoryFor] = useState<TransactionView | null>(null);
-  const [accountName, setAccountName] = useState("");
-  const [accountCurrency, setAccountCurrency] = useState("PEN");
-  const [filters, setFilters] = useState<TransactionListFilters>({});
+  const [management, setManagement] = useState<ManagementSection | null>(null);
+  const [movementOpen, setMovementOpen] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(storedRailCollapsed);
+  const [filters, setFilters] = useState<TransactionListFilters>(() =>
+    currentMonthRange(),
+  );
+  const stickyRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLElement | null>(null);
   usePendingSync();
 
   const categoriesQuery = useQuery({
@@ -92,6 +112,13 @@ export function LedgerPage() {
         ? allPages.length * TRANSACTIONS_PAGE_SIZE
         : undefined,
   });
+  // All-time, unfiltered rows feed the general balance (S12-5):
+  // saldo actual = Σ initialBalance + income − expenses. A dedicated
+  // aggregate endpoint would avoid loading the whole ledger (API gap).
+  const balanceQuery = useQuery({
+    queryKey: ["transactions", "balance"],
+    queryFn: () => listTransactions(),
+  });
   const pendingQuery = useQuery({
     queryKey: PENDING_QUERY_KEY,
     queryFn: listPendingTransactions,
@@ -100,18 +127,31 @@ export function LedgerPage() {
     queryKey: ["accounts"],
     queryFn: listAccounts,
   });
+  const currenciesQuery = useQuery({
+    queryKey: ["currencies"],
+    queryFn: listCurrencies,
+  });
+  const catalogQuery = useQuery({
+    queryKey: ["currencies", "catalog"],
+    queryFn: listCurrencyCatalog,
+    enabled: management === "currencies",
+  });
   const workspaceQuery = useQuery({
     queryKey: ["workspace"],
     queryFn: getWorkspace,
   });
 
+  const invalidateLedger = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["transactions"] }),
+      queryClient.invalidateQueries({ queryKey: PENDING_QUERY_KEY }),
+    ]);
+
   const createMutation = useMutation({
     mutationFn: createTransactionOrQueue,
     onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["transactions"] }),
-        queryClient.invalidateQueries({ queryKey: PENDING_QUERY_KEY }),
-      ]);
+      await invalidateLedger();
+      setMovementOpen(false);
     },
   });
 
@@ -119,13 +159,22 @@ export function LedgerPage() {
     mutationFn: ({ id, values }: { id: string; values: TransactionFormValues }) =>
       reviseTransaction(id, values),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      await invalidateLedger();
       setEditing(null);
     },
   });
 
   const accountMutation = useMutation({
-    mutationFn: createAccount,
+    mutationFn: async (
+      action:
+        | { kind: "create"; input: CreateAccountInput }
+        | { kind: "revise"; id: string; input: ReviseAccountInput }
+        | { kind: "archive"; id: string },
+    ) => {
+      if (action.kind === "create") return createAccount(action.input);
+      if (action.kind === "revise") return reviseAccount(action.id, action.input);
+      return archiveAccount(action.id);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["accounts"] });
     },
@@ -141,7 +190,7 @@ export function LedgerPage() {
   const voidMutation = useMutation({
     mutationFn: voidTransaction,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      await invalidateLedger();
       setVoiding(null);
     },
   });
@@ -162,261 +211,318 @@ export function LedgerPage() {
     },
   });
 
+  const currencyMutation = useMutation({
+    mutationFn: async (
+      action:
+        | { kind: "add"; code: string }
+        | { kind: "revise"; id: string; code: string }
+        | { kind: "archive"; id: string },
+    ) => {
+      if (action.kind === "add") return addCurrency({ code: action.code });
+      if (action.kind === "revise")
+        return reviseCurrency(action.id, { code: action.code });
+      return archiveCurrency(action.id);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["currencies"] });
+    },
+  });
+
   const categories = categoriesQuery.data ?? [];
   const accounts = accountsQuery.data ?? [];
+  const currencies = currenciesQuery.data ?? [];
+  const currencyCodes = currencies.map((c) => c.code);
   const workspace = workspaceQuery.data;
   const transactions = transactionsQuery.data?.pages.flat() ?? [];
   const pendingRows = (pendingQuery.data ?? []).map(toPendingView);
   const tableRows = [...pendingRows, ...transactions];
-  const summaries = summarizeByCurrency(transactions);
+  const exponentOf = currencyExponentResolver(currencies);
+  const summaries = summarizeByCurrency(
+    balanceQuery.data ?? [],
+    accounts,
+    exponentOf,
+  );
+
+  // Keep the desktop table head parked right under topbar+sticky block
+  // (--tfm-under-sticky), whose height changes with filter wrapping.
+  useEffect(() => {
+    const update = () => {
+      const height =
+        (stickyRef.current?.offsetHeight ?? 0) + TOPBAR_HEIGHT;
+      document.documentElement.style.setProperty(
+        "--tfm-under-sticky",
+        `${height}px`,
+      );
+    };
+    update();
+    if (typeof ResizeObserver !== "undefined" && stickyRef.current) {
+      const observer = new ResizeObserver(update);
+      observer.observe(stickyRef.current);
+      return () => observer.disconnect();
+    }
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [desktop]);
 
   const onSubmit = (values: TransactionFormValues) => {
     createMutation.mutate({ ...values, idempotencyKey: crypto.randomUUID() });
   };
 
-  return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
-      <Stack spacing={3}>
-        <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
-          <Typography variant="h4" component="h1" sx={{ flexGrow: 1 }}>
-            {t("app.title")}
-          </Typography>
-          {pendingRows.length > 0 ? (
-            <Chip
-              color="warning"
-              label={t("pending.badge", { count: pendingRows.length })}
-            />
-          ) : null}
-          <LanguageSwitcher />
-        </Stack>
+  const toggleRail = () => {
+    setRailCollapsed((current) => {
+      persistRailCollapsed(!current);
+      return !current;
+    });
+  };
 
-        <Paper variant="outlined" sx={{ p: 3 }}>
-          <Typography variant="h6" component="h2" gutterBottom>
-            {t("form.newTransaction")}
-          </Typography>
-          <TransactionForm
-            categories={categories}
-            accounts={accounts}
-            defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
-            submitting={createMutation.isPending}
-            error={
-              createMutation.error
-                ? errorMessage(createMutation.error, t)
-                : null
-            }
-            onSubmit={onSubmit}
-          />
-        </Paper>
+  const scrollToList = () =>
+    listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-        <Paper variant="outlined" sx={{ p: 3 }}>
-          <Typography variant="h6" component="h2" gutterBottom>
-            {t("summary.title")}
-          </Typography>
-          {summaries.length === 0 ? (
-            <Typography color="text.secondary">
-              {t("summary.empty")}
-            </Typography>
-          ) : (
-            <Stack direction="row" spacing={3} sx={{ flexWrap: "wrap" }}>
-              {summaries.map((s) => (
-                <Box key={s.currency}>
-                  <Typography variant="overline">{s.currency}</Typography>
-                  <Typography>
-                    {t("summary.income")} {formatMinor(s.incomeMinor, s.currency)}{" "}
-                    · {t("summary.expenses")}{" "}
-                    {formatMinor(s.expenseMinor, s.currency)} · {t("summary.net")}{" "}
-                    {formatMinor(s.netMinor, s.currency)}
-                  </Typography>
-                </Box>
-              ))}
-            </Stack>
-          )}
-        </Paper>
-
-        <Paper variant="outlined" sx={{ p: 3 }}>
-          <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
-            <Typography variant="h6" component="h2" sx={{ flexGrow: 1 }}>
-              {t("accounts.title")}
-            </Typography>
-            <TextField
-              select
-              size="small"
-              label={t("settings.defaultCurrency")}
-              value={workspace?.defaultCurrency ?? "PEN"}
-              onChange={(e) =>
-                settingsMutation.mutate({ defaultCurrency: e.target.value })
-              }
-              sx={{ minWidth: 150 }}
-            >
-              {["PEN", "USD", "EUR", "ARS", "JPY", "BHD"].map((c) => (
-                <MenuItem key={c} value={c}>
-                  {c}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              size="small"
-              label={t("settings.timezone")}
-              value={workspace?.timezone ?? "UTC"}
-              onChange={(e) =>
-                settingsMutation.mutate({ timezone: e.target.value })
-              }
-              sx={{ minWidth: 170 }}
-            >
-              {[
-                "UTC",
-                "America/Lima",
-                "America/Bogota",
-                "America/Mexico_City",
-                "America/Santiago",
-                "America/Argentina/Buenos_Aires",
-                "America/New_York",
-                "Europe/Madrid",
-              ].map((tz) => (
-                <MenuItem key={tz} value={tz}>
-                  {tz}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              size="small"
-              label={t("settings.locale")}
-              value={workspace?.locale ?? "es-PE"}
-              onChange={(e) =>
-                settingsMutation.mutate({ locale: e.target.value })
-              }
-              sx={{ minWidth: 130 }}
-            >
-              {["es-PE", "es-ES", "es-MX", "en-US", "en-GB"].map((l) => (
-                <MenuItem key={l} value={l}>
-                  {l}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Stack>
-          {accountMutation.error ? (
-            <Alert severity="error" sx={{ mt: 1 }}>
-              {errorMessage(accountMutation.error, t)}
-            </Alert>
-          ) : null}
-          {accounts.length === 0 ? (
-            <Typography color="text.secondary" sx={{ mt: 1 }}>
-              {t("accounts.empty")}
-            </Typography>
-          ) : (
-            <List dense>
-              {accounts.map((a) => (
-                <ListItem key={a.id} disableGutters>
-                  <ListItemText
-                    primary={a.name}
-                    secondary={`${a.currency} · ${t(`accounts.kind.${a.kind}`)}`}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          )}
-          <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-            <TextField
-              size="small"
-              label={t("accounts.name")}
-              value={accountName}
-              onChange={(e) => setAccountName(e.target.value)}
-            />
-            <TextField
-              select
-              size="small"
-              label={t("accounts.currency")}
-              value={accountCurrency}
-              onChange={(e) => setAccountCurrency(e.target.value)}
-              sx={{ minWidth: 110 }}
-            >
-              {["PEN", "USD", "EUR", "ARS", "JPY", "BHD"].map((c) => (
-                <MenuItem key={c} value={c}>
-                  {c}
-                </MenuItem>
-              ))}
-            </TextField>
-            <Button
-              variant="outlined"
-              disabled={accountMutation.isPending || !accountName.trim()}
-              onClick={() =>
-                accountMutation.mutate(
-                  { name: accountName.trim(), currency: accountCurrency, kind: "bank" },
-                  { onSuccess: () => setAccountName("") },
-                )
-              }
-            >
-              {t("accounts.create")}
-            </Button>
-          </Stack>
-        </Paper>
-
-        <CategoriesSection
+  const listSection = (
+    <Box
+      component="section"
+      ref={listRef}
+      aria-label={t("transactions.title")}
+      sx={{
+        px: { xs: 1.75, md: 2.75 },
+        pt: { xs: 1.75, md: 2.25 },
+        pb: { xs: "calc(58px + env(safe-area-inset-bottom, 0px) + 110px)", md: 7.5 },
+      }}
+    >
+      {transactionsQuery.isLoading ? (
+        <Typography>{t("transactions.loading")}</Typography>
+      ) : transactionsQuery.isError ? (
+        <Typography color="error">{t("transactions.loadError")}</Typography>
+      ) : desktop ? (
+        <TransactionTable
+          transactions={tableRows}
           categories={categories}
-          submitting={categoryMutation.isPending}
-          error={
-            categoryMutation.error
-              ? errorMessage(categoryMutation.error, t)
-              : null
-          }
-          onCreate={(input) =>
-            categoryMutation.mutate({ kind: "create", input })
-          }
-          onRevise={(id, input) =>
-            categoryMutation.mutate({ kind: "revise", id, input })
-          }
-          onArchive={(id) => categoryMutation.mutate({ kind: "archive", id })}
+          accounts={accounts}
+          onEdit={setEditing}
+          onVoid={setVoiding}
+          onHistory={setHistoryFor}
+        />
+      ) : (
+        <TransactionDayCards
+          transactions={tableRows}
+          categories={categories}
+          accounts={accounts}
+          exponentOf={exponentOf}
+          onEdit={setEditing}
+          onVoid={setVoiding}
+          onHistory={setHistoryFor}
+        />
+      )}
+      {transactionsQuery.hasNextPage ? (
+        <Button
+          variant="outlined"
+          disabled={transactionsQuery.isFetchingNextPage}
+          onClick={() => void transactionsQuery.fetchNextPage()}
+          sx={{ mt: 2 }}
+        >
+          {transactionsQuery.isFetchingNextPage
+            ? t("transactions.loading")
+            : t("transactions.loadMore")}
+        </Button>
+      ) : null}
+    </Box>
+  );
+
+  return (
+    <Box sx={{ display: "flex", minHeight: "100vh", alignItems: "stretch" }}>
+      {desktop ? (
+        <Sidebar
+          collapsed={railCollapsed}
+          onToggleCollapsed={toggleRail}
+          onOpenManagement={setManagement}
+          onNavigateList={scrollToList}
+        />
+      ) : null}
+
+      <Box
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <TopBar
+          pendingCount={pendingRows.length}
+          desktop={desktop}
+          onNewMovement={() => setMovementOpen(true)}
+          onOpenManagement={setManagement}
         />
 
-        <Divider />
-
-        <section aria-label={t("transactions.title")}>
-          <Typography variant="h6" component="h2" gutterBottom>
-            {t("transactions.title")}
-          </Typography>
-          <TransactionFilters
-            categories={categories}
-            value={filters}
-            onChange={setFilters}
-          />
-          {transactionsQuery.isLoading ? (
-            <Typography>{t("transactions.loading")}</Typography>
-          ) : transactionsQuery.isError ? (
-            <Typography color="error">
-              {t("transactions.loadError")}
-            </Typography>
-          ) : (
-            <TransactionTable
-              transactions={tableRows}
-              categories={categories}
-              accounts={accounts}
-              onEdit={setEditing}
-              onVoid={setVoiding}
-              onHistory={setHistoryFor}
-            />
-          )}
-          {transactionsQuery.hasNextPage ? (
-            <Button
-              variant="outlined"
-              disabled={transactionsQuery.isFetchingNextPage}
-              onClick={() => void transactionsQuery.fetchNextPage()}
-              sx={{ mt: 2 }}
+        <Box
+          ref={stickyRef}
+          sx={{
+            position: "sticky",
+            top: TOPBAR_HEIGHT,
+            zIndex: 60,
+            bgcolor: "background.default",
+            px: { xs: 1.75, md: 2.75 },
+            pt: { xs: 1.5, md: 2 },
+            pb: { xs: 1.25, md: 1.75 },
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            boxShadow: "0 12px 26px -16px rgb(30 25 60 / 0.35)",
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 1.25,
+              mb: 1,
+            }}
+          >
+            <Typography
+              component="h2"
+              sx={{ fontSize: { xs: 13, md: 14 }, fontWeight: 750 }}
             >
-              {transactionsQuery.isFetchingNextPage
-                ? t("transactions.loading")
-                : t("transactions.loadMore")}
-            </Button>
-          ) : null}
-        </section>
-      </Stack>
+              {t("balance.title")}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {t("balance.hint")}
+            </Typography>
+          </Box>
+          <BalanceStrip
+            summaries={summaries}
+            accounts={accounts}
+            defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
+            exponentOf={exponentOf}
+          />
+          <Box sx={{ mt: { xs: 1.25, md: 1.75 } }}>
+            <TransactionFilters
+              categories={categories}
+              value={filters}
+              currencies={currencyCodes.length ? currencyCodes : undefined}
+              onChange={setFilters}
+            />
+          </Box>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 1.25,
+              mt: 1,
+              pt: 1.25,
+              borderTop: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            <Typography
+              component="h2"
+              sx={{ fontSize: { xs: 13, md: 14 }, fontWeight: 750 }}
+            >
+              {t("transactions.title")}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {t("transactions.inPeriod", { count: tableRows.length })}
+            </Typography>
+          </Box>
+        </Box>
+
+        {listSection}
+      </Box>
+
+      {desktop ? null : (
+        <MobileNav
+          onNavigateList={scrollToList}
+          onNewMovement={() => setMovementOpen(true)}
+        />
+      )}
+
+      <NewMovementDialog
+        open={movementOpen}
+        categories={categories}
+        accounts={accounts}
+        defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
+        currencies={currencyCodes}
+        submitting={createMutation.isPending}
+        error={
+          createMutation.error ? errorMessage(createMutation.error, t) : null
+        }
+        onClose={() => setMovementOpen(false)}
+        onSubmit={onSubmit}
+      />
+      <AccountsDialog
+        open={management === "accounts"}
+        accounts={accounts}
+        currencies={
+          currencyCodes.length
+            ? currencyCodes
+            : [workspace?.defaultCurrency ?? "PEN"]
+        }
+        submitting={accountMutation.isPending}
+        error={
+          accountMutation.error ? errorMessage(accountMutation.error, t) : null
+        }
+        onClose={() => setManagement(null)}
+        onCreate={(input) =>
+          accountMutation.mutate({ kind: "create", input })
+        }
+        onRevise={(id, input) =>
+          accountMutation.mutate({ kind: "revise", id, input })
+        }
+        onArchive={(id) => accountMutation.mutate({ kind: "archive", id })}
+      />
+      <CategoriesDialog
+        open={management === "categories"}
+        categories={categories}
+        submitting={categoryMutation.isPending}
+        error={
+          categoryMutation.error
+            ? errorMessage(categoryMutation.error, t)
+            : null
+        }
+        onClose={() => setManagement(null)}
+        onCreate={(input) =>
+          categoryMutation.mutate({ kind: "create", input })
+        }
+        onRevise={(id, input) =>
+          categoryMutation.mutate({ kind: "revise", id, input })
+        }
+        onArchive={(id) => categoryMutation.mutate({ kind: "archive", id })}
+      />
+      <CurrenciesDialog
+        open={management === "currencies"}
+        currencies={currencies}
+        catalog={catalogQuery.data ?? []}
+        submitting={currencyMutation.isPending}
+        error={
+          currencyMutation.error
+            ? errorMessage(currencyMutation.error, t)
+            : null
+        }
+        onClose={() => setManagement(null)}
+        onAdd={(code) => currencyMutation.mutate({ kind: "add", code })}
+        onRevise={(id, input) =>
+          currencyMutation.mutate({ kind: "revise", id, code: input.code })
+        }
+        onArchive={(id) => currencyMutation.mutate({ kind: "archive", id })}
+      />
+      <PreferencesDialog
+        open={management === "preferences"}
+        workspace={workspace}
+        currencies={currencyCodes}
+        submitting={settingsMutation.isPending}
+        error={
+          settingsMutation.error
+            ? errorMessage(settingsMutation.error, t)
+            : null
+        }
+        onClose={() => setManagement(null)}
+        onPatch={(patch) => settingsMutation.mutate(patch)}
+      />
 
       <EditTransactionDialog
         transaction={editing}
         categories={categories}
         accounts={accounts}
         defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
+        currencies={currencyCodes}
         submitting={reviseMutation.isPending}
         error={
           reviseMutation.error ? errorMessage(reviseMutation.error, t) : null
@@ -443,6 +549,6 @@ export function LedgerPage() {
         transaction={historyFor}
         onClose={() => setHistoryFor(null)}
       />
-    </Container>
+    </Box>
   );
 }

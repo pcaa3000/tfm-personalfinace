@@ -1,18 +1,30 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
+import { CssBaseline, ThemeProvider } from "@mui/material";
+import { useMemo } from "react";
 
 import { LedgerPage } from "./features/ledger/LedgerPage";
+import { buildAppTheme } from "./theme";
+import { ThemeModeProvider, useThemeMode } from "./theme-mode";
 
 const queryClient = new QueryClient();
-const theme = createTheme();
+
+function ThemedApp() {
+  const { mode } = useThemeMode();
+  const theme = useMemo(() => buildAppTheme(mode), [mode]);
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <LedgerPage />
+    </ThemeProvider>
+  );
+}
 
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <LedgerPage />
-      </ThemeProvider>
+      <ThemeModeProvider>
+        <ThemedApp />
+      </ThemeModeProvider>
     </QueryClientProvider>
   );
 }

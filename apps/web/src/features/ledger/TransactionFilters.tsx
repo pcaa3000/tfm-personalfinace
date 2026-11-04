@@ -5,16 +5,24 @@ import type { TransactionListFilters } from "./api";
 import { categoryLabel } from "./TransactionForm";
 import type { CategoryView } from "./types";
 
-const CURRENCIES = ["PEN", "USD", "EUR", "ARS", "JPY", "BHD"];
+const FALLBACK_CURRENCIES = ["PEN", "USD", "EUR", "ARS", "JPY", "BHD"];
 
 interface Props {
   categories: CategoryView[];
   value: TransactionListFilters;
+  /** Workspace currency codes; falls back to the built-in catalog. */
+  currencies?: string[] | undefined;
   onChange: (next: TransactionListFilters) => void;
 }
 
-export function TransactionFilters({ categories, value, onChange }: Props) {
+export function TransactionFilters({
+  categories,
+  value,
+  currencies,
+  onChange,
+}: Props) {
   const { t } = useTranslation();
+  const currencyOptions = currencies ?? FALLBACK_CURRENCIES;
   const update = (patch: Partial<TransactionListFilters>) =>
     onChange({ ...value, ...patch });
 
@@ -52,14 +60,16 @@ export function TransactionFilters({ categories, value, onChange }: Props) {
             type: (e.target.value || undefined) as
               | "income"
               | "expense"
+              | "transfer"
               | undefined,
           })
         }
-        sx={{ minWidth: 110 }}
+        sx={{ minWidth: 140 }}
       >
         <MenuItem value="">{t("filters.all")}</MenuItem>
         <MenuItem value="income">{t("form.income")}</MenuItem>
         <MenuItem value="expense">{t("form.expense")}</MenuItem>
+        <MenuItem value="transfer">{t("form.transfer")}</MenuItem>
       </TextField>
       <TextField
         size="small"
@@ -70,7 +80,7 @@ export function TransactionFilters({ categories, value, onChange }: Props) {
         sx={{ minWidth: 100 }}
       >
         <MenuItem value="">{t("filters.all")}</MenuItem>
-        {CURRENCIES.map((code) => (
+        {currencyOptions.map((code) => (
           <MenuItem key={code} value={code}>
             {code}
           </MenuItem>

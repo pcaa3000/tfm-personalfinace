@@ -3,7 +3,11 @@ import type {
   CategoryView,
   CreateAccountInput,
   CreateCategoryInput,
+  CurrencyView,
+  IsoCurrencyView,
+  ReviseAccountInput,
   ReviseCategoryInput,
+  TransactionType,
   WorkspaceView,
   CreateTransactionInput,
   ReviseTransactionInput,
@@ -57,7 +61,7 @@ export function createTransaction(input: CreateTransactionInput): Promise<Transa
 
 export interface TransactionListFilters {
   q?: string | undefined;
-  type?: "income" | "expense" | undefined;
+  type?: TransactionType | undefined;
   currency?: string | undefined;
   category?: string | undefined;
   from?: string | undefined;
@@ -84,6 +88,46 @@ export function createAccount(input: CreateAccountInput): Promise<AccountView> {
   return request<AccountView>("/accounts", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+export function reviseAccount(
+  id: string,
+  input: ReviseAccountInput,
+): Promise<AccountView> {
+  return request<AccountView>(`/accounts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+export function archiveAccount(id: string): Promise<AccountView> {
+  return request<AccountView>(`/accounts/${id}/archive`, {
+    method: "POST",
+  });
+}
+export function listCurrencies(): Promise<CurrencyView[]> {
+  return request<CurrencyView[]>("/currencies");
+}
+export function listCurrencyCatalog(): Promise<IsoCurrencyView[]> {
+  return request<IsoCurrencyView[]>("/currencies/catalog");
+}
+export function addCurrency(input: { code: string }): Promise<CurrencyView> {
+  return request<CurrencyView>("/currencies", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+export function reviseCurrency(
+  id: string,
+  input: { code: string },
+): Promise<CurrencyView> {
+  return request<CurrencyView>(`/currencies/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+export function archiveCurrency(id: string): Promise<CurrencyView> {
+  return request<CurrencyView>(`/currencies/${id}/archive`, {
+    method: "POST",
   });
 }
 export function getWorkspace(): Promise<WorkspaceView> {

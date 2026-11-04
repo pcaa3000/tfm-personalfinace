@@ -12,23 +12,27 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { z } from "zod";
 
-import type { AccountView, CategoryView } from "./types";
+import type { AccountView, CategoryView, TransactionType } from "./types";
 
 type FormValues = {
-  type: "income" | "expense";
+  type: TransactionType;
   amount: string;
   currency: string;
   accountId: string;
+  destinationAccountId: string;
   businessDate: string;
   concept: string;
   categoryId: string | null;
 };
 
-export interface TransactionFormValues extends FormValues {
+export interface TransactionFormValues
+  extends Omit<FormValues, "destinationAccountId"> {
   timezone: string;
+  /** null unless type === "transfer" (server forbids it otherwise). */
+  destinationAccountId: string | null;
 }
 
-const CURRENCIES = ["PEN", "USD", "EUR", "ARS", "JPY", "BHD"];
+const FALLBACK_CURRENCIES = ["PEN", "USD", "EUR", "ARS", "JPY", "BHD"];
 
 /** Stable catalog key → localized label; custom categories keep their label. */
 export function categoryLabel(
@@ -42,6 +46,8 @@ interface Props {
   categories: CategoryView[];
   accounts: AccountView[];
   defaultCurrency: string;
+  /** Workspace currency codes; falls back to the built-in catalog. */
+  currencies?: string[] | undefined;
   submitting: boolean;
   error: string | null;
   initialValues?: Partial<FormValues>;
@@ -53,6 +59,7 @@ export function TransactionForm({
   categories,
   accounts,
   defaultCurrency,
+  currencies,
   submitting,
   error,
   initialValues,
@@ -60,25 +67,44 @@ export function TransactionForm({
   onSubmit,
 }: Props) {
   const { t } = useTranslation();
+  const currencyOptions = currencies ?? FALLBACK_CURRENCIES;
 
   const schema = useMemo(
     () =>
-      z.object({
-        type: z.enum(["income", "expense"]),
-        amount: z
-          .string()
-          .min(1, t("form.validation.amountRequired"))
-          .regex(/^\d+(\.\d+)?$/, t("form.validation.amountDecimal")),
-        currency: z.string().length(3),
-        accountId: z.string().min(1, t("form.validation.accountRequired")),
-        businessDate: z.string().min(10, t("form.validation.dateRequired")),
-        concept: z
-          .string()
-          .trim()
-          .min(1, t("form.validation.conceptRequired"))
-          .max(500),
-        categoryId: z.string().nullable(),
-      }),
+      z
+        .object({
+          type: z.enum(["income", "expense", "transfer"]),
+          amount: z
+            .string()
+            .min(1, t("form.validation.amountRequired"))
+            .regex(/^\d+(\.\d+)?$/, t("form.validation.amountDecimal")),
+          currency: z.string().length(3),
+          accountId: z.string().min(1, t("form.validation.accountRequired")),
+          destinationAccountId: z.string(),
+          businessDate: z.string().min(10, t("form.validation.dateRequired")),
+          concept: z
+            .string()
+            .trim()
+            .min(1, t("form.validation.conceptRequired"))
+            .max(500),
+          categoryId: z.string().nullable(),
+        })
+        .superRefine((values, ctx) => {
+          if (values.type !== "transfer") return;
+          if (!values.destinationAccountId) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["destinationAccountId"],
+              message: t("form.validation.destinationRequired"),
+            });
+          } else if (values.destinationAccountId === values.accountId) {
+            ctx.addIssue({
+              code: "custom",
+              path: ["destinationAccountId"],
+              message: t("form.validation.destinationSameAccount"),
+            });
+          }
+        }),
     [t],
   );
 
@@ -97,6 +123,7 @@ export function TransactionForm({
       amount: "",
       currency: defaultCurrency,
       accountId: "",
+      destinationAccountId: "",
       businessDate: new Date().toISOString().slice(0, 10),
       concept: "",
       categoryId: null,
@@ -104,11 +131,16 @@ export function TransactionForm({
     },
   });
 
+  const selectedType = watch("type");
   const selectedCurrency = watch("currency");
   const selectedAccountId = watch("accountId");
   const currencyAccounts = accounts.filter(
     (a) => a.currency === selectedCurrency,
   );
+  const destinationAccounts = currencyAccounts.filter(
+    (a) => a.id !== selectedAccountId,
+  );
+  const isTransfer = selectedType === "transfer";
 
   useEffect(() => {
     if (initialValues?.currency === undefined && !isDirty) {
@@ -116,9 +148,24 @@ export function TransactionForm({
     }
   }, [defaultCurrency, initialValues?.currency, isDirty, setValue]);
 
+  // INV-CTA-04: a destination that becomes equal to the source account is
+  // cleared (e.g. the user picks the same account in both selectors).
+  useEffect(() => {
+    if (
+      isTransfer &&
+      selectedAccountId &&
+      watch("destinationAccountId") === selectedAccountId
+    ) {
+      setValue("destinationAccountId", "", { shouldValidate: false });
+    }
+  }, [isTransfer, selectedAccountId, setValue, watch]);
+
   const submit = handleSubmit((values) => {
     onSubmit({
       ...values,
+      destinationAccountId:
+        values.type === "transfer" ? values.destinationAccountId : null,
+      categoryId: values.type === "transfer" ? null : values.categoryId,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     });
     if (!initialValues) {
@@ -127,6 +174,7 @@ export function TransactionForm({
         amount: "",
         currency: defaultCurrency,
         accountId: "",
+        destinationAccountId: "",
         businessDate: new Date().toISOString().slice(0, 10),
         concept: "",
         categoryId: null,
@@ -145,6 +193,7 @@ export function TransactionForm({
             <TextField {...field} select label={t("form.type")} fullWidth>
               <MenuItem value="income">{t("form.income")}</MenuItem>
               <MenuItem value="expense">{t("form.expense")}</MenuItem>
+              <MenuItem value="transfer">{t("form.transfer")}</MenuItem>
             </TextField>
           )}
         />
@@ -173,10 +222,11 @@ export function TransactionForm({
                 if (currentAccount && currentAccount.currency !== nextCurrency) {
                   setValue("accountId", "", { shouldValidate: false });
                 }
+                setValue("destinationAccountId", "", { shouldValidate: false });
               }}
               fullWidth
             >
-              {CURRENCIES.map((code) => (
+              {currencyOptions.map((code) => (
                 <MenuItem key={code} value={code}>
                   {code}
                 </MenuItem>
@@ -214,6 +264,36 @@ export function TransactionForm({
             </TextField>
           )}
         />
+        {isTransfer ? (
+          <Controller
+            name="destinationAccountId"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                value={
+                  destinationAccounts.some((a) => a.id === field.value)
+                    ? field.value
+                    : ""
+                }
+                select
+                label={t("form.destinationAccount")}
+                error={Boolean(errors.destinationAccountId)}
+                helperText={
+                  errors.destinationAccountId?.message ??
+                  t("form.destinationAccountHint")
+                }
+                fullWidth
+              >
+                {destinationAccounts.map((account) => (
+                  <MenuItem key={account.id} value={account.id}>
+                    {account.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+          />
+        ) : null}
         <TextField
           {...register("businessDate")}
           label={t("form.date")}
@@ -230,29 +310,31 @@ export function TransactionForm({
           helperText={errors.concept?.message}
           fullWidth
         />
-        <Controller
-          name="categoryId"
-          control={control}
-          render={({ field }) => (
-            <TextField
-              {...field}
-              select
-              label={t("form.category")}
-              value={field.value ?? ""}
-              onChange={(event) =>
-                field.onChange(event.target.value === "" ? null : event.target.value)
-              }
-              fullWidth
-            >
-              <MenuItem value="">{t("form.uncategorized")}</MenuItem>
-              {categories.map((category) => (
-                <MenuItem key={category.id} value={category.id}>
-                  {categoryLabel(category, t)}
-                </MenuItem>
-              ))}
-            </TextField>
-          )}
-        />
+        {!isTransfer ? (
+          <Controller
+            name="categoryId"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                select
+                label={t("form.category")}
+                value={field.value ?? ""}
+                onChange={(event) =>
+                  field.onChange(event.target.value === "" ? null : event.target.value)
+                }
+                fullWidth
+              >
+                <MenuItem value="">{t("form.uncategorized")}</MenuItem>
+                {categories.map((category) => (
+                  <MenuItem key={category.id} value={category.id}>
+                    {categoryLabel(category, t)}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+          />
+        ) : null}
         <Button
           type="submit"
           variant="contained"

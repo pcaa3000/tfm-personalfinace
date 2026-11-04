@@ -30,6 +30,7 @@ export function viewFixture(
     timezone: "UTC",
     concept: "test lunch",
     accountId: "acc-1",
+    destinationAccountId: null,
     categoryId: null,
     status: "confirmed",
     origin: "manual",
