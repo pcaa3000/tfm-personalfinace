@@ -93,6 +93,18 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await cleanE2eData(MARKER);
+  // INV-MON-03: a non-default currency must be enabled in the workspace
+  // catalog before accounts can hold it.
+  await api("/api/v1/currencies", {
+    method: "POST",
+    headers: ALICE,
+    body: { code: "EUR" },
+  });
+  await api("/api/v1/currencies", {
+    method: "POST",
+    headers: ALICE,
+    body: { code: "USD" },
+  });
   accountId = await createAccount(ALICE, "e2e BCP soles", "PEN");
   secondPenAccountId = await createAccount(ALICE, "e2e BBVA soles", "PEN");
   eurAccountId = await createAccount(ALICE, "e2e Cuenta euros", "EUR");

@@ -20,7 +20,7 @@ const GLOBAL_CATEGORIES = [
 ] as const;
 
 async function main(): Promise<void> {
-  await prisma.workspace.upsert({
+  const workspace = await prisma.workspace.upsert({
     where: { identityKey: "local|dev-user" },
     update: {},
     create: {
@@ -31,6 +31,20 @@ async function main(): Promise<void> {
       timezone: "UTC",
       defaultCurrency: "PEN",
     },
+  });
+
+  // Workspace currency catalog bootstrap (T18): each workspace starts
+  // with at least its defaultCurrency so INV-MON-03 holds for existing
+  // accounts. Additional codes are added through POST /api/v1/currencies.
+  await prisma.currency.upsert({
+    where: {
+      workspaceId_code: {
+        workspaceId: workspace.id,
+        code: workspace.defaultCurrency,
+      },
+    },
+    update: {},
+    create: { workspaceId: workspace.id, code: workspace.defaultCurrency },
   });
 
   for (const category of GLOBAL_CATEGORIES) {

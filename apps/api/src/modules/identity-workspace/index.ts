@@ -11,3 +11,7 @@ export {
   CALLER_RESOLVER,
   type CallerResolverPort,
 } from "./application/caller-resolver.port.js";
+export {
+  WORKSPACE_CATALOG_PROVISIONER,
+  type WorkspaceCatalogProvisionerPort,
+} from "./application/workspace-catalog-provisioner.port.js";

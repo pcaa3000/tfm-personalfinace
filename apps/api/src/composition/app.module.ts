@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 
 import {
   CALLER_RESOLVER,
+  WORKSPACE_CATALOG_PROVISIONER,
   WORKSPACE_CONTEXT,
 } from "../modules/identity-workspace/index.js";
 import {
@@ -13,7 +14,7 @@ import { DeterministicWorkspaceAdapter } from "../modules/identity-workspace/inf
 import { WorkspaceController } from "../modules/identity-workspace/infrastructure/http/workspace.controller.js";
 import { DevHeaderCallerResolver } from "../modules/identity-workspace/infrastructure/http/dev-header-caller.resolver.js";
 import { JwtCallerResolver } from "../modules/identity-workspace/infrastructure/http/jwt-caller.resolver.js";
-import { ACCOUNT_REPOSITORY } from "../modules/accounts/index.js";
+import { ACCOUNT_REPOSITORY, CURRENCY_ENABLED } from "../modules/accounts/index.js";
 import { ArchiveAccountUseCase } from "../modules/accounts/application/archive-account.use-case.js";
 import { CreateAccountUseCase } from "../modules/accounts/application/create-account.use-case.js";
 import { ListAccountsUseCase } from "../modules/accounts/application/list-accounts.use-case.js";
@@ -27,6 +28,18 @@ import { ReviseCategoryUseCase } from "../modules/categorization/application/rev
 import { CategoriesController } from "../modules/categorization/infrastructure/http/categories.controller.js";
 import { PrismaCategoryRepository } from "../modules/categorization/infrastructure/prisma-category.repository.js";
 import { PrismaCategoryValidationAdapter } from "../modules/categorization/infrastructure/prisma-category-validation.adapter.js";
+import {
+  CURRENCY_REPOSITORY,
+  CURRENCY_USAGE,
+  CurrenciesController,
+  AddCurrencyUseCase,
+  ArchiveCurrencyUseCase,
+  ListCurrenciesUseCase,
+  ListIsoCatalogUseCase,
+  PrismaCurrencyRepository,
+  PrismaCurrencyUsageAdapter,
+  ReviseCurrencyUseCase,
+} from "../modules/currencies/index.js";
 import { ACCOUNT_VALIDATION } from "../modules/ledger/application/ports/account-validation.port.js";
 import {
   CATEGORY_VALIDATION,
@@ -60,6 +73,7 @@ function requiredEnv(name: string): string {
     TransactionsController,
     CategoriesController,
     AccountsController,
+    CurrenciesController,
     WorkspaceController,
   ],
   providers: [
@@ -77,12 +91,20 @@ function requiredEnv(name: string): string {
           : new DevHeaderCallerResolver(),
     },
     {
+      provide: DeterministicWorkspaceAdapter,
+      useFactory: (
+        prisma: PrismaClient,
+        provisioner: PrismaCurrencyRepository,
+      ) => new DeterministicWorkspaceAdapter(prisma, provisioner),
+      inject: [PrismaClient, WORKSPACE_CATALOG_PROVISIONER],
+    },
+    {
       provide: WORKSPACE_CONTEXT,
-      useClass: DeterministicWorkspaceAdapter,
+      useExisting: DeterministicWorkspaceAdapter,
     },
     {
       provide: WORKSPACE_SETTINGS,
-      useClass: DeterministicWorkspaceAdapter,
+      useExisting: DeterministicWorkspaceAdapter,
     },
     {
       provide: UpdateWorkspacePreferencesUseCase,
@@ -113,6 +135,56 @@ function requiredEnv(name: string): string {
     {
       provide: CATEGORY_REPOSITORY,
       useClass: PrismaCategoryRepository,
+    },
+    {
+      provide: CURRENCY_REPOSITORY,
+      useClass: PrismaCurrencyRepository,
+    },
+    {
+      provide: CURRENCY_ENABLED,
+      useExisting: CURRENCY_REPOSITORY,
+    },
+    {
+      provide: WORKSPACE_CATALOG_PROVISIONER,
+      useExisting: CURRENCY_REPOSITORY,
+    },
+    {
+      provide: CURRENCY_USAGE,
+      useClass: PrismaCurrencyUsageAdapter,
+    },
+    {
+      provide: AddCurrencyUseCase,
+      useFactory: (
+        currencies: PrismaCurrencyRepository,
+        ids: CryptoIdGenerator,
+      ) => new AddCurrencyUseCase(currencies, ids),
+      inject: [CURRENCY_REPOSITORY, ID_GENERATOR],
+    },
+    {
+      provide: ListCurrenciesUseCase,
+      useFactory: (currencies: PrismaCurrencyRepository) =>
+        new ListCurrenciesUseCase(currencies),
+      inject: [CURRENCY_REPOSITORY],
+    },
+    {
+      provide: ListIsoCatalogUseCase,
+      useFactory: () => new ListIsoCatalogUseCase(),
+    },
+    {
+      provide: ReviseCurrencyUseCase,
+      useFactory: (
+        currencies: PrismaCurrencyRepository,
+        usage: PrismaCurrencyUsageAdapter,
+      ) => new ReviseCurrencyUseCase(currencies, usage),
+      inject: [CURRENCY_REPOSITORY, CURRENCY_USAGE],
+    },
+    {
+      provide: ArchiveCurrencyUseCase,
+      useFactory: (
+        currencies: PrismaCurrencyRepository,
+        usage: PrismaCurrencyUsageAdapter,
+      ) => new ArchiveCurrencyUseCase(currencies, usage),
+      inject: [CURRENCY_REPOSITORY, CURRENCY_USAGE],
     },
     {
       provide: CreateCategoryUseCase,
@@ -164,9 +236,10 @@ function requiredEnv(name: string): string {
       provide: CreateAccountUseCase,
       useFactory: (
         accounts: PrismaAccountRepository,
+        currencies: PrismaCurrencyRepository,
         ids: CryptoIdGenerator,
-      ) => new CreateAccountUseCase(accounts, ids),
-      inject: [ACCOUNT_REPOSITORY, ID_GENERATOR],
+      ) => new CreateAccountUseCase(accounts, currencies, ids),
+      inject: [ACCOUNT_REPOSITORY, CURRENCY_ENABLED, ID_GENERATOR],
     },
     {
       provide: ListAccountsUseCase,

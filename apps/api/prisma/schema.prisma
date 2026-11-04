@@ -35,6 +35,21 @@ model Category {
   @@map("categorization_categories")
 }
 
+// ---- currencies module ----
+
+model Currency {
+  id          String    @id @default(uuid())
+  workspaceId String
+  code        String // ISO 4217 — one catalog entry per (workspace, code)
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([workspaceId, code])
+  @@index([workspaceId])
+  @@map("currencies_currencies")
+}
+
 // ---- accounts module ----
 
 model Account {

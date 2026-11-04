@@ -63,6 +63,23 @@ export interface CategoryView {
   custom: boolean;
 }
 
+export interface CurrencyView {
+  id: string;
+  workspaceId: string;
+  code: string;
+  nameEn: string;
+  nameEs: string;
+  minorUnitExponent: number;
+  archivedAt: string | null;
+}
+
+export interface IsoCurrencyView {
+  code: string;
+  nameEn: string;
+  nameEs: string;
+  minorUnitExponent: number;
+}
+
 let baseUrl = "";
 
 export async function bootApp(): Promise<INestApplication> {
@@ -108,6 +125,7 @@ export async function cleanE2eData(marker: string): Promise<void> {
   const ids = workspaces.map((w) => w.id);
   await prisma.transaction.deleteMany({ where: { workspaceId: { in: ids } } });
   await prisma.account.deleteMany({ where: { workspaceId: { in: ids } } });
+  await prisma.currency.deleteMany({ where: { workspaceId: { in: ids } } });
   await prisma.workspace.deleteMany({
     where: { identityKey: { contains: marker } },
   });

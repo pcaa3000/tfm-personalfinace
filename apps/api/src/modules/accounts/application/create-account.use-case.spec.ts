@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { WorkspaceId } from "../../shared-kernel/index.js";
 import type { Account } from "../domain/account.js";
 import type { AccountRepositoryPort } from "./ports/account-repository.port.js";
+import type { CurrencyEnabledPort } from "./ports/currency-enabled.port.js";
 import { CreateAccountUseCase } from "./create-account.use-case.js";
 
 class InMemoryAccounts implements AccountRepositoryPort {
@@ -21,6 +22,10 @@ class InMemoryAccounts implements AccountRepositoryPort {
   }
 }
 
+function enabled(codes: readonly string[]): CurrencyEnabledPort {
+  return { isEnabled: async (_ws, code) => codes.includes(code) };
+}
+
 const ids = { next: () => "acc-generated" };
 
 const ws = WorkspaceId.create("ws-1");
@@ -36,7 +41,7 @@ const command = {
 describe("CreateAccountUseCase", () => {
   it("creates and saves an account", async () => {
     const repo = new InMemoryAccounts();
-    const useCase = new CreateAccountUseCase(repo, ids);
+    const useCase = new CreateAccountUseCase(repo, enabled(["PEN"]), ids);
 
     const result = await useCase.execute(command);
 
@@ -51,7 +56,7 @@ describe("CreateAccountUseCase", () => {
 
   it("rejects a duplicate name in the same workspace", async () => {
     const repo = new InMemoryAccounts();
-    const useCase = new CreateAccountUseCase(repo, ids);
+    const useCase = new CreateAccountUseCase(repo, enabled(["PEN"]), ids);
     const first = await useCase.execute(command);
     expect(first.ok).toBe(true);
 
@@ -66,7 +71,7 @@ describe("CreateAccountUseCase", () => {
 
   it("propagates domain validation errors", async () => {
     const repo = new InMemoryAccounts();
-    const useCase = new CreateAccountUseCase(repo, ids);
+    const useCase = new CreateAccountUseCase(repo, enabled(["PEN"]), ids);
 
     const result = await useCase.execute({ ...command, kind: "crypto" });
 
@@ -78,10 +83,38 @@ describe("CreateAccountUseCase", () => {
   });
 });
 
+describe("CreateAccountUseCase workspace currency catalog (INV-MON-03)", () => {
+  it("rejects a currency not enabled in the workspace catalog", async () => {
+    const repo = new InMemoryAccounts();
+    const useCase = new CreateAccountUseCase(repo, enabled(["PEN"]), ids);
+
+    const result = await useCase.execute({ ...command, currency: "JPY" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("ACCOUNT_CURRENCY_NOT_ENABLED");
+    }
+    expect(repo.saved).toHaveLength(0);
+  });
+
+  it("rejects a malformed currency code before consulting the catalog", async () => {
+    const repo = new InMemoryAccounts();
+    const useCase = new CreateAccountUseCase(repo, enabled(["PEN"]), ids);
+
+    const result = await useCase.execute({ ...command, currency: "US1" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("CURRENCY_INVALID_CODE");
+    }
+    expect(repo.saved).toHaveLength(0);
+  });
+});
+
 describe("CreateAccountUseCase initialBalance", () => {
   it("persists a declared initial balance", async () => {
     const repo = new InMemoryAccounts();
-    const useCase = new CreateAccountUseCase(repo, ids);
+    const useCase = new CreateAccountUseCase(repo, enabled(["PEN"]), ids);
 
     const result = await useCase.execute({
       ...command,
@@ -96,7 +129,7 @@ describe("CreateAccountUseCase initialBalance", () => {
 
   it("rejects a negative initial balance", async () => {
     const repo = new InMemoryAccounts();
-    const useCase = new CreateAccountUseCase(repo, ids);
+    const useCase = new CreateAccountUseCase(repo, enabled(["PEN"]), ids);
     const result = await useCase.execute({
       ...command,
       initialBalance: "-5.00",
