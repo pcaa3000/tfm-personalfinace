@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="es-PE">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TFM Finanzas — Dirección 01: Sidebar dashboard</title>
+<script>
+/* Anti-FOUC: aplica el tema persistido antes de pintar. Clave compartida: tfm-theme-mode */
+(function () {
+  var mode = null;
+  try { mode = localStorage.getItem("tfm-theme-mode"); } catch (e) {}
+  if (mode !== "light" && mode !== "dark") {
+    mode = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  document.documentElement.dataset.theme = mode;
+})();
+</script>
+<style>
+/* ============================================================
+   DIRECCIÓN 01 — Sidebar dashboard (finanzas institucionales)
+   Estrategia visual: índigo institucional sobre neutros fríos,
+   tipografía compacta, tabla densa. El sidebar da nav escalable
+   pero cuesta ancho en tablet/móvil (se repliega a riel 64px
+   <1080px y desaparece a barra inferior <720px; la tabla hace
+   scroll horizontal en vez de convertirse en cards).
+   ============================================================ */
+
+:root {
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --topbar-h: 58px;
+  --rail-w: 232px;
+  --radius: 10px;
+  --shadow-stuck: 0 8px 20px -12px rgb(20 28 51 / 0.35);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f3f5fb;
+  --surface: #ffffff;
+  --surface-2: #eef1f9;
+  --ink: #141c33;
+  --muted: #54607a;
+  --border: #dbe0ee;
+  --accent: #3453d1;
+  --accent-hover: #2a45b3;
+  --accent-soft: #e4e9fb;
+  --accent-ink: #ffffff;
+  --income: #0d7a4c;
+  --expense: #b3261e;
+  --transfer: #4c557a;
+  --chip-bg: #e9edf7;
+  --focus: #1d3fb9;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d1120;
+  --surface: #161b2e;
+  --surface-2: #1d2440;
+  --ink: #e8ebf7;
+  --muted: #9ba4c2;
+  --border: #2a3350;
+  --accent: #93a5ff;
+  --accent-hover: #aebbff;
+  --accent-soft: #243056;
+  --accent-ink: #10152a;
+  --income: #4cc38a;
+  --expense: #ff8a80;
+  --transfer: #aab1cf;
+  --chip-bg: #21294a;
+  --focus: #b3c2ff;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+button { font-family: inherit; font-size: inherit; }
+a { color: var(--accent); }
+
+@media (prefers-reduced-motion: no-preference) {
+  body, .card, .tx-row { transition: background-color .18s ease, color .18s ease, border-color .18s ease; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+.skip {
+  position: absolute; left: -9999px; top: 0; z-index: 200;
+  background: var(--accent); color: var(--accent-ink);
+  padding: 10px 16px; border-radius: 0 0 8px 0; font-weight: 600;
+}
+.skip:focus { left: 0; }
+
+/* ---------- Estructura ---------- */
+.shell { display: grid; grid-template-columns: var(--rail-w) 1fr; height: 100vh; }
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: 18px 14px;
+  gap: 4px;
+  overflow-y: auto;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; }
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 9px; flex: none;
+  background: var(--accent); color: var(--accent-ink);
+  display: grid; place-items: center; font-weight: 800; font-size: 13px; letter-spacing: .02em;
+}
+.brand-name { font-weight: 700; font-size: 15px; }
+.brand-sub { font-size: 11.5px; color: var(--muted); }
+
+.nav-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--muted); margin: 14px 8px 6px; font-weight: 700;
+}
+.sidebar nav ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.nav-item a {
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 10px; border-radius: 8px;
+  color: var(--ink); text-decoration: none; font-weight: 500;
+}
+.nav-item a svg { width: 18px; height: 18px; flex: none; stroke: var(--muted); }
+.nav-item a:hover { background: var(--surface-2); }
+.nav-item[aria-current="page"] a { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.nav-item[aria-current="page"] a svg { stroke: var(--accent); }
+.sidebar-foot { margin-top: auto; padding: 10px 8px 0; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+.sidebar-foot strong { color: var(--ink); display: block; font-size: 13px; }
+
+/* ---------- Topbar ---------- */
+.content { display: flex; flex-direction: column; min-width: 0; height: 100vh; overflow-y: auto; }
+.topbar {
+  position: sticky; top: 0; z-index: 60;
+  height: var(--topbar-h);
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.topbar .crumb { min-width: 0; }
+.topbar .crumb h1 { margin: 0; font-size: 16px; font-weight: 700; }
+.topbar .crumb p { margin: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--accent); color: var(--accent-ink);
+  border: none; border-radius: 9px; padding: 9px 16px;
+  font-weight: 700; cursor: pointer;
+}
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary svg { width: 15px; height: 15px; }
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: transparent; color: var(--ink);
+  border: 1px solid var(--border); border-radius: 9px;
+  padding: 8px 13px; font-weight: 600; cursor: pointer;
+}
+.btn-ghost:hover { background: var(--surface-2); }
+.icon-btn {
+  width: 38px; height: 38px; border-radius: 9px;
+  border: 1px solid var(--border); background: transparent; color: var(--ink);
+  display: grid; place-items: center; cursor: pointer;
+}
+.icon-btn:hover { background: var(--surface-2); }
+.icon-btn svg { width: 19px; height: 19px; }
+
+/* Menús desplegables */
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute; right: 0; top: calc(100% + 8px); min-width: 220px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: 0 14px 34px -14px rgb(10 15 40 / .45);
+  padding: 6px; z-index: 90; display: none;
+}
+.menu.open { display: block; }
+.menu [role="menuitem"] {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px; border: none; background: none; border-radius: 8px;
+  color: var(--ink); font-weight: 500; cursor: pointer; text-align: left;
+}
+.menu [role="menuitem"]:hover, .menu [role="menuitem"]:focus-visible { background: var(--surface-2); }
+.menu [role="menuitem"] small { margin-left: auto; color: var(--muted); }
+.menu-sep { height: 1px; background: var(--border); margin: 5px 8px; }
+
+/* ---------- Bloque sticky: balance + filtros ---------- */
+.sticky-block {
+  position: sticky; top: var(--topbar-h); z-index: 50;
+  background: var(--bg);
+  padding: 16px 22px 14px;
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-stuck);
+}
+.section-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.section-head h2 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: .01em; }
+.section-head .hint { font-size: 12px; color: var(--muted); }
+
+.balance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.currency-tag {
+  font-size: 11px; font-weight: 800; letter-spacing: .06em;
+  padding: 3px 8px; border-radius: 20px;
+  background: var(--chip-bg); color: var(--ink);
+  border: 1px solid var(--border);
+}
+.card-head .accounts { font-size: 12px; color: var(--muted); }
+.balance-cols { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 10px; }
+.bcell .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.bcell .val { font-size: 17px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.bcell.income .val { color: var(--income); }
+.bcell.expense .val { color: var(--expense); }
+.bcell.total .val { color: var(--ink); font-size: 20px; }
+.bcell.total { border-left: 1px dashed var(--border); padding-left: 14px; }
+.bcell .sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+/* ---------- Filtros sticky ---------- */
+.filters {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  margin-top: 14px;
+}
+.filters .group { display: flex; align-items: center; gap: 6px; }
+.filters label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.filters select, .filters input[type="date"], .filters input[type="search"] {
+  font-family: inherit; font-size: 13px;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 7px 9px;
+}
+.chip {
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--ink); border-radius: 20px; padding: 7px 13px;
+  font-weight: 600; font-size: 12.5px; cursor: pointer;
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.filters .spacer { flex: 1; }
+.result-count { font-size: 12px; color: var(--muted); }
+
+/* ---------- Tabla ---------- */
+.list { padding: 18px 22px 60px; }
+.list h2 { font-size: 14px; margin: 0 0 10px; }
+.table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+table { width: 100%; border-collapse: collapse; min-width: 720px; }
+th, td { text-align: left; padding: 10px 14px; font-size: 13px; }
+thead th {
+  position: sticky; top: 0;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); background: var(--surface-2);
+  border-bottom: 1px solid var(--border); font-weight: 700;
+}
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--surface-2); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tx-concept { font-weight: 600; }
+.tx-meta { font-size: 12px; color: var(--muted); }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 700; padding: 2.5px 9px; border-radius: 20px;
+}
+.badge.income { color: var(--income); background: color-mix(in srgb, var(--income) 14%, transparent); }
+.badge.expense { color: var(--expense); background: color-mix(in srgb, var(--expense) 12%, transparent); }
+.badge.transfer { color: var(--transfer); background: var(--chip-bg); }
+.amount.income { color: var(--income); font-weight: 700; }
+.amount.expense { color: var(--expense); font-weight: 700; }
+.amount.transfer { color: var(--transfer); font-weight: 700; }
+
+/* ---------- Diálogo ---------- */
+dialog {
+  border: 1px solid var(--border); border-radius: 16px;
+  background: var(--surface); color: var(--ink);
+  padding: 0; width: min(430px, 92vw);
+  box-shadow: 0 30px 70px -20px rgb(5 10 30 / .6);
+}
+dialog::backdrop { background: rgb(6 10 24 / .55); }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 0; }
+.dlg-head h3 { margin: 0; font-size: 16px; }
+.dlg-body { padding: 14px 18px 18px; display: grid; gap: 10px; }
+.move-type {
+  display: flex; align-items: center; gap: 13px; width: 100%;
+  padding: 13px 14px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); color: var(--ink); cursor: pointer; text-align: left;
+}
+.move-type:hover { border-color: var(--accent); background: var(--surface-2); }
+.move-type .mt-icon {
+  width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex: none;
+}
+.move-type strong { display: block; font-size: 14px; }
+.move-type small { color: var(--muted); font-size: 12px; }
+.mt-icon.income { color: var(--income); background: color-mix(in srgb, var(--income) 13%, transparent); }
+.mt-icon.expense { color: var(--expense); background: color-mix(in srgb, var(--expense) 12%, transparent); }
+.mt-icon.transfer { color: var(--transfer); background: var(--chip-bg); }
+
+/* ---------- Nota de dirección ---------- */
+.dir-note {
+  position: fixed; right: 14px; bottom: 14px; z-index: 120;
+  max-width: 330px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 10px 13px;
+  font-size: 11.5px; color: var(--muted); line-height: 1.5;
+  box-shadow: 0 10px 30px -12px rgb(5 10 30 / .5);
+}
+.dir-note summary { cursor: pointer; font-weight: 700; color: var(--ink); font-size: 12px; }
+.dir-note p { margin: 7px 0 0; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1180px) {
+  .balance-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 1080px) {
+  .shell { grid-template-columns: 64px 1fr; }
+  .sidebar { padding: 14px 8px; align-items: center; }
+  .brand-name, .brand-sub, .nav-label, .sidebar-foot { display: none; }
+  .nav-item a { justify-content: center; padding: 10px; }
+  .nav-item a span { display: none; }
+}
+@media (max-width: 720px) {
+  .shell { grid-template-columns: 1fr; grid-template-rows: 1fr auto; height: 100vh; }
+  .content { height: auto; min-height: 0; overflow-y: auto; }
+  .sidebar {
+    order: 2; flex-direction: row; justify-content: space-around;
+    border-right: none; border-top: 1px solid var(--border);
+    padding: 6px; overflow: visible;
+  }
+  .brand, .nav-label, .sidebar-foot { display: none; }
+  .sidebar nav ul { display: flex; gap: 4px; }
+  .nav-item a { flex-direction: column; gap: 3px; font-size: 10px; padding: 6px 10px; }
+  .nav-item a span { display: block; }
+  .topbar { padding: 0 12px; gap: 8px; }
+  .topbar .crumb p { display: none; }
+  .btn-primary .btn-txt { display: none; }
+  .sticky-block { padding: 12px 12px 10px; }
+  .balance-cols { grid-template-columns: 1fr 1fr 1.2fr; }
+  .bcell .val { font-size: 14px; }
+  .bcell.total .val { font-size: 15px; }
+  .list { padding: 14px 12px 80px; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Saltar al contenido</a>
+
+<div class="shell">
+  <aside class="sidebar" aria-label="Navegación principal">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">TF</div>
+      <div>
+        <div class="brand-name">TFM Finanzas</div>
+        <div class="brand-sub">Hogar · Lima</div>
+      </div>
+    </div>
+
+    <nav aria-label="Secciones">
+      <p class="nav-label">Libro</p>
+      <ul>
+        <li class="nav-item" aria-current="page">
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M3 12l9-8 9 8M5 10v10h14V10"/></svg>
+            <span>Panel</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+            <span>Movimientos</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 19V9m8 10V5m8 14v-7"/></svg>
+            <span>Reportes</span>
+          </a>
+        </li>
+      </ul>
+      <p class="nav-label">Gestión</p>
+      <ul aria-label="Gestión">
+        <li class="nav-item">
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/></svg>
+            <span>Cuentas</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8.5" cy="8.5" r="1.4"/></svg>
+            <span>Categorías</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9 10.5h4.5a2 2 0 010 4H9.5"/></svg>
+            <span>Monedas</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="#">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v3m0 12v3M3 12h3m12 0h3M6 6l2 2m8 8l2 2m0-12l-2 2M8 16l-2 2"/></svg>
+            <span>Preferencias</span>
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <div class="sidebar-foot">
+      <strong>María Quispe</strong>
+      mquispe@hogar.pe
+    </div>
+  </aside>
+
+  <div class="content">
+    <header class="topbar">
+      <div class="crumb">
+        <h1>TFM Finanzas <span style="font-weight:500;color:var(--muted);font-size:13px">· Panel general</span></h1>
+        <p>Libro de ingresos y gastos · Noviembre 2026</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn-primary" type="button" id="open-movement" aria-label="Nuevo movimiento">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="btn-txt" aria-hidden="true">Nuevo movimiento</span>
+        </button>
+        <div class="menu-wrap">
+          <button class="btn-ghost" type="button" id="gestion-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="gestion-menu">
+            Gestión
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="menu" id="gestion-menu" role="menu" aria-label="Menú de gestión">
+            <button role="menuitem" type="button">Cuentas <small>3 activas</small></button>
+            <button role="menuitem" type="button">Categorías <small>12</small></button>
+            <button role="menuitem" type="button">Monedas <small>PEN · USD</small></button>
+            <div class="menu-sep" role="separator"></div>
+            <button role="menuitem" type="button">Preferencias <small>Zona · idioma</small></button>
+          </div>
+        </div>
+        <button class="icon-btn" type="button" id="theme-toggle" aria-pressed="false" aria-label="Cambiar a modo oscuro">
+          <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.4"/><path d="M12 2.5v2.4m0 14.2v2.4M2.5 12h2.4m14.2 0h2.4M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3L5 19"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main id="main">
+      <div class="sticky-block">
+        <div class="section-head">
+          <h2 id="balance-title">Balance general por moneda</h2>
+          <p class="hint">Saldo actual = saldos iniciales + ingresos − gastos</p>
+        </div>
+
+        <div class="balance-grid" role="group" aria-labelledby="balance-title">
+          <article class="card" aria-label="Balance en soles">
+            <div class="card-head">
+              <span class="currency-tag">PEN</span>
+              <span class="accounts">BCP Soles · Efectivo</span>
+            </div>
+            <div class="balance-cols">
+              <div class="bcell income">
+                <div class="lbl">Ingresos</div>
+                <div class="val">S/ 4,500.00</div>
+              </div>
+              <div class="bcell expense">
+                <div class="lbl">Gastos</div>
+                <div class="val">S/ 565.75</div>
+              </div>
+              <div class="bcell total">
+                <div class="lbl">Saldo actual</div>
+                <div class="val">S/ 9,134.25</div>
+                <div class="sub">inicial S/ 5,200.00</div>
+              </div>
+            </div>
+          </article>
+
+          <article class="card" aria-label="Balance en dólares">
+            <div class="card-head">
+              <span class="currency-tag">USD</span>
+              <span class="accounts">Interbank Dólares</span>
+            </div>
+            <div class="balance-cols">
+              <div class="bcell income">
+                <div class="lbl">Ingresos</div>
+                <div class="val">$ 850.00</div>
+              </div>
+              <div class="bcell expense">
+                <div class="lbl">Gastos</div>
+                <div class="val">$ 65.98</div>
+              </div>
+              <div class="bcell total">
+                <div class="lbl">Saldo actual</div>
+                <div class="val">$ 1,984.02</div>
+                <div class="sub">inicial $ 1,200.00</div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <form class="filters" aria-label="Filtros de visualización" onsubmit="return false">
+          <div class="group" role="group" aria-label="Período rápido">
+            <button type="button" class="chip" aria-pressed="true">Mes en curso</button>
+            <button type="button" class="chip" aria-pressed="false">Últimos 30 días</button>
+          </div>
+          <div class="group">
+            <label for="f-from">Desde</label>
+            <input type="date" id="f-from" value="2026-11-01">
+            <label for="f-to">Hasta</label>
+            <input type="date" id="f-to" value="2026-11-30">
+          </div>
+          <div class="group">
+            <label for="f-type">Tipo</label>
+            <select id="f-type">
+              <option>Todos</option><option>Ingresos</option><option>Gastos</option><option>Transferencias</option>
+            </select>
+            <label for="f-cur">Moneda</label>
+            <select id="f-cur">
+              <option>Todas</option><option>PEN</option><option>USD</option>
+            </select>
+          </div>
+          <span class="spacer"></span>
+          <input type="search" placeholder="Buscar concepto…" aria-label="Buscar por concepto">
+          <span class="result-count" role="status">12 movimientos</span>
+        </form>
+      </div>
+
+      <section class="list" aria-labelledby="list-title">
+        <h2 id="list-title">Movimientos · Noviembre 2026</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Fecha</th>
+                <th scope="col">Tipo</th>
+                <th scope="col">Concepto</th>
+                <th scope="col">Cuenta</th>
+                <th scope="col">Categoría</th>
+                <th scope="col" class="num">Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="tx-row"><td>20 nov</td><td><span class="badge expense">Gasto</span></td><td class="tx-concept">Farmacia Inkafarma</td><td class="tx-meta">Efectivo</td><td class="tx-meta">Salud</td><td class="num amount expense">− S/ 38.20</td></tr>
+              <tr class="tx-row"><td>18 nov</td><td><span class="badge expense">Gasto</span></td><td class="tx-concept">Mercado San Juan</td><td class="tx-meta">Efectivo</td><td class="tx-meta">Alimentación</td><td class="num amount expense">− S/ 67.85</td></tr>
+              <tr class="tx-row"><td>15 nov</td><td><span class="badge expense">Gasto</span></td><td class="tx-concept">Recarga Movistar</td><td class="tx-meta">Efectivo</td><td class="tx-meta">Servicios</td><td class="num amount expense">− S/ 30.00</td></tr>
+              <tr class="tx-row"><td>14 nov</td><td><span class="badge expense">Gasto</span></td><td class="tx-concept">Compra online</td><td class="tx-meta">Interbank Dólares</td><td class="tx-meta">Compras</td><td class="num amount expense">− $ 45.99</td></tr>
+              <tr class="tx-row"><td>12 nov</td><td><span class="badge expense">Gasto</span></td><td class="tx-concept">Internet Claro Hogar</td><td class="tx-meta">BCP Soles</td><td class="tx-meta">Servicios</td><td class="num amount expense">− S/ 109.00</td></tr>
+              <tr class="tx-row"><td>10 nov</td><td><span class="badge expense">Gasto</span></td><td class="tx-concept">Luz del Sur</td><td class="tx-meta">BCP Soles</td><td class="tx-meta">Servicios</td><td class="num amount expense">− S/ 92.30</td></tr>
+              <tr class="tx-row"><td>09 nov</td><td><span class="badge expense">Gasto</span></td><td class="tx-concept">Suscripción herramientas</td><td class="tx-meta">Interbank Dólares</td><td class="tx-meta">Servicios</td><td class="num amount expense">− $ 19.99</td></tr>
+              <tr class="tx-row"><td>07 nov</td><td><span class="badge expense">Gasto</span></td><td class="tx-concept">Movilidad urbana</td><td class="tx-meta">Efectivo</td><td class="tx-meta">Transporte</td><td class="num amount expense">− S/ 42.00</td></tr>
+              <tr class="tx-row"><td>06 nov</td><td><span class="badge income">Ingreso</span></td><td class="tx-concept">Pago proyecto freelance</td><td class="tx-meta">Interbank Dólares</td><td class="tx-meta">Trabajo extra</td><td class="num amount income">+ $ 850.00</td></tr>
+              <tr class="tx-row"><td>05 nov</td><td><span class="badge transfer">Transferencia</span></td><td class="tx-concept">Retiro a efectivo</td><td class="tx-meta">BCP Soles → Efectivo</td><td class="tx-meta">—</td><td class="num amount transfer">S/ 300.00</td></tr>
+              <tr class="tx-row"><td>04 nov</td><td><span class="badge expense">Gasto</span></td><td class="tx-concept">Supermercado Metro</td><td class="tx-meta">BCP Soles</td><td class="tx-meta">Alimentación</td><td class="num amount expense">− S/ 186.40</td></tr>
+              <tr class="tx-row"><td>03 nov</td><td><span class="badge income">Ingreso</span></td><td class="tx-concept">Sueldo mensual</td><td class="tx-meta">BCP Soles</td><td class="tx-meta">Sueldo</td><td class="num amount income">+ S/ 4,500.00</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<dialog id="movement-dialog" aria-labelledby="dlg-title">
+  <div class="dlg-head">
+    <h3 id="dlg-title">Nuevo movimiento</h3>
+    <form method="dialog"><button class="icon-btn" aria-label="Cerrar" type="submit">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button></form>
+  </div>
+  <div class="dlg-body">
+    <button class="move-type" type="button">
+      <span class="mt-icon income"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 19V5m-6 6l6-6 6 6"/></svg></span>
+      <span><strong>Ingreso</strong><small>Sueldo, freelance, reembolsos…</small></span>
+    </button>
+    <button class="move-type" type="button">
+      <span class="mt-icon expense"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14m-6-6l6 6 6-6"/></svg></span>
+      <span><strong>Gasto</strong><small>Compras, servicios, transporte…</small></span>
+    </button>
+    <button class="move-type" type="button">
+      <span class="mt-icon transfer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg></span>
+      <span><strong>Transferencia</strong><small>Mover importe entre cuentas de la misma moneda</small></span>
+    </button>
+  </div>
+</dialog>
+
+<details class="dir-note">
+  <summary>Dirección 01 · Sidebar dashboard</summary>
+  <p>Dashboard financiero clásico: nav lateral escalable, balance por moneda en cards héroe y tabla densa. <strong>Responsive:</strong> &lt;1080px el sidebar colapsa a riel de iconos, &lt;720px se convierte en barra inferior y la tabla hace scroll horizontal (no pasa a cards — esa es la concesión). Balance y filtros permanecen sticky bajo el topbar.</p>
+</details>
+
+<script>
+(function () {
+  var KEY = "tfm-theme-mode";
+  var root = document.documentElement;
+  var toggle = document.getElementById("theme-toggle");
+  var icon = document.getElementById("theme-icon");
+
+  function paint(mode) {
+    toggle.setAttribute("aria-pressed", mode === "dark" ? "true" : "false");
+    toggle.setAttribute("aria-label", mode === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro");
+    icon.innerHTML = mode === "dark"
+      ? '<path d="M20 14.5A8.5 8.5 0 119.5 4a7 7 0 0010.5 10.5z"/>'
+      : '<circle cx="12" cy="12" r="4.4"/><path d="M12 2.5v2.4m0 14.2v2.4M2.5 12h2.4m14.2 0h2.4M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3L5 19"/>';
+  }
+  toggle.addEventListener("click", function () {
+    var next = root.dataset.theme === "dark" ? "light" : "dark";
+    root.dataset.theme = next;
+    try { localStorage.setItem(KEY, next); } catch (e) {}
+    paint(next);
+  });
+  paint(root.dataset.theme);
+
+  var btn = document.getElementById("gestion-btn");
+  var menu = document.getElementById("gestion-menu");
+  function closeMenu() { menu.classList.remove("open"); btn.setAttribute("aria-expanded", "false"); }
+  btn.addEventListener("click", function () {
+    var open = menu.classList.toggle("open");
+    btn.setAttribute("aria-expanded", String(open));
+  });
+  document.addEventListener("click", function (e) {
+    if (!menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) closeMenu();
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenu(); });
+
+  var dlg = document.getElementById("movement-dialog");
+  document.getElementById("open-movement").addEventListener("click", function () {
+    if (dlg.showModal) dlg.showModal();
+  });
+})();
+</script>
+</body>
+</html>

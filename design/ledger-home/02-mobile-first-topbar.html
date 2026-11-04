@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="es-PE">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TFM Finanzas — Dirección 02: Mobile-first topbar</title>
+<script>
+/* Anti-FOUC: aplica el tema persistido antes de pintar. Clave compartida: tfm-theme-mode */
+(function () {
+  var mode = null;
+  try { mode = localStorage.getItem("tfm-theme-mode"); } catch (e) {}
+  if (mode !== "light" && mode !== "dark") {
+    mode = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  document.documentElement.dataset.theme = mode;
+})();
+</script>
+<style>
+/* ============================================================
+   DIRECCIÓN 02 — Mobile-first topbar (fintech teal/esmeralda)
+   Estrategia visual: una sola columna pensada para el pulgar,
+   teal esmeralda, cards redondeadas, jerarquía tipográfica
+   generosa. En desktop (≥960px) la tira de balance se apila en
+   dos cards anchas y la lista pasa de cards agrupadas por fecha
+   a tabla real. En móvil el "+ Nuevo movimiento" se duplica como
+   FAB para alcanzar el pulgar. Menor densidad en pantalla ancha:
+   ese es el tradeoff.
+   ============================================================ */
+
+:root {
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --topbar-h: 56px;
+  --radius: 16px;
+  --shadow-stuck: 0 10px 24px -14px rgb(8 40 35 / 0.4);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f2f8f7;
+  --surface: #ffffff;
+  --surface-2: #e9f3f1;
+  --ink: #0f2f29;
+  --muted: #4d6d66;
+  --border: #d7e6e2;
+  --accent: #0d7d6c;
+  --accent-hover: #0a6658;
+  --accent-soft: #d9efeb;
+  --accent-ink: #ffffff;
+  --income: #0d7a4c;
+  --expense: #b3261e;
+  --transfer: #4d5f7a;
+  --focus: #0a6b5c;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0a1412;
+  --surface: #122019;
+  --surface-2: #193028;
+  --ink: #e0f2ec;
+  --muted: #97b8ae;
+  --border: #22403a;
+  --accent: #4fd0b8;
+  --accent-hover: #7ce0cd;
+  --accent-soft: #1d3f38;
+  --accent-ink: #07211b;
+  --income: #4cc38a;
+  --expense: #ff8a80;
+  --transfer: #a3b2c7;
+  --focus: #8ce7d4;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg); color: var(--ink);
+  font-size: 15px; line-height: 1.5;
+}
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+button { font-family: inherit; font-size: inherit; }
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px;
+  clip: rect(0 0 0 0); clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
+@media (prefers-reduced-motion: no-preference) {
+  body, .tx-card, .fab { transition: background-color .18s ease, color .18s ease, transform .18s ease; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+.skip {
+  position: absolute; left: -9999px; top: 0; z-index: 300;
+  background: var(--accent); color: var(--accent-ink);
+  padding: 10px 16px; border-radius: 0 0 10px 0; font-weight: 700;
+}
+.skip:focus { left: 0; }
+
+/* ---------- Topbar ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 70;
+  height: var(--topbar-h);
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.brand-mark {
+  width: 32px; height: 32px; border-radius: 10px; flex: none;
+  background: var(--accent); color: var(--accent-ink);
+  display: grid; place-items: center; font-weight: 800; font-size: 12px;
+}
+.brand-name { font-weight: 750; font-size: 15px; white-space: nowrap; }
+.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--accent); color: var(--accent-ink);
+  border: none; border-radius: 12px; padding: 9px 13px;
+  font-weight: 700; cursor: pointer;
+}
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary svg { width: 15px; height: 15px; }
+.btn-primary .btn-txt { display: none; }
+.icon-btn {
+  width: 38px; height: 38px; border-radius: 12px;
+  border: 1px solid var(--border); background: transparent; color: var(--ink);
+  display: grid; place-items: center; cursor: pointer;
+}
+.icon-btn:hover { background: var(--surface-2); }
+.icon-btn svg { width: 19px; height: 19px; }
+
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute; right: 0; top: calc(100% + 8px); min-width: 210px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: 0 14px 34px -14px rgb(4 30 25 / .45);
+  padding: 6px; z-index: 90; display: none;
+}
+.menu.open { display: block; }
+.menu [role="menuitem"] {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 11px 12px; border: none; background: none; border-radius: 10px;
+  color: var(--ink); font-weight: 500; cursor: pointer; text-align: left;
+}
+.menu [role="menuitem"]:hover, .menu [role="menuitem"]:focus-visible { background: var(--surface-2); }
+.menu [role="menuitem"] small { margin-left: auto; color: var(--muted); }
+.menu-sep { height: 1px; background: var(--border); margin: 5px 8px; }
+
+/* ---------- Sticky: balance + filtros ---------- */
+.sticky-block {
+  position: sticky; top: var(--topbar-h); z-index: 60;
+  background: var(--bg);
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-stuck);
+}
+.sticky-block h2 { font-size: 13px; margin: 0 0 8px; font-weight: 750; }
+.sticky-block .hint { font-size: 11.5px; color: var(--muted); margin: 0 0 10px; }
+
+.balance-strip {
+  display: flex; gap: 10px;
+  overflow-x: auto; padding-bottom: 4px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.cur-card {
+  min-width: 252px; flex: none; scroll-snap-align: start;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 13px 15px;
+}
+.cur-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.currency-tag {
+  font-size: 11px; font-weight: 800; letter-spacing: .07em;
+  padding: 3px 9px; border-radius: 20px;
+  background: var(--accent-soft); color: var(--ink);
+}
+.cur-head .accounts { font-size: 11.5px; color: var(--muted); }
+.cur-total { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cur-total-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.cur-io { display: flex; gap: 14px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.cur-io .io { font-size: 12.5px; }
+.cur-io .io b { display: block; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.cur-io .in b { color: var(--income); }
+.cur-io .out b { color: var(--expense); }
+.cur-io .io span { color: var(--muted); font-size: 11px; }
+
+.filters {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  overflow-x: auto; padding-bottom: 2px;
+}
+.chip {
+  flex: none;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--ink); border-radius: 20px; padding: 7px 13px;
+  font-weight: 650; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.range {
+  display: none; width: 100%;
+  gap: 8px; align-items: center; padding-top: 8px;
+}
+.range.open { display: flex; }
+.range label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.range input {
+  font-family: inherit; font-size: 13px; flex: 1; min-width: 0;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 10px; padding: 8px 9px;
+}
+
+/* ---------- Lista de movimientos ---------- */
+.list { padding: 14px; }
+.list-head { display: flex; align-items: baseline; gap: 10px; margin: 4px 0 10px; }
+.list-head h2 { margin: 0; font-size: 14px; font-weight: 750; }
+.list-head span { font-size: 12px; color: var(--muted); }
+
+.day-group { margin-bottom: 16px; }
+.day-title {
+  font-size: 12px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em;
+  margin: 0 2px 7px;
+}
+.tx-list { display: grid; gap: 8px; }
+.tx-card {
+  display: grid; grid-template-columns: 38px 1fr auto; gap: 11px; align-items: center;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 11px 13px;
+}
+.tx-ico {
+  width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center;
+}
+.tx-ico svg { width: 18px; height: 18px; }
+.tx-ico.income { color: var(--income); background: color-mix(in srgb, var(--income) 13%, transparent); }
+.tx-ico.expense { color: var(--expense); background: color-mix(in srgb, var(--expense) 11%, transparent); }
+.tx-ico.transfer { color: var(--transfer); background: var(--surface-2); }
+.tx-main { min-width: 0; }
+.tx-concept { font-weight: 650; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tx-meta { font-size: 12px; color: var(--muted); }
+.tx-amount { text-align: right; font-variant-numeric: tabular-nums; }
+.tx-amount b { display: block; font-size: 14.5px; }
+.tx-amount.income b { color: var(--income); }
+.tx-amount.expense b { color: var(--expense); }
+.tx-amount.transfer b { color: var(--transfer); }
+.tx-amount small { color: var(--muted); font-size: 11px; }
+
+/* Tabla solo ≥960px */
+.tx-table { display: none; }
+
+/* ---------- FAB ---------- */
+.fab {
+  position: fixed; right: 18px; bottom: 22px; z-index: 80;
+  width: 58px; height: 58px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-ink);
+  border: none; display: grid; place-items: center; cursor: pointer;
+  box-shadow: 0 12px 28px -8px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.fab svg { width: 24px; height: 24px; }
+.fab:hover { background: var(--accent-hover); }
+
+/* ---------- Diálogo ---------- */
+dialog {
+  border: 1px solid var(--border); border-radius: 18px;
+  background: var(--surface); color: var(--ink);
+  padding: 0; width: min(420px, calc(100vw - 28px));
+  box-shadow: 0 30px 70px -20px rgb(3 25 20 / .6);
+}
+dialog::backdrop { background: rgb(3 18 15 / .55); }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 0; }
+.dlg-head h3 { margin: 0; font-size: 16px; }
+.dlg-body { padding: 12px 18px 18px; display: grid; gap: 9px; }
+.move-type {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 13px 14px; border: 1px solid var(--border); border-radius: 14px;
+  background: var(--surface); color: var(--ink); cursor: pointer; text-align: left;
+}
+.move-type:hover { border-color: var(--accent); background: var(--surface-2); }
+.move-type strong { display: block; font-size: 14px; }
+.move-type small { color: var(--muted); font-size: 12px; }
+
+/* ---------- Nota de dirección ---------- */
+.dir-note {
+  position: fixed; left: 12px; bottom: 12px; z-index: 120;
+  max-width: 300px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 9px 12px;
+  font-size: 11px; color: var(--muted); line-height: 1.5;
+  box-shadow: 0 10px 30px -12px rgb(3 25 20 / .5);
+}
+.dir-note summary { cursor: pointer; font-weight: 700; color: var(--ink); font-size: 11.5px; }
+.dir-note p { margin: 6px 0 0; }
+
+/* ---------- Desktop: ≥960px ---------- */
+@media (min-width: 960px) {
+  body { font-size: 14px; }
+  .topbar { padding: 0 26px; }
+  .btn-primary .btn-txt { display: inline; }
+  .fab { display: none; }
+  .sticky-block, .list { padding-left: 26px; padding-right: 26px; }
+  .sticky-block .inner, .list .inner { max-width: 1080px; margin: 0 auto; }
+  .balance-strip { overflow: visible; }
+  .cur-card { min-width: 0; flex: 1; }
+  .filters { flex-wrap: wrap; }
+  .tx-list { display: none; }
+  .tx-table {
+    display: table; width: 100%; border-collapse: collapse;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .tx-table th, .tx-table td { padding: 10px 14px; font-size: 13px; text-align: left; }
+  .tx-table thead th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border);
+  }
+  .tx-table tbody tr { border-bottom: 1px solid var(--border); }
+  .tx-table tbody tr:last-child { border-bottom: none; }
+  .tx-table tbody tr:hover { background: var(--surface-2); }
+  .tx-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
+  .badge.income { color: var(--income); background: color-mix(in srgb, var(--income) 14%, transparent); }
+  .badge.expense { color: var(--expense); background: color-mix(in srgb, var(--expense) 12%, transparent); }
+  .badge.transfer { color: var(--transfer); background: var(--surface-2); }
+  .day-group { margin-bottom: 22px; }
+}
+@media (max-width: 400px) {
+  .brand-name { display: none; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Saltar a movimientos</a>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">TF</div>
+    <span class="brand-name">TFM Finanzas</span>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn-primary" type="button" id="open-movement" aria-label="Nuevo movimiento">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      <span class="btn-txt" aria-hidden="true">Nuevo movimiento</span>
+    </button>
+    <div class="menu-wrap">
+      <button class="icon-btn" type="button" id="gestion-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="gestion-menu" aria-label="Gestión">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+      </button>
+      <div class="menu" id="gestion-menu" role="menu" aria-label="Menú de gestión">
+        <button role="menuitem" type="button">Cuentas <small>3 activas</small></button>
+        <button role="menuitem" type="button">Categorías <small>12</small></button>
+        <button role="menuitem" type="button">Monedas <small>PEN · USD</small></button>
+        <div class="menu-sep" role="separator"></div>
+        <button role="menuitem" type="button">Preferencias <small>Zona · idioma</small></button>
+      </div>
+    </div>
+    <button class="icon-btn" type="button" id="theme-toggle" aria-pressed="false" aria-label="Cambiar a modo oscuro">
+      <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.4"/><path d="M12 2.5v2.4m0 14.2v2.4M2.5 12h2.4m14.2 0h2.4M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3L5 19"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="sticky-block">
+  <div class="inner">
+    <h2 id="balance-title">Balance general</h2>
+    <p class="hint">Saldo actual = iniciales + ingresos − gastos · nov. 2026</p>
+
+    <div class="balance-strip" role="group" aria-labelledby="balance-title">
+      <article class="cur-card" aria-label="Balance en soles">
+        <div class="cur-head"><span class="currency-tag">PEN</span><span class="accounts">BCP Soles · Efectivo</span></div>
+        <div class="cur-total-lbl">Saldo actual</div>
+        <div class="cur-total">S/ 9,134.25</div>
+        <div class="cur-io">
+          <div class="io in"><span>Ingresos</span><b>S/ 4,500.00</b></div>
+          <div class="io out"><span>Gastos</span><b>S/ 565.75</b></div>
+        </div>
+      </article>
+      <article class="cur-card" aria-label="Balance en dólares">
+        <div class="cur-head"><span class="currency-tag">USD</span><span class="accounts">Interbank Dólares</span></div>
+        <div class="cur-total-lbl">Saldo actual</div>
+        <div class="cur-total">$ 1,984.02</div>
+        <div class="cur-io">
+          <div class="io in"><span>Ingresos</span><b>$ 850.00</b></div>
+          <div class="io out"><span>Gastos</span><b>$ 65.98</b></div>
+        </div>
+      </article>
+    </div>
+
+    <div class="filters" role="group" aria-label="Filtros de visualización">
+      <button type="button" class="chip" aria-pressed="true">Noviembre 2026</button>
+      <button type="button" class="chip" id="range-toggle" aria-pressed="false" aria-expanded="false" aria-controls="range-row">Rango</button>
+      <button type="button" class="chip" aria-pressed="false">Tipo: Todos</button>
+      <button type="button" class="chip" aria-pressed="false">Moneda: Todas</button>
+      <button type="button" class="chip" aria-pressed="false" aria-label="Buscar">⌕ Buscar</button>
+    </div>
+    <div class="range" id="range-row">
+      <label for="f-from">Desde</label>
+      <input type="date" id="f-from" value="2026-11-01">
+      <label for="f-to">Hasta</label>
+      <input type="date" id="f-to" value="2026-11-30">
+    </div>
+  </div>
+</div>
+
+<main id="main" class="list">
+  <div class="inner">
+    <div class="list-head">
+      <h2>Movimientos</h2>
+      <span role="status">12 en noviembre</span>
+    </div>
+
+    <section class="day-group" aria-labelledby="d-20">
+      <h3 class="day-title" id="d-20">Viernes 20</h3>
+      <div class="tx-list">
+        <article class="tx-card">
+          <span class="tx-ico expense"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14m-6-6l6 6 6-6"/></svg></span>
+          <div class="tx-main"><div class="tx-concept">Farmacia Inkafarma</div><div class="tx-meta">Efectivo · Salud</div></div>
+          <div class="tx-amount expense"><b>− S/ 38.20</b><small>Gasto</small></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="day-group" aria-labelledby="d-18">
+      <h3 class="day-title" id="d-18">Miércoles 18</h3>
+      <div class="tx-list">
+        <article class="tx-card">
+          <span class="tx-ico expense"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14m-6-6l6 6 6-6"/></svg></span>
+          <div class="tx-main"><div class="tx-concept">Mercado San Juan</div><div class="tx-meta">Efectivo · Alimentación</div></div>
+          <div class="tx-amount expense"><b>− S/ 67.85</b><small>Gasto</small></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="day-group" aria-labelledby="d-15">
+      <h3 class="day-title" id="d-15">Domingo 15</h3>
+      <div class="tx-list">
+        <article class="tx-card">
+          <span class="tx-ico expense"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14m-6-6l6 6 6-6"/></svg></span>
+          <div class="tx-main"><div class="tx-concept">Recarga Movistar</div><div class="tx-meta">Efectivo · Servicios</div></div>
+          <div class="tx-amount expense"><b>− S/ 30.00</b><small>Gasto</small></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="day-group" aria-labelledby="d-14">
+      <h3 class="day-title" id="d-14">Sábado 14</h3>
+      <div class="tx-list">
+        <article class="tx-card">
+          <span class="tx-ico expense"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14m-6-6l6 6 6-6"/></svg></span>
+          <div class="tx-main"><div class="tx-concept">Compra online</div><div class="tx-meta">Interbank Dólares · Compras</div></div>
+          <div class="tx-amount expense"><b>− $ 45.99</b><small>Gasto</small></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="day-group" aria-labelledby="d-12">
+      <h3 class="day-title" id="d-12">Jueves 12</h3>
+      <div class="tx-list">
+        <article class="tx-card">
+          <span class="tx-ico expense"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14m-6-6l6 6 6-6"/></svg></span>
+          <div class="tx-main"><div class="tx-concept">Internet Claro Hogar</div><div class="tx-meta">BCP Soles · Servicios</div></div>
+          <div class="tx-amount expense"><b>− S/ 109.00</b><small>Gasto</small></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="day-group" aria-labelledby="d-10">
+      <h3 class="day-title" id="d-10">Martes 10</h3>
+      <div class="tx-list">
+        <article class="tx-card">
+          <span class="tx-ico expense"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14m-6-6l6 6 6-6"/></svg></span>
+          <div class="tx-main"><div class="tx-concept">Luz del Sur</div><div class="tx-meta">BCP Soles · Servicios</div></div>
+          <div class="tx-amount expense"><b>− S/ 92.30</b><small>Gasto</small></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="day-group" aria-labelledby="d-09">
+      <h3 class="day-title" id="d-09">Lunes 9</h3>
+      <div class="tx-list">
+        <article class="tx-card">
+          <span class="tx-ico expense"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14m-6-6l6 6 6-6"/></svg></span>
+          <div class="tx-main"><div class="tx-concept">Suscripción herramientas</div><div class="tx-meta">Interbank Dólares · Servicios</div></div>
+          <div class="tx-amount expense"><b>− $ 19.99</b><small>Gasto</small></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="day-group" aria-labelledby="d-07">
+      <h3 class="day-title" id="d-07">Sábado 7</h3>
+      <div class="tx-list">
+        <article class="tx-card">
+          <span class="tx-ico expense"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14m-6-6l6 6 6-6"/></svg></span>
+          <div class="tx-main"><div class="tx-concept">Movilidad urbana</div><div class="tx-meta">Efectivo · Transporte</div></div>
+          <div class="tx-amount expense"><b>− S/ 42.00</b><small>Gasto</small></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="day-group" aria-labelledby="d-06">
+      <h3 class="day-title" id="d-06">Viernes 6</h3>
+      <div class="tx-list">
+        <article class="tx-card">
+          <span class="tx-ico income"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 19V5m-6 6l6-6 6 6"/></svg></span>
+          <div class="tx-main"><div class="tx-concept">Pago proyecto freelance</div><div class="tx-meta">Interbank Dólares · Trabajo extra</div></div>
+          <div class="tx-amount income"><b>+ $ 850.00</b><small>Ingreso</small></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="day-group" aria-labelledby="d-05">
+      <h3 class="day-title" id="d-05">Jueves 5</h3>
+      <div class="tx-list">
+        <article class="tx-card">
+          <span class="tx-ico transfer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg></span>
+          <div class="tx-main"><div class="tx-concept">Retiro a efectivo</div><div class="tx-meta">BCP Soles → Efectivo</div></div>
+          <div class="tx-amount transfer"><b>S/ 300.00</b><small>Transferencia</small></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="day-group" aria-labelledby="d-04">
+      <h3 class="day-title" id="d-04">Miércoles 4</h3>
+      <div class="tx-list">
+        <article class="tx-card">
+          <span class="tx-ico expense"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14m-6-6l6 6 6-6"/></svg></span>
+          <div class="tx-main"><div class="tx-concept">Supermercado Metro</div><div class="tx-meta">BCP Soles · Alimentación</div></div>
+          <div class="tx-amount expense"><b>− S/ 186.40</b><small>Gasto</small></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="day-group" aria-labelledby="d-03">
+      <h3 class="day-title" id="d-03">Martes 3</h3>
+      <div class="tx-list">
+        <article class="tx-card">
+          <span class="tx-ico income"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 19V5m-6 6l6-6 6 6"/></svg></span>
+          <div class="tx-main"><div class="tx-concept">Sueldo mensual</div><div class="tx-meta">BCP Soles · Sueldo</div></div>
+          <div class="tx-amount income"><b>+ S/ 4,500.00</b><small>Ingreso</small></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Vista tabla (solo ≥960px): mismos datos, mayor densidad -->
+    <table class="tx-table" aria-label="Movimientos de noviembre 2026">
+      <thead>
+        <tr><th scope="col">Fecha</th><th scope="col">Tipo</th><th scope="col">Concepto</th><th scope="col">Cuenta</th><th scope="col">Categoría</th><th scope="col" class="num">Monto</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>20 nov</td><td><span class="badge expense">Gasto</span></td><td>Farmacia Inkafarma</td><td>Efectivo</td><td>Salud</td><td class="num" style="color:var(--expense);font-weight:700">− S/ 38.20</td></tr>
+        <tr><td>18 nov</td><td><span class="badge expense">Gasto</span></td><td>Mercado San Juan</td><td>Efectivo</td><td>Alimentación</td><td class="num" style="color:var(--expense);font-weight:700">− S/ 67.85</td></tr>
+        <tr><td>15 nov</td><td><span class="badge expense">Gasto</span></td><td>Recarga Movistar</td><td>Efectivo</td><td>Servicios</td><td class="num" style="color:var(--expense);font-weight:700">− S/ 30.00</td></tr>
+        <tr><td>14 nov</td><td><span class="badge expense">Gasto</span></td><td>Compra online</td><td>Interbank Dólares</td><td>Compras</td><td class="num" style="color:var(--expense);font-weight:700">− $ 45.99</td></tr>
+        <tr><td>12 nov</td><td><span class="badge expense">Gasto</span></td><td>Internet Claro Hogar</td><td>BCP Soles</td><td>Servicios</td><td class="num" style="color:var(--expense);font-weight:700">− S/ 109.00</td></tr>
+        <tr><td>10 nov</td><td><span class="badge expense">Gasto</span></td><td>Luz del Sur</td><td>BCP Soles</td><td>Servicios</td><td class="num" style="color:var(--expense);font-weight:700">− S/ 92.30</td></tr>
+        <tr><td>09 nov</td><td><span class="badge expense">Gasto</span></td><td>Suscripción herramientas</td><td>Interbank Dólares</td><td>Servicios</td><td class="num" style="color:var(--expense);font-weight:700">− $ 19.99</td></tr>
+        <tr><td>07 nov</td><td><span class="badge expense">Gasto</span></td><td>Movilidad urbana</td><td>Efectivo</td><td>Transporte</td><td class="num" style="color:var(--expense);font-weight:700">− S/ 42.00</td></tr>
+        <tr><td>06 nov</td><td><span class="badge income">Ingreso</span></td><td>Pago proyecto freelance</td><td>Interbank Dólares</td><td>Trabajo extra</td><td class="num" style="color:var(--income);font-weight:700">+ $ 850.00</td></tr>
+        <tr><td>05 nov</td><td><span class="badge transfer">Transferencia</span></td><td>Retiro a efectivo</td><td>BCP Soles → Efectivo</td><td>—</td><td class="num" style="color:var(--transfer);font-weight:700">S/ 300.00</td></tr>
+        <tr><td>04 nov</td><td><span class="badge expense">Gasto</span></td><td>Supermercado Metro</td><td>BCP Soles</td><td>Alimentación</td><td class="num" style="color:var(--expense);font-weight:700">− S/ 186.40</td></tr>
+        <tr><td>03 nov</td><td><span class="badge income">Ingreso</span></td><td>Sueldo mensual</td><td>BCP Soles</td><td>Sueldo</td><td class="num" style="color:var(--income);font-weight:700">+ S/ 4,500.00</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<button class="fab" type="button" id="open-movement-fab" aria-label="Nuevo movimiento">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<dialog id="movement-dialog" aria-labelledby="dlg-title">
+  <div class="dlg-head">
+    <h3 id="dlg-title">Nuevo movimiento</h3>
+    <form method="dialog"><button class="icon-btn" aria-label="Cerrar" type="submit">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button></form>
+  </div>
+  <div class="dlg-body">
+    <button class="move-type" type="button">
+      <span class="tx-ico income"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 19V5m-6 6l6-6 6 6"/></svg></span>
+      <span><strong>Ingreso</strong><small>Sueldo, freelance, reembolsos…</small></span>
+    </button>
+    <button class="move-type" type="button">
+      <span class="tx-ico expense"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14m-6-6l6 6 6-6"/></svg></span>
+      <span><strong>Gasto</strong><small>Compras, servicios, transporte…</small></span>
+    </button>
+    <button class="move-type" type="button">
+      <span class="tx-ico transfer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg></span>
+      <span><strong>Transferencia</strong><small>Entre cuentas de la misma moneda</small></span>
+    </button>
+  </div>
+</dialog>
+
+<details class="dir-note">
+  <summary>Dirección 02 · Mobile-first topbar</summary>
+  <p>Columna única pensada para el pulgar: topbar delgada, balance en tira deslizable, lista en cards por día y FAB. <strong>Responsive:</strong> ≥960px el FAB desaparece, la acción queda en la topbar, las cards se convierten en tabla real y la tira de balance en dos cards anchas. Tradeoff: ergonomía móvil máxima, densidad baja en pantalla ancha.</p>
+</details>
+
+<script>
+(function () {
+  var KEY = "tfm-theme-mode";
+  var root = document.documentElement;
+  var toggle = document.getElementById("theme-toggle");
+  var icon = document.getElementById("theme-icon");
+
+  function paint(mode) {
+    toggle.setAttribute("aria-pressed", mode === "dark" ? "true" : "false");
+    toggle.setAttribute("aria-label", mode === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro");
+    icon.innerHTML = mode === "dark"
+      ? '<path d="M20 14.5A8.5 8.5 0 119.5 4a7 7 0 0010.5 10.5z"/>'
+      : '<circle cx="12" cy="12" r="4.4"/><path d="M12 2.5v2.4m0 14.2v2.4M2.5 12h2.4m14.2 0h2.4M5 5l1.7 1.7M17.3 17.3L19 19M19 5l-1.7 1.7M6.7 17.3L5 19"/>';
+  }
+  toggle.addEventListener("click", function () {
+    var next = root.dataset.theme === "dark" ? "light" : "dark";
+    root.dataset.theme = next;
+    try { localStorage.setItem(KEY, next); } catch (e) {}
+    paint(next);
+  });
+  paint(root.dataset.theme);
+
+  var btn = document.getElementById("gestion-btn");
+  var menu = document.getElementById("gestion-menu");
+  function closeMenu() { menu.classList.remove("open"); btn.setAttribute("aria-expanded", "false"); }
+  btn.addEventListener("click", function () {
+    var open = menu.classList.toggle("open");
+    btn.setAttribute("aria-expanded", String(open));
+  });
+  document.addEventListener("click", function (e) {
+    if (!menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) closeMenu();
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenu(); });
+
+  var dlg = document.getElementById("movement-dialog");
+  function openDlg() { if (dlg.showModal) dlg.showModal(); }
+  document.getElementById("open-movement").addEventListener("click", openDlg);
+  document.getElementById("open-movement-fab").addEventListener("click", openDlg);
+
+  var rangeBtn = document.getElementById("range-toggle");
+  var range = document.getElementById("range-row");
+  rangeBtn.addEventListener("click", function () {
+    var open = range.classList.toggle("open");
+    rangeBtn.setAttribute("aria-expanded", String(open));
+    rangeBtn.setAttribute("aria-pressed", String(open));
+  });
+})();
+</script>
+</body>
+</html>

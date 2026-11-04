@@ -1,0 +1,28 @@
+{
+  "title": "Ledger home — personal finance",
+  "brief": "Responsive ledger home for a personal finance app (Spanish-first users): sticky per-currency balance summary (income, expenses, current balance = Σ initial balance + income − expenses), transactions of the current month by default or a chosen date range, top bar with '+ Nuevo movimiento' (income/expense/transfer modal) and a Management menu (Accounts, Categories, Currencies, Preferences dialogs), financial design system with light/dark mode persisted as 'tfm-theme-mode'.",
+  "feature": "odd/tasks/ledger-income-expenses.md",
+  "artboards": [
+    {
+      "file": "01-sidebar-dashboard.html",
+      "title": "Sidebar dashboard",
+      "tradeoff": "Familiar, scalable nav with hero balance cards and a dense table; the sidebar burns width on tablet and mobile (collapses to an icon rail, then a bottom bar) and the table scrolls horizontally instead of reflowing.",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "02-mobile-first-topbar.html",
+      "title": "Mobile-first topbar",
+      "tradeoff": "Best mobile ergonomics for the spec's stated mobile/tablet audience — thumb-reach FAB, day-grouped cards, slidable balance strip — at the cost of lower information density on wide screens (cards only become a table at ≥960px).",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "03-command-center.html",
+      "title": "Command center",
+      "tradeoff": "Power-user density and fast switching — icon rail, currency chips, month carousel, split list+detail — but the most complex to build and the steepest learning curve; detail pane must stack above the list on narrow screens.",
+      "width": 1440,
+      "height": 900
+    }
+  ]
+}
