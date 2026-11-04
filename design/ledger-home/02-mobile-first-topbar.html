@@ -30,6 +30,7 @@
 :root {
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --topbar-h: 56px;
+  --tabbar-h: 58px;
   --radius: 16px;
   --shadow-stuck: 0 10px 24px -14px rgb(8 40 35 / 0.4);
 }
@@ -111,7 +112,35 @@ button { font-family: inherit; font-size: inherit; }
   display: grid; place-items: center; font-weight: 800; font-size: 12px;
 }
 .brand-name { font-weight: 750; font-size: 15px; white-space: nowrap; }
+/* Nav principal: en móvil vive en la tab bar inferior; en desktop se
+   muestra inline junto a la marca (≥960px). */
+.topnav { display: none; }
+.topnav a {
+  color: var(--muted); text-decoration: none;
+  font-size: 13px; font-weight: 650; padding: 7px 12px; border-radius: 9px;
+}
+.topnav a:hover { background: var(--surface-2); color: var(--ink); }
+.topnav a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); }
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* ---------- Tab bar inferior (móvil) ---------- */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 75;
+  height: var(--tabbar-h);
+  display: flex; align-items: stretch;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.tabbar a {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 3px;
+  color: var(--muted); text-decoration: none;
+  font-size: 10.5px; font-weight: 650;
+}
+.tabbar a svg { width: 20px; height: 20px; }
+.tabbar a:hover { color: var(--ink); }
+.tabbar a[aria-current="page"] { color: var(--accent); }
 
 .btn-primary {
   display: inline-flex; align-items: center; gap: 7px;
@@ -155,45 +184,75 @@ button { font-family: inherit; font-size: inherit; }
   border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow-stuck);
 }
-.sticky-block h2 { font-size: 13px; margin: 0 0 8px; font-weight: 750; }
-.sticky-block .hint { font-size: 11.5px; color: var(--muted); margin: 0 0 10px; }
+.sticky-block h2 { font-size: 13px; margin: 0 0 6px; font-weight: 750; }
+.sticky-block .hint { font-size: 11.5px; color: var(--muted); margin: 0 0 8px; }
+.bal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+/* Toggle de privacidad: los montos arrancan ocultos (tfm-hide-amounts)
+   y el ojo los revela solo para esta sesión/persistencia local. */
+.eye-btn {
+  flex: none; width: 30px; height: 30px; border-radius: 9px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--muted); cursor: pointer; display: grid; place-items: center;
+}
+.eye-btn:hover { background: var(--surface-2); color: var(--ink); }
+.eye-btn svg { width: 16px; height: 16px; }
+/* Versión mini dentro de cada card de moneda */
+.cur-head-side { display: flex; align-items: center; gap: 6px; }
+.eye-btn.mini { width: 24px; height: 24px; border-radius: 7px; }
+.eye-btn.mini svg { width: 13px; height: 13px; }
+.amt-masked { letter-spacing: .06em; }
 
+/* Carrusel de monedas: snap por card, sin barra visible y dots debajo.
+   Cards compactas (~mitad de la versión anterior) con peek de la
+   siguiente para indicar que hay más. */
 .balance-strip {
   display: flex; gap: 10px;
-  overflow-x: auto; padding-bottom: 4px;
+  overflow-x: auto; padding-bottom: 2px;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.balance-strip::-webkit-scrollbar { display: none; }
 .cur-card {
-  min-width: 252px; flex: none; scroll-snap-align: start;
+  min-width: 194px; flex: none; scroll-snap-align: start;
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 13px 15px;
+  border-radius: var(--radius); padding: 8px 10px;
 }
-.cur-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.cur-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px; }
 .currency-tag {
   font-size: 11px; font-weight: 800; letter-spacing: .07em;
   padding: 3px 9px; border-radius: 20px;
   background: var(--accent-soft); color: var(--ink);
 }
 .cur-head .accounts { font-size: 11.5px; color: var(--muted); }
-.cur-total { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.cur-total-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
-.cur-io { display: flex; gap: 14px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
-.cur-io .io { font-size: 12.5px; }
-.cur-io .io b { display: block; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.cur-total { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cur-total-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.cur-io { display: flex; gap: 12px; margin-top: 5px; padding-top: 5px; border-top: 1px dashed var(--border); }
+.cur-io .io { font-size: 11.5px; }
+.cur-io .io b { display: block; font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .cur-io .in b { color: var(--income); }
 .cur-io .out b { color: var(--expense); }
 .cur-io .io span { color: var(--muted); font-size: 11px; }
 
-.filters {
-  display: flex; align-items: center; gap: 8px; margin-top: 10px;
-  overflow-x: auto; padding-bottom: 2px;
+/* Indicador del carrusel (solo donde hay scroll real; oculto ≥960px) */
+.strip-dots { display: flex; justify-content: center; gap: 6px; margin-top: 6px; }
+.strip-dots .dot {
+  width: 6px; height: 6px; border-radius: 50%; border: none; padding: 0;
+  background: var(--border); cursor: pointer;
 }
+.strip-dots .dot.active { background: var(--accent); }
+
+.filters {
+  display: flex; align-items: center; gap: 6px; margin-top: 8px;
+  overflow-x: auto; padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.filters::-webkit-scrollbar { display: none; }
 .chip {
   flex: none;
   border: 1px solid var(--border); background: var(--surface);
-  color: var(--ink); border-radius: 20px; padding: 7px 13px;
-  font-weight: 650; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+  color: var(--ink); border-radius: 20px; padding: 5px 11px;
+  font-weight: 650; font-size: 12px; cursor: pointer; white-space: nowrap;
 }
 .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .range {
@@ -209,7 +268,7 @@ button { font-family: inherit; font-size: inherit; }
 }
 
 /* ---------- Lista de movimientos ---------- */
-.list { padding: 14px; }
+.list { padding: 14px; padding-bottom: calc(var(--tabbar-h) + 88px); }
 .list-head { display: flex; align-items: baseline; gap: 10px; margin: 4px 0 10px; }
 .list-head h2 { margin: 0; font-size: 14px; font-weight: 750; }
 .list-head span { font-size: 12px; color: var(--muted); }
@@ -248,7 +307,7 @@ button { font-family: inherit; font-size: inherit; }
 
 /* ---------- FAB ---------- */
 .fab {
-  position: fixed; right: 18px; bottom: 22px; z-index: 80;
+  position: fixed; right: 18px; bottom: calc(var(--tabbar-h) + 18px); z-index: 80;
   width: 58px; height: 58px; border-radius: 50%;
   background: var(--accent); color: var(--accent-ink);
   border: none; display: grid; place-items: center; cursor: pointer;
@@ -294,11 +353,16 @@ dialog::backdrop { background: rgb(3 18 15 / .55); }
   body { font-size: 14px; }
   .topbar { padding: 0 26px; }
   .btn-primary .btn-txt { display: inline; }
+  .topnav { display: flex; align-items: center; gap: 4px; margin-left: 16px; }
+  .tabbar { display: none; }
   .fab { display: none; }
+  .list { padding-bottom: 60px; }
   .sticky-block, .list { padding-left: 26px; padding-right: 26px; }
   .sticky-block .inner, .list .inner { max-width: 1080px; margin: 0 auto; }
   .balance-strip { overflow: visible; }
-  .cur-card { min-width: 0; flex: 1; }
+  .cur-card { min-width: 0; flex: 1; padding: 11px 13px; }
+  .cur-total { font-size: 19px; }
+  .strip-dots { display: none; }
   .filters { flex-wrap: wrap; }
   .tx-list { display: none; }
   .tx-table {
@@ -334,6 +398,11 @@ dialog::backdrop { background: rgb(3 18 15 / .55); }
     <div class="brand-mark" aria-hidden="true">TF</div>
     <span class="brand-name">TFM Finanzas</span>
   </div>
+  <nav class="topnav" aria-label="Navegación principal">
+    <a href="#" aria-current="page">Panel</a>
+    <a href="#">Movimientos</a>
+    <a href="#">Reportes</a>
+  </nav>
   <div class="topbar-actions">
     <button class="btn-primary" type="button" id="open-movement" aria-label="Nuevo movimiento">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -359,12 +428,19 @@ dialog::backdrop { background: rgb(3 18 15 / .55); }
 
 <div class="sticky-block">
   <div class="inner">
-    <h2 id="balance-title">Balance general</h2>
-    <p class="hint">Saldo actual = iniciales + ingresos − gastos · nov. 2026</p>
+    <div class="bal-head">
+      <div>
+        <h2 id="balance-title">Balance general</h2>
+        <p class="hint">Saldo actual = iniciales + ingresos − gastos · nov. 2026</p>
+      </div>
+      <button class="eye-btn" type="button" id="amount-toggle" aria-pressed="true" aria-label="Mostrar montos">
+        <svg id="amount-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg>
+      </button>
+    </div>
 
     <div class="balance-strip" role="group" aria-labelledby="balance-title">
       <article class="cur-card" aria-label="Balance en soles">
-        <div class="cur-head"><span class="currency-tag">PEN</span><span class="accounts">BCP Soles · Efectivo</span></div>
+        <div class="cur-head"><span class="currency-tag">PEN</span><div class="cur-head-side"><span class="accounts">BCP Soles · Efectivo</span><button class="eye-btn mini" type="button" aria-pressed="true" aria-label="Mostrar montos de soles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg></button></div></div>
         <div class="cur-total-lbl">Saldo actual</div>
         <div class="cur-total">S/ 9,134.25</div>
         <div class="cur-io">
@@ -373,7 +449,7 @@ dialog::backdrop { background: rgb(3 18 15 / .55); }
         </div>
       </article>
       <article class="cur-card" aria-label="Balance en dólares">
-        <div class="cur-head"><span class="currency-tag">USD</span><span class="accounts">Interbank Dólares</span></div>
+        <div class="cur-head"><span class="currency-tag">USD</span><div class="cur-head-side"><span class="accounts">Interbank Dólares</span><button class="eye-btn mini" type="button" aria-pressed="true" aria-label="Mostrar montos de dólares"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg></button></div></div>
         <div class="cur-total-lbl">Saldo actual</div>
         <div class="cur-total">$ 1,984.02</div>
         <div class="cur-io">
@@ -381,6 +457,10 @@ dialog::backdrop { background: rgb(3 18 15 / .55); }
           <div class="io out"><span>Gastos</span><b>$ 65.98</b></div>
         </div>
       </article>
+    </div>
+    <div class="strip-dots" aria-hidden="true">
+      <button class="dot active" type="button" tabindex="-1"></button>
+      <button class="dot" type="button" tabindex="-1"></button>
     </div>
 
     <div class="filters" role="group" aria-label="Filtros de visualización">
@@ -561,6 +641,21 @@ dialog::backdrop { background: rgb(3 18 15 / .55); }
   </div>
 </main>
 
+<nav class="tabbar" aria-label="Navegación principal">
+  <a href="#" aria-current="page">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 12l9-8 9 8M5 10v10h14V10"/></svg>
+    Panel
+  </a>
+  <a href="#">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+    Movimientos
+  </a>
+  <a href="#">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 19V9m8 10V5m8 14v-7"/></svg>
+    Reportes
+  </a>
+</nav>
+
 <button class="fab" type="button" id="open-movement-fab" aria-label="Nuevo movimiento">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
 </button>
@@ -639,6 +734,93 @@ dialog::backdrop { background: rgb(3 18 15 / .55); }
     rangeBtn.setAttribute("aria-expanded", String(open));
     rangeBtn.setAttribute("aria-pressed", String(open));
   });
+
+  /* Privacidad: montos ocultos por defecto (tfm-hide-amounts=1).
+     Cada card tiene su propio ojo (estado persistido por posición en
+     tfm-hide-amounts-cards); el ojo global fija todas a la vez. */
+  var AMT_KEY = "tfm-hide-amounts";
+  var AMT_CARDS_KEY = "tfm-hide-amounts-cards";
+  var EYE_OPEN = '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>';
+  var EYE_OFF = EYE_OPEN + '<path d="M4 4.5l16 15"/>';
+  var curCards = Array.prototype.slice.call(document.querySelectorAll(".cur-card"));
+  var globalBtn = document.getElementById("amount-toggle");
+  var globalIcon = document.getElementById("amount-icon");
+
+  var amtDefault = true;
+  try { amtDefault = localStorage.getItem(AMT_KEY) !== "0"; } catch (e) {}
+  var cardHidden = curCards.map(function () { return amtDefault; });
+  try {
+    var savedCards = JSON.parse(localStorage.getItem(AMT_CARDS_KEY) || "null");
+    if (Array.isArray(savedCards)) {
+      cardHidden = curCards.map(function (_, i) {
+        return savedCards[i] === undefined ? amtDefault : !!savedCards[i];
+      });
+    }
+  } catch (e) {}
+
+  function paintCard(card, hidden) {
+    card.querySelectorAll(".cur-total, .cur-io .io b").forEach(function (el) {
+      if (el.dataset.val === undefined) el.dataset.val = el.textContent;
+      el.textContent = hidden ? el.dataset.val.replace(/[0-9][0-9.,]*/g, "•••") : el.dataset.val;
+      el.classList.toggle("amt-masked", hidden);
+    });
+    var btn = card.querySelector(".eye-btn.mini");
+    if (btn) {
+      btn.querySelector("svg").innerHTML = hidden ? EYE_OFF : EYE_OPEN;
+      btn.setAttribute("aria-pressed", hidden ? "true" : "false");
+      var code = card.querySelector(".currency-tag");
+      btn.setAttribute("aria-label", (hidden ? "Mostrar montos de " : "Ocultar montos de ") + (code ? code.textContent : "la moneda"));
+    }
+  }
+  function paintGlobalBtn() {
+    var allHidden = cardHidden.every(Boolean);
+    globalIcon.innerHTML = allHidden ? EYE_OFF : EYE_OPEN;
+    globalBtn.setAttribute("aria-pressed", allHidden ? "true" : "false");
+    globalBtn.setAttribute("aria-label", allHidden ? "Mostrar todos los montos" : "Ocultar todos los montos");
+  }
+  function saveCards() {
+    try { localStorage.setItem(AMT_CARDS_KEY, JSON.stringify(cardHidden)); } catch (e) {}
+  }
+  curCards.forEach(function (card, i) {
+    var btn = card.querySelector(".eye-btn.mini");
+    if (btn) btn.addEventListener("click", function () {
+      cardHidden[i] = !cardHidden[i];
+      paintCard(card, cardHidden[i]);
+      paintGlobalBtn();
+      saveCards();
+    });
+    paintCard(card, cardHidden[i]);
+  });
+  globalBtn.addEventListener("click", function () {
+    var next = !cardHidden.every(Boolean);
+    cardHidden = cardHidden.map(function () { return next; });
+    curCards.forEach(function (card) { paintCard(card, next); });
+    paintGlobalBtn();
+    saveCards();
+    try { localStorage.setItem(AMT_KEY, next ? "1" : "0"); } catch (e) {}
+  });
+  paintGlobalBtn();
+
+  /* Carrusel de monedas: los dots reflejan la card activa y al
+     pulsarlos llevan a su card (scroll snap hace el resto). */
+  var strip = document.querySelector(".balance-strip");
+  var cards = strip ? strip.querySelectorAll(".cur-card") : [];
+  var dots = document.querySelectorAll(".strip-dots .dot");
+  function paintDots() {
+    if (!strip || dots.length === 0) return;
+    var max = strip.scrollWidth - strip.clientWidth;
+    var i = max <= 0 ? 0 : Math.round((strip.scrollLeft / max) * (dots.length - 1));
+    dots.forEach(function (d, k) { d.classList.toggle("active", k === i); });
+  }
+  if (strip) {
+    strip.addEventListener("scroll", paintDots, { passive: true });
+    dots.forEach(function (d, k) {
+      d.addEventListener("click", function () {
+        if (cards[k]) cards[k].scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+      });
+    });
+    paintDots();
+  }
 })();
 </script>
 </body>

@@ -23,6 +23,13 @@
       "tradeoff": "Power-user density and fast switching — icon rail, currency chips, month carousel, split list+detail — but the most complex to build and the steepest learning curve; detail pane must stack above the list on narrow screens.",
       "width": 1440,
       "height": 900
+    },
+    {
+      "file": "04-hybrid.html",
+      "title": "Híbrido 01+02 — violeta fintech",
+      "tradeoff": "Desktop con sidebar dashboard y tabla densa; mobile con carrusel, cards por día, tabbar y FAB — un solo codebase responsivo. Es la opción de mayor cobertura pero la más extensa de mantener: dos layout systems en un solo artboard.",
+      "width": 1440,
+      "height": 900
     }
   ]
 }

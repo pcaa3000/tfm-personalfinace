@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "comments": [
+    {
+      "id": "ufe94tpf",
+      "file": "01-sidebar-dashboard.html",
+      "selector": "#main > section",
+      "excerpt": "Movimientos · Noviembre 2026 FECHA TIPO CONCEPTO CUENTA CATEGORÍA MONTO 20 nov Gasto Farmacia Inkafarma Efectivo Salud − S/ 38.20 18 nov Gasto Mercado San Juan Efectivo Alimentación − S/ 67.85 15 nov Gasto Recarga Movistar Efectivo Servicios − S/ 30.00 14 nov Gasto Compra online Interbank Dólares Co",
+      "comment": "La cabecera que involucra el titulo de la tabla y los headers de tabla(Fecha | Tipo |Concepto| ...) se pierde cuando bajo el scroll.",
+      "createdAt": "2026-11-04T01:28:01.484Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T01:28:01.492Z",
+      "resolvedAt": "2026-11-04T01:29:23.320Z"
+    },
+    {
+      "id": "xyqa3m7n",
+      "file": "01-sidebar-dashboard.html",
+      "selector": "body > div > aside",
+      "excerpt": "TF TFM Finanzas Hogar · Lima LIBRO Panel Movimientos Reportes GESTIÓN Cuentas Categorías Monedas Preferencias María Quispe mquispe@hogar.pe",
+      "comment": "Esta menu lateral esta bien, pero también me gustaria que puediera colapsar",
+      "createdAt": "2026-11-04T01:30:32.401Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T01:30:32.411Z",
+      "resolvedAt": "2026-11-04T01:31:28.413Z"
+    },
+    {
+      "id": "sfp3k2li",
+      "file": "01-sidebar-dashboard.html",
+      "selector": "#list-title",
+      "excerpt": "Movimientos · Noviembre 2026",
+      "comment": "cuando bajo el scroll. este div se pierde,",
+      "createdAt": "2026-11-04T01:36:32.935Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T01:36:32.946Z",
+      "resolvedAt": "2026-11-04T01:39:15.267Z",
+      "screenshot": ".screenshots/sfp3k2li.png"
+    },
+    {
+      "id": "1v1p5qll",
+      "file": "01-sidebar-dashboard.html",
+      "selector": "#main > section > div > table > thead > tr > th:nth-of-type(1)",
+      "excerpt": "FECHA",
+      "comment": "El cambio estuvo bien, pero ahora se vio afectado el header de la tabla",
+      "createdAt": "2026-11-04T01:41:30.931Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T01:41:30.945Z",
+      "resolvedAt": "2026-11-04T01:42:57.328Z",
+      "screenshot": ".screenshots/1v1p5qll.png"
+    },
+    {
+      "id": "aoyzf8hq",
+      "file": "02-mobile-first-topbar.html",
+      "selector": "body > div > div",
+      "excerpt": "Balance general Saldo actual = iniciales + ingresos − gastos · nov. 2026 PEN BCP Soles · Efectivo SALDO ACTUAL S/ 9,134.25 Ingresos S/ 4,500.00 Gastos S/ 565.75 USD Interbank Dólares SALDO ACTUAL $ 1,984.02 Ingresos $ 850.00 Gastos $ 65.98 Noviembre 2026 Rango Tipo: Todos Moneda: Todas ⌕ Buscar",
+      "comment": "en mobile, si las cards del balance por moneda son grandes, estas deberian estar como un carrusel y no con un barra de desplazamiento. Lo ideal seria que esto no sea tan grande y reducir su tamaño a la mitad. Tambien reducir el tamaño de los filtros y evitar la barra de desplazamiento.",
+      "createdAt": "2026-11-04T01:55:01.957Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T01:55:01.969Z",
+      "resolvedAt": "2026-11-04T01:56:21.601Z"
+    },
+    {
+      "id": "ya3xolrd",
+      "file": "02-mobile-first-topbar.html",
+      "selector": "body > div > div > div:nth-of-type(1)",
+      "excerpt": "PEN BCP Soles · Efectivo SALDO ACTUAL S/ 9,134.25 Ingresos S/ 4,500.00 Gastos S/ 565.75 USD Interbank Dólares SALDO ACTUAL $ 1,984.02 Ingresos $ 850.00 Gastos $ 65.98",
+      "comment": "Agregar para ocultar los montos de las cuentas por defecto. Reducir 2ptx el size de las fonts del saldo y reducir un poco mas el tamaño de las cards",
+      "createdAt": "2026-11-04T02:12:15.994Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T02:12:16.003Z",
+      "resolvedAt": "2026-11-04T02:12:52.447Z"
+    },
+    {
+      "id": "0958u9mv",
+      "file": "02-mobile-first-topbar.html",
+      "selector": "body > header",
+      "excerpt": "TF",
+      "comment": "Aqui estará la barra de menú, que abarcara el panel, reportes, etc.?",
+      "createdAt": "2026-11-04T02:47:39.250Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T02:47:39.262Z",
+      "resolvedAt": "2026-11-04T02:48:49.373Z"
+    },
+    {
+      "id": "j6vbchyo",
+      "file": "01-sidebar-dashboard.html",
+      "selector": "#main > div",
+      "excerpt": "Balance general por moneda Saldo actual = saldos iniciales + ingresos − gastos PEN BCP Soles · Efectivo INGRESOS S/ 4,500.00 GASTOS S/ 565.75 SALDO ACTUAL S/ 9,134.25 inicial S/ 5,200.00 USD Interbank Dólares INGRESOS $ 850.00 GASTOS $ 65.98 SALDO ACTUAL $ 1,984.02 inicial $ 1,200.00 Mes en curso Úl",
+      "comment": "Puedes probar con una paleta purpura como los siguientes design.\nhttps://goodface.agency/insight/top-10-fintech-product-interface-designs/\nhttps://www.figma.com/es-la/comunidad/file/1119543895995807165/preview-only-e-wallet-mobile-app-design\nhttps://tailadmin.com/blog/finance-dashboard-templates",
+      "createdAt": "2026-11-04T03:16:02.580Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T03:17:04.536Z",
+      "resolvedAt": "2026-11-04T03:17:57.520Z",
+      "screenshot": ".screenshots/j6vbchyo.png"
+    },
+    {
+      "id": "tjx209ju",
+      "file": "02-mobile-first-topbar.html",
+      "selector": "body > div > div > div:nth-of-type(2) > article:nth-of-type(1)",
+      "excerpt": "PEN BCP Soles · Efectivo SALDO ACTUAL S/ ••• Ingresos S/ ••• Gastos S/ •••",
+      "comment": "Seria bueno que cada card tenga su bontón para ocultar los montos.",
+      "createdAt": "2026-11-04T03:25:47.402Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T03:25:47.411Z",
+      "resolvedAt": "2026-11-04T03:26:27.851Z"
+    },
+    {
+      "id": "mic0sm2v",
+      "file": "01-sidebar-dashboard.html",
+      "selector": "#main > div > div:nth-of-type(2) > article:nth-of-type(1)",
+      "excerpt": "PEN BCP Soles · Efectivo INGRESOS S/ 4,500.00 GASTOS S/ 565.75 SALDO ACTUAL S/ 9,134.25 inicial S/ 5,200.00",
+      "comment": "Agregar boton de ocultar saldo en cada card, por defecto saldo oculto.",
+      "createdAt": "2026-11-04T03:55:09.531Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T03:55:09.543Z",
+      "resolvedAt": "2026-11-04T03:56:02.415Z"
+    }
+  ]
+}

@@ -18,7 +18,7 @@
 <style>
 /* ============================================================
    DIRECCIÓN 01 — Sidebar dashboard (finanzas institucionales)
-   Estrategia visual: índigo institucional sobre neutros fríos,
+   Estrategia visual: púrpura fintech sobre neutros violeta-grisáceos,
    tipografía compacta, tabla densa. El sidebar da nav escalable
    pero cuesta ancho en tablet/móvil (se repliega a riel 64px
    <1080px y desaparece a barra inferior <720px; la tabla hace
@@ -30,43 +30,43 @@
   --topbar-h: 58px;
   --rail-w: 232px;
   --radius: 10px;
-  --shadow-stuck: 0 8px 20px -12px rgb(20 28 51 / 0.35);
+  --shadow-stuck: 0 8px 20px -12px rgb(38 22 66 / 0.35);
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f3f5fb;
+  --bg: #f6f4fb;
   --surface: #ffffff;
-  --surface-2: #eef1f9;
-  --ink: #141c33;
-  --muted: #54607a;
-  --border: #dbe0ee;
-  --accent: #3453d1;
-  --accent-hover: #2a45b3;
-  --accent-soft: #e4e9fb;
+  --surface-2: #f1edfa;
+  --ink: #1b1533;
+  --muted: #5d5470;
+  --border: #e2dbf0;
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-soft: #ede9fe;
   --accent-ink: #ffffff;
   --income: #0d7a4c;
   --expense: #b3261e;
-  --transfer: #4c557a;
-  --chip-bg: #e9edf7;
-  --focus: #1d3fb9;
+  --transfer: #7c6bad;
+  --chip-bg: #ece5f9;
+  --focus: #7c3aed;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0d1120;
-  --surface: #161b2e;
-  --surface-2: #1d2440;
-  --ink: #e8ebf7;
-  --muted: #9ba4c2;
-  --border: #2a3350;
-  --accent: #93a5ff;
-  --accent-hover: #aebbff;
-  --accent-soft: #243056;
-  --accent-ink: #10152a;
+  --bg: #120e1f;
+  --surface: #1c1730;
+  --surface-2: #251d40;
+  --ink: #efeaf9;
+  --muted: #a79dbf;
+  --border: #372e52;
+  --accent: #a78bfa;
+  --accent-hover: #c4b5fd;
+  --accent-soft: #31224f;
+  --accent-ink: #1b1035;
   --income: #4cc38a;
   --expense: #ff8a80;
-  --transfer: #aab1cf;
-  --chip-bg: #21294a;
-  --focus: #b3c2ff;
+  --transfer: #b4a7d6;
+  --chip-bg: #2d2545;
+  --focus: #c4b5fd;
 }
 
 * { box-sizing: border-box; }
@@ -84,6 +84,8 @@ a { color: var(--accent); }
 
 @media (prefers-reduced-motion: no-preference) {
   body, .card, .tx-row { transition: background-color .18s ease, color .18s ease, border-color .18s ease; }
+  .shell { transition: grid-template-columns .24s ease; }
+  .rail-toggle svg { transition: transform .2s ease; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
@@ -134,10 +136,41 @@ a { color: var(--accent); }
 .sidebar-foot { margin-top: auto; padding: 10px 8px 0; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
 .sidebar-foot strong { color: var(--ink); display: block; font-size: 13px; }
 
+/* ---------- Botón colapsar rail ---------- */
+.rail-toggle {
+  margin-left: auto; flex: none;
+  width: 28px; height: 28px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--muted); cursor: pointer;
+  display: grid; place-items: center;
+}
+.rail-toggle:hover { background: var(--surface-2); color: var(--ink); }
+.rail-toggle svg { width: 15px; height: 15px; }
+
+/* ---------- Sidebar colapsado (toggle del usuario) ----------
+   Solo aplica sobre el layout con sidebar lateral (≥721px); bajo 720px
+   la barra inferior manda. Refleja el mismo estado mini que <1080px. */
+@media (min-width: 721px) {
+  .shell.rail-mini { grid-template-columns: 64px 1fr; }
+  .shell.rail-mini .sidebar { padding: 14px 8px; align-items: center; }
+  .shell.rail-mini .brand { flex-direction: column; gap: 10px; padding: 4px 0 14px; }
+  .shell.rail-mini .rail-toggle { margin-left: 0; }
+  .shell.rail-mini .brand-name, .shell.rail-mini .brand-sub,
+  .shell.rail-mini .nav-label, .shell.rail-mini .sidebar-foot { display: none; }
+  .shell.rail-mini .nav-item a { justify-content: center; padding: 10px; }
+  .shell.rail-mini .nav-item a span { display: none; }
+  .shell.rail-mini .rail-toggle svg { transform: rotate(180deg); }
+}
+
 /* ---------- Topbar ---------- */
 .content { display: flex; flex-direction: column; min-width: 0; height: 100vh; overflow-y: auto; }
+/* flex-shrink:0 en los hijos de .content: sin él, cuando el contenido
+   excede 100vh el flex-col encoge el topbar por debajo de --topbar-h
+   (41px reales vs 58 declarados) y todos los offsets sticky quedan
+   ~16px cortos — header y título quedaban medio tapados al scrollear. */
 .topbar {
   position: sticky; top: 0; z-index: 60;
+  flex-shrink: 0;
   height: var(--topbar-h);
   display: flex; align-items: center; gap: 14px;
   padding: 0 22px;
@@ -191,6 +224,7 @@ a { color: var(--accent); }
 .menu-sep { height: 1px; background: var(--border); margin: 5px 8px; }
 
 /* ---------- Bloque sticky: balance + filtros ---------- */
+#main { flex-shrink: 0; }
 .sticky-block {
   position: sticky; top: var(--topbar-h); z-index: 50;
   background: var(--bg);
@@ -215,6 +249,17 @@ a { color: var(--accent); }
   border: 1px solid var(--border);
 }
 .card-head .accounts { font-size: 12px; color: var(--muted); }
+.card-head-side { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+/* Ojo de privacidad por card: saldo/ingresos/gastos arrancan ocultos
+   (tfm-hide-amounts-cards); cada card guarda su propio estado. */
+.eye-btn {
+  flex: none; width: 26px; height: 26px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--muted); cursor: pointer; display: grid; place-items: center;
+}
+.eye-btn:hover { background: var(--surface-2); color: var(--ink); }
+.eye-btn svg { width: 14px; height: 14px; }
+.amt-masked { letter-spacing: .06em; }
 .balance-cols { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 10px; }
 .bcell .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
 .bcell .val { font-size: 17px; font-weight: 750; font-variant-numeric: tabular-nums; }
@@ -247,13 +292,21 @@ a { color: var(--accent); }
 .result-count { font-size: 12px; color: var(--muted); }
 
 /* ---------- Tabla ---------- */
+/* El título de la lista vive DENTRO de .sticky-block (última fila del
+   bloque fijo): queda anclado por estructura, sin medición. */
+.list-head {
+  margin: 12px 0 0; padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.list-head h2 { font-size: 14px; margin: 0; }
 .list { padding: 18px 22px 60px; }
-.list h2 { font-size: 14px; margin: 0 0 10px; }
-.table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+/* overflow-x: clip (no auto): auto crearía un contexto de scroll propio y
+   rompería el sticky del thead; clip deja que se ancle a .content. */
+.table-scroll { overflow-x: clip; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 table { width: 100%; border-collapse: collapse; min-width: 720px; }
 th, td { text-align: left; padding: 10px 14px; font-size: 13px; }
 thead th {
-  position: sticky; top: 0;
+  position: sticky; top: var(--under-sticky, 58px); z-index: 40;
   font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
   color: var(--muted); background: var(--surface-2);
   border-bottom: 1px solid var(--border); font-weight: 700;
@@ -319,6 +372,9 @@ dialog::backdrop { background: rgb(6 10 24 / .55); }
 }
 @media (max-width: 1080px) {
   .shell { grid-template-columns: 64px 1fr; }
+  /* El riel mini ya viene forzado por el ancho: el toggle manual queda
+     oculto para no ofrecer una acción sin efecto. */
+  .rail-toggle { display: none; }
   .sidebar { padding: 14px 8px; align-items: center; }
   .brand-name, .brand-sub, .nav-label, .sidebar-foot { display: none; }
   .nav-item a { justify-content: center; padding: 10px; }
@@ -344,6 +400,10 @@ dialog::backdrop { background: rgb(6 10 24 / .55); }
   .bcell .val { font-size: 14px; }
   .bcell.total .val { font-size: 15px; }
   .list { padding: 14px 12px 80px; }
+  /* En móvil la tabla vuelve a scroll horizontal: el thead pierde el
+     sticky vertical, es la concesión documentada de esta dirección. */
+  .table-scroll { overflow-x: auto; }
+  thead th { position: static; }
 }
 </style>
 </head>
@@ -358,6 +418,9 @@ dialog::backdrop { background: rgb(6 10 24 / .55); }
         <div class="brand-name">TFM Finanzas</div>
         <div class="brand-sub">Hogar · Lima</div>
       </div>
+      <button class="rail-toggle" type="button" id="rail-toggle" aria-pressed="false" aria-label="Colapsar menú lateral">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>
+      </button>
     </div>
 
     <nav aria-label="Secciones">
@@ -448,6 +511,8 @@ dialog::backdrop { background: rgb(6 10 24 / .55); }
     </header>
 
     <main id="main">
+      <!-- main también es flex item: necesita no encogerse para que los
+           elementos sticky conserven su rango de contención -->
       <div class="sticky-block">
         <div class="section-head">
           <h2 id="balance-title">Balance general por moneda</h2>
@@ -458,7 +523,7 @@ dialog::backdrop { background: rgb(6 10 24 / .55); }
           <article class="card" aria-label="Balance en soles">
             <div class="card-head">
               <span class="currency-tag">PEN</span>
-              <span class="accounts">BCP Soles · Efectivo</span>
+              <div class="card-head-side"><span class="accounts">BCP Soles · Efectivo</span><button class="eye-btn" type="button" aria-pressed="true" aria-label="Mostrar montos de soles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg></button></div>
             </div>
             <div class="balance-cols">
               <div class="bcell income">
@@ -480,7 +545,7 @@ dialog::backdrop { background: rgb(6 10 24 / .55); }
           <article class="card" aria-label="Balance en dólares">
             <div class="card-head">
               <span class="currency-tag">USD</span>
-              <span class="accounts">Interbank Dólares</span>
+              <div class="card-head-side"><span class="accounts">Interbank Dólares</span><button class="eye-btn" type="button" aria-pressed="true" aria-label="Mostrar montos de dólares"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg></button></div>
             </div>
             <div class="balance-cols">
               <div class="bcell income">
@@ -525,10 +590,11 @@ dialog::backdrop { background: rgb(6 10 24 / .55); }
           <input type="search" placeholder="Buscar concepto…" aria-label="Buscar por concepto">
           <span class="result-count" role="status">12 movimientos</span>
         </form>
+
+        <div class="list-head"><h2 id="list-title">Movimientos · Noviembre 2026</h2></div>
       </div>
 
       <section class="list" aria-labelledby="list-title">
-        <h2 id="list-title">Movimientos · Noviembre 2026</h2>
         <div class="table-scroll">
           <table>
             <thead>
@@ -624,10 +690,85 @@ dialog::backdrop { background: rgb(6 10 24 / .55); }
   });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenu(); });
 
+  /* Sidebar colapsable: estado persistido como tfm-rail-collapsed;
+     solo modifica el layout sobre 721px (bajo ese ancho manda la barra
+     inferior del media query). */
+  var RAIL_KEY = "tfm-rail-collapsed";
+  var shellEl = document.querySelector(".shell");
+  var railBtn = document.getElementById("rail-toggle");
+  function paintRail(collapsed) {
+    shellEl.classList.toggle("rail-mini", collapsed);
+    railBtn.setAttribute("aria-pressed", collapsed ? "true" : "false");
+    railBtn.setAttribute("aria-label", collapsed ? "Expandir menú lateral" : "Colapsar menú lateral");
+  }
+  railBtn.addEventListener("click", function () {
+    var next = !shellEl.classList.contains("rail-mini");
+    try { localStorage.setItem(RAIL_KEY, next ? "1" : "0"); } catch (e) {}
+    paintRail(next);
+  });
+  try { paintRail(localStorage.getItem(RAIL_KEY) === "1"); } catch (e) {}
+
+  /* Privacidad por card: saldos ocultos por defecto
+     (tfm-hide-amounts-cards persiste el estado por posición). */
+  var AMT_CARDS_KEY = "tfm-hide-amounts-cards";
+  var EYE_OPEN = '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>';
+  var EYE_OFF = EYE_OPEN + '<path d="M4 4.5l16 15"/>';
+  var balCards = Array.prototype.slice.call(document.querySelectorAll(".card"));
+  var cardHidden = balCards.map(function () { return true; });
+  try {
+    var savedCards = JSON.parse(localStorage.getItem(AMT_CARDS_KEY) || "null");
+    if (Array.isArray(savedCards)) {
+      cardHidden = balCards.map(function (_, i) {
+        return savedCards[i] === undefined ? true : !!savedCards[i];
+      });
+    }
+  } catch (e) {}
+
+  function paintCard(card, hidden) {
+    card.querySelectorAll(".bcell .val, .bcell .sub").forEach(function (el) {
+      if (el.dataset.val === undefined) el.dataset.val = el.textContent;
+      el.textContent = hidden ? el.dataset.val.replace(/[0-9][0-9.,]*/g, "•••") : el.dataset.val;
+      el.classList.toggle("amt-masked", hidden);
+    });
+    var btn = card.querySelector(".eye-btn");
+    if (btn) {
+      btn.querySelector("svg").innerHTML = hidden ? EYE_OFF : EYE_OPEN;
+      btn.setAttribute("aria-pressed", hidden ? "true" : "false");
+      var code = card.querySelector(".currency-tag");
+      btn.setAttribute("aria-label", (hidden ? "Mostrar saldo de " : "Ocultar saldo de ") + (code ? code.textContent : "la moneda"));
+    }
+  }
+  balCards.forEach(function (card, i) {
+    var btn = card.querySelector(".eye-btn");
+    if (btn) btn.addEventListener("click", function () {
+      cardHidden[i] = !cardHidden[i];
+      paintCard(card, cardHidden[i]);
+      try { localStorage.setItem(AMT_CARDS_KEY, JSON.stringify(cardHidden)); } catch (e) {}
+    });
+    paintCard(card, cardHidden[i]);
+  });
+
   var dlg = document.getElementById("movement-dialog");
   document.getElementById("open-movement").addEventListener("click", function () {
     if (dlg.showModal) dlg.showModal();
   });
+
+  /* Sticky offset: el thead se fija justo bajo el topbar + bloque
+     sticky (balance+filtros+título), cuya altura varía con el wrap.
+     ResizeObserver mantiene el offset exacto. */
+  var topbarEl = document.querySelector(".topbar");
+  var stickyBlockEl = document.querySelector(".sticky-block");
+  function syncStickyOffsets() {
+    var under = (topbarEl ? topbarEl.offsetHeight : 0) +
+                (stickyBlockEl ? stickyBlockEl.offsetHeight : 0);
+    root.style.setProperty("--under-sticky", under + "px");
+  }
+  if (window.ResizeObserver) {
+    var stickyRO = new ResizeObserver(syncStickyOffsets);
+    if (stickyBlockEl) stickyRO.observe(stickyBlockEl);
+  }
+  window.addEventListener("resize", syncStickyOffsets);
+  syncStickyOffsets();
 })();
 </script>
 </body>
