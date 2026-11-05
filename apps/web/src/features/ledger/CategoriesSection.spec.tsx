@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import i18n from "../../i18n";
@@ -75,6 +81,21 @@ describe("CategoriesSection (RF-040, RF-041, RF-044)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archivar" }));
 
     expect(onArchive).toHaveBeenCalledWith("cat-custom");
+  });
+
+  it("lays out the create/edit form as a responsive single-column grid (L25)", () => {
+    renderSection();
+
+    const form = screen.getByTestId("category-form");
+    // Responsive layout (L25): the form is a CSS grid (single column
+    // on xs via gridTemplateColumns), not the overflowing flex row.
+    expect(getComputedStyle(form).display).toBe("grid");
+    expect(
+      within(form).getByLabelText("Nombre de la categoría"),
+    ).toBeTruthy();
+    expect(
+      within(form).getByRole("combobox", { name: "Naturaleza" }),
+    ).toBeTruthy();
   });
 
   it("revises a custom category label and nature", () => {

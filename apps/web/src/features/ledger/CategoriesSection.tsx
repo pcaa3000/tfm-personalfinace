@@ -1,5 +1,6 @@
 import {
   Alert,
+  Box,
   Button,
   List,
   ListItem,
@@ -123,7 +124,18 @@ export function CategoriesSection({
           </ListItem>
         ))}
       </List>
-      <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+      {/* Responsive form (L25): one column on mobile so the name,
+          nature and actions never overflow the Gestión dialog — same
+          grid pattern as AccountsDialog. */}
+      <Box
+        data-testid="category-form"
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+          gap: 1,
+          mt: 1,
+        }}
+      >
         <TextField
           size="small"
           label={t("categories.manage.name")}
@@ -136,7 +148,6 @@ export function CategoriesSection({
           label={t("categories.manage.nature")}
           value={nature}
           onChange={(e) => setNature(e.target.value)}
-          sx={{ minWidth: 150 }}
         >
           {NATURES.map((n) => (
             <MenuItem key={n} value={n}>
@@ -144,19 +155,27 @@ export function CategoriesSection({
             </MenuItem>
           ))}
         </TextField>
-        <Button
-          variant="outlined"
-          disabled={submitting || !label.trim()}
-          onClick={submit}
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{ gridColumn: { xs: "1", sm: "1 / -1" } }}
         >
-          {editing
-            ? t("categories.manage.save")
-            : t("categories.manage.create")}
-        </Button>
-        {editing ? (
-          <Button onClick={resetForm}>{t("categories.manage.cancel")}</Button>
-        ) : null}
-      </Stack>
+          <Button
+            variant="outlined"
+            disabled={submitting || !label.trim()}
+            onClick={submit}
+          >
+            {editing
+              ? t("categories.manage.save")
+              : t("categories.manage.create")}
+          </Button>
+          {editing ? (
+            <Button onClick={resetForm}>
+              {t("categories.manage.cancel")}
+            </Button>
+          ) : null}
+        </Stack>
+      </Box>
     </>
   );
 
