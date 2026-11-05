@@ -1,6 +1,5 @@
 import {
   Alert,
-  Box,
   Button,
   List,
   MenuItem,
@@ -94,9 +93,14 @@ export function CategoriesSection({
       ) : null}
       {/* Form sticky above the list (L26/L27): it is the primary
           action and stays visible while the list scrolls inside the
-          dialog. Solid background + divider so rows do not bleed
-          through. Responsive grid (L25): single column on xs. */}
-      <Box
+          dialog. Rendered as Paper elevation 24 so its surface matches
+          the Dialog's elevation overlay exactly (L28: a plain
+          background.paper looked like a different color and killed
+          text contrast in dark mode). Responsive grid (L25): single
+          column on xs. */}
+      <Paper
+        square
+        elevation={24}
         data-testid="category-form"
         sx={{
           display: "grid",
@@ -107,7 +111,6 @@ export function CategoriesSection({
           position: "sticky",
           top: 0,
           zIndex: 5,
-          bgcolor: "background.paper",
           borderBottom: "1px solid",
           borderColor: "divider",
         }}
@@ -151,7 +154,7 @@ export function CategoriesSection({
             </Button>
           ) : null}
         </Stack>
-      </Box>
+      </Paper>
       <List dense>
         {categories.map((category) => (
           <ManageListItem
