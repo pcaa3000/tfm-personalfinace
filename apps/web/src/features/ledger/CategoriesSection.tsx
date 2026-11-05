@@ -3,8 +3,6 @@ import {
   Box,
   Button,
   List,
-  ListItem,
-  ListItemText,
   MenuItem,
   Paper,
   Stack,
@@ -14,6 +12,7 @@ import {
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { ManageListItem } from "./ManageListItem";
 import { categoryLabel } from "./TransactionForm";
 import type {
   CategoryView,
@@ -93,47 +92,16 @@ export function CategoriesSection({
           {error}
         </Alert>
       ) : null}
-      <List dense>
-        {categories.map((category) => (
-          <ListItem
-            key={category.id}
-            disableGutters
-            secondaryAction={
-              category.custom ? (
-                <Stack direction="row" spacing={1}>
-                  <Button size="small" onClick={() => startEdit(category)}>
-                    {t("categories.manage.edit")}
-                  </Button>
-                  <Button
-                    size="small"
-                    color="warning"
-                    onClick={() => onArchive(category.id)}
-                  >
-                    {t("categories.manage.archive")}
-                  </Button>
-                </Stack>
-              ) : undefined
-            }
-          >
-            <ListItemText
-              primary={categoryLabel(category, t)}
-              secondary={`${t(`categories.nature.${category.nature}`)}${
-                category.custom ? ` · ${t("categories.manage.custom")}` : ""
-              }`}
-            />
-          </ListItem>
-        ))}
-      </List>
-      {/* Responsive form (L25): one column on mobile so the name,
-          nature and actions never overflow the Gestión dialog — same
-          grid pattern as AccountsDialog. */}
+      {/* Form pinned above the list (L26): it is the primary action
+          and stays visible without scrolling when editing on mobile.
+          Responsive grid (L25): single column on xs. */}
       <Box
         data-testid="category-form"
         sx={{
           display: "grid",
           gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
           gap: 1,
-          mt: 1,
+          mb: 1.5,
         }}
       >
         <TextField
@@ -176,6 +144,33 @@ export function CategoriesSection({
           ) : null}
         </Stack>
       </Box>
+      <List dense>
+        {categories.map((category) => (
+          <ManageListItem
+            key={category.id}
+            primary={categoryLabel(category, t)}
+            secondary={`${t(`categories.nature.${category.nature}`)}${
+              category.custom ? ` · ${t("categories.manage.custom")}` : ""
+            }`}
+            actions={
+              category.custom ? (
+                <>
+                  <Button size="small" onClick={() => startEdit(category)}>
+                    {t("categories.manage.edit")}
+                  </Button>
+                  <Button
+                    size="small"
+                    color="warning"
+                    onClick={() => onArchive(category.id)}
+                  >
+                    {t("categories.manage.archive")}
+                  </Button>
+                </>
+              ) : undefined
+            }
+          />
+        ))}
+      </List>
     </>
   );
 

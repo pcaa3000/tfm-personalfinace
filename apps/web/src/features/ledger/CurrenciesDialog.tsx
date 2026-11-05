@@ -6,8 +6,6 @@ import {
   DialogTitle,
   Divider,
   List,
-  ListItem,
-  ListItemText,
   Stack,
   TextField,
   Typography,
@@ -15,6 +13,7 @@ import {
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { ManageListItem } from "./ManageListItem";
 import type { CurrencyView, IsoCurrencyView } from "./types";
 
 interface Props {
@@ -112,11 +111,11 @@ export function CurrenciesDialog({
         </Typography>
         <List dense>
           {currencies.map((currency) => (
-            <ListItem
+            <ManageListItem
               key={currency.id}
-              disableGutters
-              secondaryAction={
-                <Stack direction="row" spacing={1}>
+              primary={`${currency.code} — ${currencyName(currency, i18n.language)}`}
+              actions={
+                <>
                   <Button size="small" onClick={() => startEdit(currency)}>
                     {t("currencies.edit")}
                   </Button>
@@ -127,13 +126,9 @@ export function CurrenciesDialog({
                   >
                     {t("currencies.archive")}
                   </Button>
-                </Stack>
+                </>
               }
-            >
-              <ListItemText
-                primary={`${currency.code} — ${currencyName(currency, i18n.language)}`}
-              />
-            </ListItem>
+            />
           ))}
         </List>
         {editing ? (
@@ -188,10 +183,10 @@ export function CurrenciesDialog({
           ) : (
             <List dense>
               {matches.map((entry) => (
-                <ListItem
+                <ManageListItem
                   key={entry.code}
-                  disableGutters
-                  secondaryAction={
+                  primary={`${entry.code} — ${currencyName(entry, i18n.language)}`}
+                  actions={
                     <Button
                       size="small"
                       variant="outlined"
@@ -201,11 +196,7 @@ export function CurrenciesDialog({
                       {t("currencies.add")}
                     </Button>
                   }
-                >
-                  <ListItemText
-                    primary={`${entry.code} — ${currencyName(entry, i18n.language)}`}
-                  />
-                </ListItem>
+                />
               ))}
             </List>
           )

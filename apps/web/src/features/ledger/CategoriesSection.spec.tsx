@@ -98,6 +98,27 @@ describe("CategoriesSection (RF-040, RF-041, RF-044)", () => {
     ).toBeTruthy();
   });
 
+  it("pins the create/edit form above the category list (L26)", () => {
+    renderSection();
+
+    const form = screen.getByTestId("category-form");
+    const firstRow = screen.getByText("Comida");
+    expect(
+      form.compareDocumentPosition(firstRow) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("renders category rows with responsive actions that do not overlap text (L26)", () => {
+    renderSection();
+
+    const rows = screen.getAllByTestId("manage-row");
+    expect(getComputedStyle(rows[0]!).display).toBe("flex");
+    expect(
+      within(rows[1]!).getByRole("button", { name: "Editar" }),
+    ).toBeTruthy();
+  });
+
   it("revises a custom category label and nature", () => {
     const { onRevise } = renderSection();
 

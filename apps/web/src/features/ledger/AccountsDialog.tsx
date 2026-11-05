@@ -6,8 +6,6 @@ import {
   DialogContent,
   DialogTitle,
   List,
-  ListItem,
-  ListItemText,
   MenuItem,
   Stack,
   TextField,
@@ -17,6 +15,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AmountText } from "./AmountText";
+import { ManageListItem } from "./ManageListItem";
 import {
   ACCOUNT_KINDS,
   type AccountView,
@@ -127,11 +126,23 @@ export function AccountsDialog({
         ) : (
           <List dense>
             {accounts.map((account) => (
-              <ListItem
+              <ManageListItem
                 key={account.id}
-                disableGutters
-                secondaryAction={
-                  <Stack direction="row" spacing={1}>
+                primary={account.name}
+                secondary={
+                  <>
+                    {`${account.currency} · ${t(
+                      `accounts.kind.${account.kind}`,
+                      { defaultValue: account.kind },
+                    )} · ${t("accounts.initialBalance")} `}
+                    <AmountText
+                      amount={account.initialBalance}
+                      currency={account.currency}
+                    />
+                  </>
+                }
+                actions={
+                  <>
                     <Button size="small" onClick={() => startEdit(account)}>
                       {t("accounts.edit")}
                     </Button>
@@ -142,25 +153,9 @@ export function AccountsDialog({
                     >
                       {t("accounts.archive")}
                     </Button>
-                  </Stack>
+                  </>
                 }
-              >
-                <ListItemText
-                  primary={account.name}
-                  secondary={
-                    <>
-                      {`${account.currency} · ${t(
-                        `accounts.kind.${account.kind}`,
-                        { defaultValue: account.kind },
-                      )} · ${t("accounts.initialBalance")} `}
-                      <AmountText
-                        amount={account.initialBalance}
-                        currency={account.currency}
-                      />
-                    </>
-                  }
-                />
-              </ListItem>
+              />
             ))}
           </List>
         )}

@@ -100,6 +100,17 @@ describe("CurrenciesDialog (S12-4)", () => {
     expect(screen.queryByText(/Yen japonés/)).toBeNull();
   });
 
+  it("lays out rows so long names do not overlap the actions (L26)", () => {
+    renderDialog();
+
+    const dialog = screen.getByRole("dialog", { name: "Monedas" });
+    const rows = within(dialog).getAllByTestId("manage-row");
+    expect(getComputedStyle(rows[0]!).display).toBe("flex");
+    expect(
+      within(rows[0]!).getByRole("button", { name: "Editar" }),
+    ).toBeTruthy();
+  });
+
   it("revises the code of a currency", () => {
     const { onRevise } = renderDialog();
 
