@@ -348,11 +348,40 @@ describe("LedgerPage workspace preferences (RF-003)", () => {
     fireEvent.click(
       await screen.findByRole("option", { name: "America/Bogota" }),
     );
+    // T19: preferences are a draft — nothing is sent until Guardar.
+    expect(vi.mocked(updateWorkspace)).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Guardar" }),
+    );
 
     await waitFor(() => {
       expect(vi.mocked(updateWorkspace).mock.calls[0]?.[0]).toEqual({
         timezone: "America/Bogota",
       });
+    });
+  });
+});
+
+describe("LedgerPage currencies dialog load errors (T19)", () => {
+  it("surfaces query failures inside the Monedas dialog", async () => {
+    const { listCurrencies, ApiError } = await import("./api");
+    vi.mocked(listTransactions).mockResolvedValue([]);
+    vi.mocked(listCurrencies).mockRejectedValue(
+      new ApiError("HTTP_404", "Not found", 404),
+    );
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Gestión" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Monedas" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Monedas" });
+    await waitFor(() => {
+      expect(within(dialog).getByRole("alert").textContent).toContain(
+        "No se pudo completar la operación",
+      );
     });
   });
 });

@@ -107,6 +107,8 @@ export const en: TranslationShape = {
   },
   preferences: {
     title: "Preferences",
+    save: "Save",
+    cancel: "Cancel",
   },
   settings: {
     defaultCurrency: "Default currency",

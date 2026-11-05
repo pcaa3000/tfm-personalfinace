@@ -496,6 +496,15 @@ export function LedgerPage() {
             ? errorMessage(currencyMutation.error, t)
             : null
         }
+        loadError={(() => {
+          // T19: query failures (e.g. an old API without the currency
+          // routes) must surface in the dialog instead of failing
+          // silently with an empty catalog.
+          const queryError =
+            currenciesQuery.error ??
+            (management === "currencies" ? catalogQuery.error : null);
+          return queryError ? errorMessage(queryError, t) : null;
+        })()}
         onClose={() => setManagement(null)}
         onAdd={(code) => currencyMutation.mutate({ kind: "add", code })}
         onRevise={(id, input) =>

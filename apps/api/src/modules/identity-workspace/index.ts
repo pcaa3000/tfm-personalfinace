@@ -15,3 +15,7 @@ export {
   WORKSPACE_CATALOG_PROVISIONER,
   type WorkspaceCatalogProvisionerPort,
 } from "./application/workspace-catalog-provisioner.port.js";
+export {
+  CATEGORY_SEED_PROVISIONER,
+  type CategoryCatalogProvisionerPort,
+} from "./application/category-catalog-provisioner.port.js";

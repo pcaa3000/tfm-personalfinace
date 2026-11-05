@@ -60,6 +60,20 @@ async function main(): Promise<void> {
       await prisma.category.create({ data: { ...category, workspaceId: null } });
     }
   }
+
+  // Workspace seed categories bootstrap (T19): the dev workspace owns
+  // editable copies of the catalog (the global rows stay read-only
+  // fallbacks). Same pattern as the currency upsert above — only the
+  // `uncategorized` system fallback is never copied.
+  for (const category of GLOBAL_CATEGORIES) {
+    await prisma.category.upsert({
+      where: {
+        key_workspaceId: { key: category.key, workspaceId: workspace.id },
+      },
+      update: {},
+      create: { ...category, workspaceId: workspace.id },
+    });
+  }
 }
 
 main()

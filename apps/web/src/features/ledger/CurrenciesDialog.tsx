@@ -23,6 +23,9 @@ interface Props {
   catalog: IsoCurrencyView[];
   submitting: boolean;
   error: string | null;
+  /** Query-level failure (GET /currencies or /currencies/catalog) —
+   *  surfaced instead of failing silently (T19). */
+  loadError: string | null;
   onClose: () => void;
   onAdd: (code: string) => void;
   onRevise: (id: string, input: { code: string }) => void;
@@ -47,6 +50,7 @@ export function CurrenciesDialog({
   catalog,
   submitting,
   error,
+  loadError,
   onClose,
   onAdd,
   onRevise,
@@ -95,6 +99,11 @@ export function CurrenciesDialog({
         {error ? (
           <Alert severity="error" sx={{ mb: 1 }}>
             {error}
+          </Alert>
+        ) : null}
+        {loadError ? (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {loadError}
           </Alert>
         ) : null}
 

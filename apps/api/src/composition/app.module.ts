@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 
 import {
   CALLER_RESOLVER,
+  CATEGORY_SEED_PROVISIONER,
   WORKSPACE_CATALOG_PROVISIONER,
   WORKSPACE_CONTEXT,
 } from "../modules/identity-workspace/index.js";
@@ -95,8 +96,14 @@ function requiredEnv(name: string): string {
       useFactory: (
         prisma: PrismaClient,
         provisioner: PrismaCurrencyRepository,
-      ) => new DeterministicWorkspaceAdapter(prisma, provisioner),
-      inject: [PrismaClient, WORKSPACE_CATALOG_PROVISIONER],
+        seedCategories: PrismaCategoryRepository,
+      ) =>
+        new DeterministicWorkspaceAdapter(prisma, provisioner, seedCategories),
+      inject: [
+        PrismaClient,
+        WORKSPACE_CATALOG_PROVISIONER,
+        CATEGORY_SEED_PROVISIONER,
+      ],
     },
     {
       provide: WORKSPACE_CONTEXT,
@@ -135,6 +142,10 @@ function requiredEnv(name: string): string {
     {
       provide: CATEGORY_REPOSITORY,
       useClass: PrismaCategoryRepository,
+    },
+    {
+      provide: CATEGORY_SEED_PROVISIONER,
+      useExisting: CATEGORY_REPOSITORY,
     },
     {
       provide: CURRENCY_REPOSITORY,

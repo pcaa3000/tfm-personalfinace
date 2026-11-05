@@ -31,7 +31,10 @@ const catalog: IsoCurrencyView[] = [
   { code: "JPY", nameEn: "Japanese Yen", nameEs: "Yen japonés", minorUnitExponent: 0 },
 ];
 
-function renderDialog(overrides: Record<string, unknown> = {}) {
+function renderDialog(
+  overrides: Record<string, unknown> = {},
+  props: { loadError?: string | null } = {},
+) {
   const handlers = {
     onAdd: vi.fn(),
     onRevise: vi.fn(),
@@ -46,6 +49,7 @@ function renderDialog(overrides: Record<string, unknown> = {}) {
       catalog={catalog}
       submitting={false}
       error={null}
+      loadError={props.loadError ?? null}
       onClose={handlers.onClose}
       onAdd={handlers.onAdd}
       onRevise={handlers.onRevise}
@@ -114,5 +118,18 @@ describe("CurrenciesDialog (S12-4)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archivar" }));
 
     expect(onArchive).toHaveBeenCalledWith("cur-pen");
+  });
+
+  it("surfaces catalog load failures instead of failing silently (T19)", () => {
+    renderDialog(
+      {},
+      { loadError: "No se pudieron cargar las monedas." },
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Monedas" });
+    const alert = within(dialog).getByRole("alert");
+    expect(alert.textContent).toContain(
+      "No se pudieron cargar las monedas.",
+    );
   });
 });

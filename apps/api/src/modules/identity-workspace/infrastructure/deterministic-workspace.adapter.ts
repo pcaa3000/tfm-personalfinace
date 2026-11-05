@@ -15,6 +15,10 @@ import {
   WORKSPACE_CATALOG_PROVISIONER,
   type WorkspaceCatalogProvisionerPort,
 } from "../application/workspace-catalog-provisioner.port.js";
+import {
+  CATEGORY_SEED_PROVISIONER,
+  type CategoryCatalogProvisionerPort,
+} from "../application/category-catalog-provisioner.port.js";
 
 /**
  * Deterministic adapter for local development: resolves (and lazily creates)
@@ -24,7 +28,8 @@ import {
  *
  * On creation it also seeds the workspace currency catalog with the
  * default currency through the currencies-owned provisioner port
- * (INV-MON-01..03 bootstrap).
+ * (INV-MON-01..03 bootstrap) and copies the editable seed categories
+ * through the categorization-owned provisioner port (T19).
  */
 @Injectable()
 export class DeterministicWorkspaceAdapter
@@ -34,6 +39,8 @@ export class DeterministicWorkspaceAdapter
     @Inject(PrismaClient) private readonly prisma: PrismaClient,
     @Inject(WORKSPACE_CATALOG_PROVISIONER)
     private readonly catalog: WorkspaceCatalogProvisionerPort,
+    @Inject(CATEGORY_SEED_PROVISIONER)
+    private readonly seedCategories?: CategoryCatalogProvisionerPort,
   ) {}
 
   async resolve(caller: CallerIdentity): Promise<WorkspaceContext> {
@@ -76,6 +83,7 @@ export class DeterministicWorkspaceAdapter
         workspaceId.value,
         workspace.defaultCurrency,
       );
+      await this.seedCategories?.ensureSeedCategories(workspaceId.value);
       return workspace;
     } catch (error) {
       // A concurrent first request won the create; re-read the row.

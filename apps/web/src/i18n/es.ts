@@ -103,6 +103,8 @@ export const es = {
   },
   preferences: {
     title: "Preferencias",
+    save: "Guardar",
+    cancel: "Cancelar",
   },
   settings: {
     defaultCurrency: "Moneda por defecto",

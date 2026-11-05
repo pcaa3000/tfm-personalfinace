@@ -38,6 +38,13 @@ function renderDialog(overrides: Record<string, unknown> = {}) {
   return handlers;
 }
 
+function chooseOption(comboboxName: string, optionName: string) {
+  fireEvent.mouseDown(
+    screen.getByRole("combobox", { name: comboboxName }),
+  );
+  fireEvent.click(screen.getByRole("option", { name: optionName }));
+}
+
 beforeAll(async () => {
   await i18n.changeLanguage("es");
 });
@@ -45,36 +52,56 @@ beforeAll(async () => {
 afterEach(cleanup);
 
 describe("PreferencesDialog (S12-1, RF-003/RF-004)", () => {
-  it("patches the timezone when it changes", () => {
+  it("disables Guardar while the draft matches the workspace", () => {
+    renderDialog();
+
+    const save = screen.getByRole("button", { name: "Guardar" });
+    expect(save).toHaveProperty("disabled", true);
+  });
+
+  it("keeps select edits local until Guardar, then sends a single patch", () => {
     const { onPatch } = renderDialog();
 
-    fireEvent.mouseDown(
-      screen.getByRole("combobox", { name: "Zona horaria" }),
-    );
-    fireEvent.click(
-      screen.getByRole("option", { name: "America/Bogota" }),
-    );
+    chooseOption("Zona horaria", "America/Bogota");
+    expect(onPatch).not.toHaveBeenCalled();
 
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    expect(onPatch).toHaveBeenCalledTimes(1);
     expect(onPatch).toHaveBeenCalledWith({ timezone: "America/Bogota" });
   });
 
-  it("patches the default currency using workspace currencies only", () => {
+  it("sends only the dirty fields when several selects changed", () => {
     const { onPatch } = renderDialog();
 
-    fireEvent.mouseDown(
-      screen.getByRole("combobox", { name: "Moneda por defecto" }),
-    );
-    fireEvent.click(screen.getByRole("option", { name: "USD" }));
+    chooseOption("Moneda por defecto", "USD");
+    chooseOption("Zona horaria", "America/Lima");
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
 
-    expect(onPatch).toHaveBeenCalledWith({ defaultCurrency: "USD" });
+    expect(onPatch).toHaveBeenCalledTimes(1);
+    expect(onPatch).toHaveBeenCalledWith({
+      defaultCurrency: "USD",
+      timezone: "America/Lima",
+    });
   });
 
-  it("patches the locale", () => {
-    const { onPatch } = renderDialog();
+  it("re-disables Guardar when the draft is reverted to the workspace values", () => {
+    renderDialog();
 
-    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Locale" }));
-    fireEvent.click(screen.getByRole("option", { name: "en-US" }));
+    chooseOption("Zona horaria", "America/Bogota");
+    chooseOption("Zona horaria", "UTC");
 
-    expect(onPatch).toHaveBeenCalledWith({ locale: "en-US" });
+    const save = screen.getByRole("button", { name: "Guardar" });
+    expect(save).toHaveProperty("disabled", true);
+  });
+
+  it("Cancelar closes the dialog without patching", () => {
+    const { onPatch, onClose } = renderDialog();
+
+    chooseOption("Zona horaria", "America/Bogota");
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    expect(onPatch).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

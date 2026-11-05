@@ -1,12 +1,15 @@
 import {
   Alert,
+  Button,
   Dialog,
+  DialogActions,
   DialogContent,
   DialogTitle,
   MenuItem,
   Stack,
   TextField,
 } from "@mui/material";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { WorkspacePreferencesPatch } from "./api";
@@ -36,7 +39,26 @@ interface Props {
   onPatch: (patch: WorkspacePreferencesPatch) => void;
 }
 
-/** Gestión → Preferencias (S12-1): workspace settings (RF-003/RF-004). */
+interface Draft {
+  defaultCurrency: string;
+  timezone: string;
+  locale: string;
+}
+
+function draftFrom(workspace: WorkspaceView | undefined): Draft {
+  return {
+    defaultCurrency: workspace?.defaultCurrency ?? "PEN",
+    timezone: workspace?.timezone ?? "UTC",
+    locale: workspace?.locale ?? "es-PE",
+  };
+}
+
+/**
+ * Gestión → Preferencias (S12-1): workspace settings (RF-003/RF-004).
+ * Explicit-save draft (T19): selects edit a local copy and a single
+ * PATCH with the dirty fields is sent on Guardar — users perceive the
+ * save and can preview combinations before committing.
+ */
 export function PreferencesDialog({
   open,
   workspace,
@@ -47,10 +69,31 @@ export function PreferencesDialog({
   onPatch,
 }: Props) {
   const { t } = useTranslation();
+  const [draft, setDraft] = useState<Draft>(() => draftFrom(workspace));
+
+  // Reset the draft from the workspace each time the dialog opens.
+  useEffect(() => {
+    if (open) {
+      setDraft(draftFrom(workspace));
+    }
+  }, [open, workspace]);
 
   const currencyOptions = currencies.length
     ? currencies
-    : [workspace?.defaultCurrency ?? "PEN"];
+    : [draft.defaultCurrency];
+
+  const patch: WorkspacePreferencesPatch = {};
+  const baseline = draftFrom(workspace);
+  if (draft.defaultCurrency !== baseline.defaultCurrency) {
+    patch.defaultCurrency = draft.defaultCurrency;
+  }
+  if (draft.timezone !== baseline.timezone) {
+    patch.timezone = draft.timezone;
+  }
+  if (draft.locale !== baseline.locale) {
+    patch.locale = draft.locale;
+  }
+  const dirty = Object.keys(patch).length > 0;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
@@ -66,9 +109,14 @@ export function PreferencesDialog({
             select
             size="small"
             label={t("settings.defaultCurrency")}
-            value={workspace?.defaultCurrency ?? "PEN"}
+            value={draft.defaultCurrency}
             disabled={submitting}
-            onChange={(e) => onPatch({ defaultCurrency: e.target.value })}
+            onChange={(e) =>
+              setDraft((current) => ({
+                ...current,
+                defaultCurrency: e.target.value,
+              }))
+            }
           >
             {currencyOptions.map((code) => (
               <MenuItem key={code} value={code}>
@@ -80,9 +128,11 @@ export function PreferencesDialog({
             select
             size="small"
             label={t("settings.timezone")}
-            value={workspace?.timezone ?? "UTC"}
+            value={draft.timezone}
             disabled={submitting}
-            onChange={(e) => onPatch({ timezone: e.target.value })}
+            onChange={(e) =>
+              setDraft((current) => ({ ...current, timezone: e.target.value }))
+            }
           >
             {TIMEZONES.map((timezone) => (
               <MenuItem key={timezone} value={timezone}>
@@ -94,9 +144,11 @@ export function PreferencesDialog({
             select
             size="small"
             label={t("settings.locale")}
-            value={workspace?.locale ?? "es-PE"}
+            value={draft.locale}
             disabled={submitting}
-            onChange={(e) => onPatch({ locale: e.target.value })}
+            onChange={(e) =>
+              setDraft((current) => ({ ...current, locale: e.target.value }))
+            }
           >
             {LOCALES.map((locale) => (
               <MenuItem key={locale} value={locale}>
@@ -106,6 +158,22 @@ export function PreferencesDialog({
           </TextField>
         </Stack>
       </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onClose} disabled={submitting}>
+          {t("preferences.cancel")}
+        </Button>
+        <Button
+          variant="contained"
+          disabled={submitting || !dirty}
+          onClick={() => {
+            if (dirty) {
+              onPatch(patch);
+            }
+          }}
+        >
+          {submitting ? t("form.saving") : t("preferences.save")}
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 }

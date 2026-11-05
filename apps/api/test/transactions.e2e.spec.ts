@@ -794,6 +794,88 @@ describe("custom categories (RF-040, RF-041, RF-044)", () => {
   });
 });
 
+describe("seed category provisioning (T19, L24)", () => {
+  it("lists the seed catalog as editable workspace copies (custom)", async () => {
+    const list = await api<CategoryView[]>("/api/v1/categories", {
+      headers: ALICE,
+    });
+    expect(list.status).toBe(200);
+
+    // The freshly-resolved workspace owns a copy of each global seed;
+    // the global row is shadowed, so the key appears exactly once.
+    const copies = list.body.filter((c) => c.key === "e2e-food");
+    expect(copies).toHaveLength(1);
+    expect(copies[0]?.custom).toBe(true);
+  });
+
+  it("edits and archives a provisioned seed copy, which shadows the global", async () => {
+    const list = await api<CategoryView[]>("/api/v1/categories", {
+      headers: ALICE,
+    });
+    const copy = list.body.find((c) => c.key === "e2e-food" && c.custom);
+    expect(copy).toBeTruthy();
+
+    const patched = await api<CategoryView>(
+      `/api/v1/categories/${copy?.id}`,
+      {
+        method: "PATCH",
+        headers: ALICE,
+        body: { label: "e2e Comida", nature: "essential" },
+      },
+    );
+    expect(patched.status).toBe(200);
+    expect(patched.body.label).toBe("e2e Comida");
+
+    const archived = await api<CategoryView>(
+      `/api/v1/categories/${copy?.id}/archive`,
+      { method: "POST", headers: ALICE },
+    );
+    expect(archived.status).toBe(201);
+
+    // The archived copy still shadows the global "e2e-food": it must
+    // not reappear from the catalog.
+    const after = await api<CategoryView[]>("/api/v1/categories", {
+      headers: ALICE,
+    });
+    expect(after.body.some((c) => c.key === "e2e-food")).toBe(false);
+  });
+
+  it("keeps the system uncategorized global read-only and never copies it", async () => {
+    const global = await prisma.category.create({
+      data: {
+        key: "uncategorized",
+        label: "Sin categorizar",
+        nature: "uncategorized",
+        workspaceId: null,
+      },
+    });
+    try {
+      const list = await api<CategoryView[]>("/api/v1/categories", {
+        headers: ALICE,
+      });
+      const shown = list.body.find((c) => c.id === global.id);
+      expect(shown?.custom).toBe(false);
+      // The workspace got no editable copy of the fallback.
+      expect(
+        list.body.some((c) => c.key === "uncategorized" && c.custom),
+      ).toBe(false);
+
+      const patched = await api<ApiError>(
+        `/api/v1/categories/${global.id}`,
+        { method: "PATCH", headers: ALICE, body: { label: "hijack" } },
+      );
+      expect(patched.status).toBe(404);
+      const archived = await api<ApiError>(
+        `/api/v1/categories/${global.id}/archive`,
+        { method: "POST", headers: ALICE },
+      );
+      expect(archived.status).toBe(404);
+    } finally {
+      await prisma.category.delete({ where: { id: global.id } });
+    }
+  });
+});
+
 describe("workspace isolation", () => {
   it("a transaction owned by alice is invisible and untouchable for bob", async () => {
     const created = await createTx(ALICE);

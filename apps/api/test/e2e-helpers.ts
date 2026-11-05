@@ -126,6 +126,8 @@ export async function cleanE2eData(marker: string): Promise<void> {
   await prisma.transaction.deleteMany({ where: { workspaceId: { in: ids } } });
   await prisma.account.deleteMany({ where: { workspaceId: { in: ids } } });
   await prisma.currency.deleteMany({ where: { workspaceId: { in: ids } } });
+  // T19: workspaces own provisioned seed-category copies too.
+  await prisma.category.deleteMany({ where: { workspaceId: { in: ids } } });
   await prisma.workspace.deleteMany({
     where: { identityKey: { contains: marker } },
   });

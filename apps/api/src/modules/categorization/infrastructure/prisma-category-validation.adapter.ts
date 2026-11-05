@@ -38,12 +38,24 @@ export class PrismaCategoryValidationAdapter
       },
       orderBy: { key: "asc" },
     });
-    return rows.map((row) => ({
-      id: row.id,
-      key: row.key,
-      label: row.label,
-      nature: row.nature,
-      custom: row.workspaceId !== null,
-    }));
+    // Shadowing (T19): a workspace-owned row hides the global with the
+    // same key whatever its archivedAt — otherwise an archived copy
+    // would let the global reappear in the list.
+    const owned = await this.prisma.category.findMany({
+      where: { workspaceId: workspaceId.value },
+      select: { key: true },
+    });
+    const shadowedKeys = new Set(owned.map((row) => row.key));
+    return rows
+      .filter(
+        (row) => row.workspaceId !== null || !shadowedKeys.has(row.key),
+      )
+      .map((row) => ({
+        id: row.id,
+        key: row.key,
+        label: row.label,
+        nature: row.nature,
+        custom: row.workspaceId !== null,
+      }));
   }
 }
