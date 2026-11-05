@@ -107,6 +107,10 @@ export function CategoriesSection({
           gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
           gap: 1,
           mb: 1.5,
+          // Headroom for the floating outline label: when a field has
+          // a value its shrunken label pokes ~9px above the field and
+          // was sliced by the sticky edge (L29).
+          pt: 1.5,
           pb: 1.5,
           position: "sticky",
           top: 0,
