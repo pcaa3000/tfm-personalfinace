@@ -98,7 +98,7 @@ describe("CategoriesSection (RF-040, RF-041, RF-044)", () => {
     ).toBeTruthy();
   });
 
-  it("pins the create/edit form above the category list (L26)", () => {
+  it("keeps the create/edit form sticky above the category list (L26/L27)", () => {
     renderSection();
 
     const form = screen.getByTestId("category-form");
@@ -107,6 +107,12 @@ describe("CategoriesSection (RF-040, RF-041, RF-044)", () => {
       form.compareDocumentPosition(firstRow) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    // Sticky: the form stays visible while the list scrolls inside
+    // the dialog (solid background so rows do not bleed through).
+    const styles = getComputedStyle(form);
+    expect(styles.position).toBe("sticky");
+    expect(styles.top).toBe("0px");
+    expect(styles.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
   });
 
   it("renders category rows with responsive actions that do not overlap text (L26)", () => {

@@ -92,9 +92,10 @@ export function CategoriesSection({
           {error}
         </Alert>
       ) : null}
-      {/* Form pinned above the list (L26): it is the primary action
-          and stays visible without scrolling when editing on mobile.
-          Responsive grid (L25): single column on xs. */}
+      {/* Form sticky above the list (L26/L27): it is the primary
+          action and stays visible while the list scrolls inside the
+          dialog. Solid background + divider so rows do not bleed
+          through. Responsive grid (L25): single column on xs. */}
       <Box
         data-testid="category-form"
         sx={{
@@ -102,6 +103,13 @@ export function CategoriesSection({
           gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
           gap: 1,
           mb: 1.5,
+          pb: 1.5,
+          position: "sticky",
+          top: 0,
+          zIndex: 5,
+          bgcolor: "background.paper",
+          borderBottom: "1px solid",
+          borderColor: "divider",
         }}
       >
         <TextField
