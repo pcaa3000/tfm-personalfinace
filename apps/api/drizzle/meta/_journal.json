@@ -15,6 +15,13 @@
       "when": 1794021839438,
       "tag": "0001_set_updated_at_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794024853236,
+      "tag": "0002_smiling_sunfire",
+      "breakpoints": true
     }
   ]
 }

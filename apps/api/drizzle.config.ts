@@ -2,10 +2,8 @@ import { defineConfig } from "drizzle-kit";
 import { fileURLToPath } from "node:url";
 
 /**
- * drizzle-kit config for the spike. Introspection/migration generation is
- * NOT part of the spike — Prisma migrations remain the source of truth for
- * the physical schema. This file only enables `drizzle-kit` tooling over
- * the Drizzle mirror in src/drizzle/schema.ts.
+ * drizzle-kit config — src/drizzle/schema.ts is the source of truth for the
+ * physical schema; `db:generate` emits migrations under ./drizzle.
  */
 export default defineConfig({
   dialect: "postgresql",

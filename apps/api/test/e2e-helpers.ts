@@ -6,6 +6,8 @@ import { and, eq, inArray, isNull, like } from "drizzle-orm";
 
 import { createDrizzleDb } from "../src/drizzle/db.js";
 import {
+  notifications,
+  outboxEvents,
   accounts,
   categories,
   currencies,
@@ -160,6 +162,11 @@ export async function cleanE2eData(marker: string): Promise<void> {
     await db.delete(currencies).where(inArray(currencies.workspaceId, ids));
     // T19: workspaces own provisioned seed-category copies too.
     await db.delete(categories).where(inArray(categories.workspaceId, ids));
+    // worker-pgboss: drain artifacts emitted by transaction writes.
+    await db.delete(outboxEvents).where(inArray(outboxEvents.workspaceId, ids));
+    await db
+      .delete(notifications)
+      .where(inArray(notifications.workspaceId, ids));
     await db
       .delete(workspaces)
       .where(like(workspaces.identityKey, `%${marker}%`));
