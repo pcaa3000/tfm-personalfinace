@@ -14,6 +14,10 @@ import i18n from "../../i18n";
 import { ThemeModeProvider } from "../../theme-mode";
 import { fetchBalance, listTransactions, updateWorkspace } from "./api";
 import { LedgerPage, TRANSACTIONS_PAGE_SIZE } from "./LedgerPage";
+import {
+  listPendingTransactions,
+  type PendingTransaction,
+} from "./offline/queue";
 import type { TransactionView } from "./types";
 
 vi.mock("./api", async (importOriginal) => {
@@ -82,10 +86,16 @@ vi.mock("./offline/use-pending-sync", () => ({
   usePendingSync: () => {},
 }));
 
-vi.mock("./offline/create-or-queue", () => ({
-  createTransactionOrQueue: vi.fn(),
-  toPendingView: (view: TransactionView) => view,
-}));
+vi.mock("./offline/create-or-queue", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("./offline/create-or-queue")>();
+  return {
+    createTransactionOrQueue: vi.fn(),
+    // Real converter: pending rows must render with pendingSync + id
+    // "pending:<key>" for the badge/chip assertions below.
+    toPendingView: original.toPendingView,
+  };
+});
 
 function mockMatchMedia(matches: boolean) {
   window.matchMedia = vi.fn().mockImplementation(
@@ -433,6 +443,70 @@ describe("LedgerPage responsive layout (S12-6)", () => {
     ).toBeGreaterThanOrEqual(2);
     expect(
       screen.getByRole("navigation", { name: "Navegación principal" }),
+    ).toBeTruthy();
+  });
+});
+
+describe("LedgerPage pending sync (T7)", () => {
+  const pendingItem: PendingTransaction = {
+    idempotencyKey: "pending-key-1",
+    input: {
+      type: "expense",
+      amount: "15.00",
+      currency: "PEN",
+      businessDate: "2026-10-05",
+      timezone: "UTC",
+      concept: "almuerzo pendiente",
+      accountId: "acc-1",
+      categoryId: null,
+      idempotencyKey: "pending-key-1",
+    },
+    enqueuedAt: "2026-10-05T10:00:00.000Z",
+    attempts: 0,
+    lastError: null,
+  };
+
+  it("shows the pending count badge and marks queued rows", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+    vi.mocked(listPendingTransactions).mockResolvedValue([pendingItem]);
+
+    renderPage();
+
+    expect(
+      await screen.findByText("1 pendiente(s) de sincronizar"),
+    ).toBeTruthy();
+    expect(await screen.findByText("almuerzo pendiente")).toBeTruthy();
+    expect(
+      screen.getAllByText("Pendiente de sincronización").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("hides the badge when the outbox is empty", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+    vi.mocked(listPendingTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    // Wait until both queries settled (empty-state row + pending fetch done).
+    expect(await screen.findByText("Todavía no hay movimientos.")).toBeTruthy();
+    await waitFor(() => {
+      expect(listPendingTransactions).toHaveBeenCalled();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.queryByText(/pendiente\(s\) de sincronizar/)).toBeNull();
+    expect(screen.queryByText("Pendiente de sincronización")).toBeNull();
+  });
+});
+
+describe("LedgerPage list error surface", () => {
+  it("shows the load error when transactions fail to fetch", async () => {
+    vi.mocked(listTransactions).mockRejectedValue(new Error("boom"));
+
+    renderPage();
+
+    expect(
+      await screen.findByText("No se pudieron cargar los movimientos."),
     ).toBeTruthy();
   });
 });
