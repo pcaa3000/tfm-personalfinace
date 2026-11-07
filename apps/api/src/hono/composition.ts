@@ -62,7 +62,11 @@ export function buildApp(env: AppEnv): BuiltApp {
   const currencyUsage = new DrizzleCurrencyUsageAdapter(db);
   const categories = new DrizzleCategoryRepository(db);
   const categoryValidation = new DrizzleCategoryValidationAdapter(db);
-  const workspace = new DrizzleWorkspaceAdapter(db, currencies, categories);
+  const workspace = new DrizzleWorkspaceAdapter(
+    db,
+    (tx) => new DrizzleCurrencyRepository(tx),
+    (tx) => new DrizzleCategoryRepository(tx),
+  );
 
   const callerResolver =
     env.authMode === "oidc" && env.oidc

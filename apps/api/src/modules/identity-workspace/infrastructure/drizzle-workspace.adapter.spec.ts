@@ -45,7 +45,11 @@ function makeProvisioners() {
 function makeAdapter(db: DrizzleDb) {
   const { catalog, seeds } = makeProvisioners();
   return {
-    adapter: new DrizzleWorkspaceAdapter(db, catalog, seeds),
+    adapter: new DrizzleWorkspaceAdapter(
+      db,
+      () => catalog,
+      () => seeds,
+    ),
     catalog,
     seeds,
   };
@@ -180,22 +184,24 @@ describe("DrizzleWorkspaceAdapter (integration, real Postgres)", () => {
     ).rejects.toThrow();
   });
 
-  it("a failing catalog provisioner does not fail resolve once the row exists (catch-and-reread, prisma parity)", async () => {
+  it("rolls back the workspace insert when a provisioner fails (atomic provisioning, S1)", async () => {
     const failingCatalog: WorkspaceCatalogProvisionerPort = {
       ensureDefaultCurrency: vi.fn(async () => {
         throw new Error("catalog down");
       }),
     };
-    const adapter = new DrizzleWorkspaceAdapter(db, failingCatalog, undefined);
+    const adapter = new DrizzleWorkspaceAdapter(db, () => failingCatalog, undefined);
 
-    const context = await adapter.resolve(caller("erin"));
+    await expect(adapter.resolve(caller("erin"))).rejects.toThrow(
+      "catalog down",
+    );
 
-    expect(context.workspaceId.value).toBeTruthy();
+    // No orphan row: the whole create+provision unit rolled back.
     const rows = await db
       .select()
       .from(workspaces)
       .where(eq(workspaces.identityKey, identityKey("erin")));
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(0);
     expect(failingCatalog.ensureDefaultCurrency).toHaveBeenCalled();
   });
 });

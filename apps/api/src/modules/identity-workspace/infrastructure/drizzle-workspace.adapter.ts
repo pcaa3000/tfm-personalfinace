@@ -36,17 +36,21 @@ function unwrap<T>(result: Result<T, DomainError>): T {
  * resolves (and lazily creates) one workspace per caller identity key
  * "issuer|subject", seeds the workspace currency catalog with the
  * default currency and copies the editable seed categories on creation
- * (the provisioner ports stay ctor params typed as the port interfaces —
- * the composition root injects the drizzle implementations), and
- * re-reads the row when a concurrent create wins the identityKey race.
+ * — all inside a single transaction (provisioners arrive as factories
+ * bound to the tx), and re-reads the row when a concurrent create wins
+ * the identityKey race.
  */
 export class DrizzleWorkspaceAdapter
   implements WorkspaceContextPort, WorkspaceSettingsPort
 {
   constructor(
     private readonly db: DrizzleDb,
-    private readonly catalog: WorkspaceCatalogProvisionerPort,
-    private readonly seedCategories?: CategoryCatalogProvisionerPort,
+    private readonly catalogOf: (
+      db: DrizzleDb,
+    ) => WorkspaceCatalogProvisionerPort,
+    private readonly seedCategoriesOf?: (
+      db: DrizzleDb,
+    ) => CategoryCatalogProvisionerPort,
   ) {}
 
   async resolve(caller: CallerIdentity): Promise<WorkspaceContext> {
@@ -73,37 +77,45 @@ export class DrizzleWorkspaceAdapter
     return rows[0] ?? null;
   }
 
-  /** Creates the workspace and seeds its currency catalog with the default. */
+  /**
+   * Creates the workspace and its catalogs in ONE transaction (S1):
+   * a provisioner failure rolls back the insert — no orphan workspace —
+   * unlike the prisma version, which swallowed the failure and returned
+   * an unprovisioned row. Provisioners arrive as `(db) => Port` factories
+   * so they can be bound to the transaction without leaking drizzle types
+   * into the application ports.
+   */
   private async createWorkspace(identityKey: string): Promise<WorkspaceRow> {
     try {
-      const rows = await this.db
-        .insert(workspaces)
-        .values({
-          // Prisma generated the uuid client-side; the column has no
-          // database default, so Drizzle must supply the id.
-          id: randomUUID(),
-          identityKey,
-          kind: "personal",
-          locale: "en-US",
-          timezone: "UTC",
-          defaultCurrency: "PEN",
-        })
-        .returning();
-      const workspace = rows[0];
-      if (!workspace) {
-        throw new Error("workspace insert returned no row");
-      }
-      const workspaceId = unwrap(WorkspaceId.create(workspace.id));
-      await this.catalog.ensureDefaultCurrency(
-        workspaceId,
-        workspace.defaultCurrency,
-      );
-      await this.seedCategories?.ensureSeedCategories(workspaceId);
-      return workspace;
+      return await this.db.transaction(async (tx) => {
+        const rows = await tx
+          .insert(workspaces)
+          .values({
+            // Prisma generated the uuid client-side; the column has no
+            // database default, so Drizzle must supply the id.
+            id: randomUUID(),
+            identityKey,
+            kind: "personal",
+            locale: "en-US",
+            timezone: "UTC",
+            defaultCurrency: "PEN",
+          })
+          .returning();
+        const workspace = rows[0];
+        if (!workspace) {
+          throw new Error("workspace insert returned no row");
+        }
+        const workspaceId = unwrap(WorkspaceId.create(workspace.id));
+        await this.catalogOf(tx).ensureDefaultCurrency(
+          workspaceId,
+          workspace.defaultCurrency,
+        );
+        await this.seedCategoriesOf?.(tx).ensureSeedCategories(workspaceId);
+        return workspace;
+      });
     } catch (error) {
-      // A concurrent first request won the create (or a provisioner
-      // failed after the row was written); re-read the row like the
-      // prisma adapter does.
+      // A concurrent first request won the create: re-read the row the
+      // winner committed (its provisioning committed with it).
       const existing = await this.findByIdentityKey(identityKey);
       if (existing) {
         return existing;

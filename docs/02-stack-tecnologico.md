@@ -158,6 +158,8 @@ Drizzle se selecciona por SQL explícito y legible, esquema en TypeScript puro (
 - Cada repositorio traduce explícitamente filas a entidades o valores de dominio.
 - El dominio no conoce columnas, tipos ni helpers de Drizzle.
 - Las migraciones se generan con `drizzle-kit` (`db:generate`/`db:migrate`; `db:push` sincroniza el esquema en desarrollo) y cada cambio declara el módulo propietario.
+- `updatedAt` se mantiene además por el trigger `set_updated_at` (migración custom `0001`): defensa en base de datos además del set explícito del repositorio. El trigger no vive en `schema.ts` — `db:push` lo ofrece para borrar; rechazar esa opción.
+- El provisioning de un workspace nuevo (insert + catálogo de monedas + categorías semilla) es una sola transacción: un provisioner que falla no deja workspace huérfano.
 - Una transacción técnica no debe atravesar varios contextos como solución habitual; los flujos entre módulos usan casos de uso y, cuando corresponda, trabajos encolados en la misma transacción.
 
 Si Drizzle impide expresar una consulta analítica o migración segura, se permite SQL encapsulado en infraestructura. La herramienta no gobierna el modelo financiero.
