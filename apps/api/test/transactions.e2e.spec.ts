@@ -1,8 +1,6 @@
-import "reflect-metadata";
-
 import { randomUUID } from "node:crypto";
 
-import type { INestApplication } from "@nestjs/common";
+import { eq } from "drizzle-orm";
 import {
   afterAll,
   beforeAll,
@@ -16,15 +14,18 @@ import {
   api,
   bootApp,
   cleanE2eData,
+  db,
   ensureGlobalCategory,
-  prisma,
+  closeTestDb,
   type AccountView,
   type ApiError,
   type ApiResponse,
   type CategoryView,
   type RevisionView,
   type TxView,
+  type E2eApp,
 } from "./e2e-helpers.js";
+import { categories } from "../src/drizzle/schema.js";
 
 /**
  * HTTP e2e suite (AUTH_MODE=dev) against the real Nest app + Docker Postgres.
@@ -37,7 +38,7 @@ const MARKER = "|e2e-dev-";
 const ALICE = { "x-dev-user": "e2e-dev-alice" };
 const BOB = { "x-dev-user": "e2e-dev-bob" };
 
-let app: INestApplication;
+let app: E2eApp;
 let categoryId: string;
 let accountId: string;
 let secondPenAccountId: string;
@@ -114,7 +115,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await cleanE2eData(MARKER);
   await app.close();
-  await prisma.$disconnect();
+  await closeTestDb();
 });
 
 describe("POST /api/v1/transactions", () => {
@@ -841,14 +842,19 @@ describe("seed category provisioning (T19, L24)", () => {
   });
 
   it("keeps the system uncategorized global read-only and never copies it", async () => {
-    const global = await prisma.category.create({
-      data: {
+    const [global] = await db
+      .insert(categories)
+      .values({
+        id: randomUUID(),
         key: "uncategorized",
         label: "Sin categorizar",
         nature: "uncategorized",
         workspaceId: null,
-      },
-    });
+      })
+      .returning();
+    if (!global) {
+      throw new Error("failed to seed uncategorized global");
+    }
     try {
       const list = await api<CategoryView[]>("/api/v1/categories", {
         headers: ALICE,
@@ -871,7 +877,7 @@ describe("seed category provisioning (T19, L24)", () => {
       );
       expect(archived.status).toBe(404);
     } finally {
-      await prisma.category.delete({ where: { id: global.id } });
+      await db.delete(categories).where(eq(categories.id, global.id));
     }
   });
 });

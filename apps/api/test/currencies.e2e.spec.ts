@@ -1,8 +1,5 @@
-import "reflect-metadata";
-
 import { randomUUID } from "node:crypto";
 
-import type { INestApplication } from "@nestjs/common";
 import {
   afterAll,
   beforeAll,
@@ -16,17 +13,18 @@ import {
   api,
   bootApp,
   cleanE2eData,
-  prisma,
+  closeTestDb,
   type ApiError,
   type CurrencyView,
   type IsoCurrencyView,
+  type E2eApp,
 } from "./e2e-helpers.js";
 
 const MARKER = "|e2e-cur-";
 const ALICE = { "x-dev-user": "e2e-cur-alice" };
 const BOB = { "x-dev-user": "e2e-cur-bob" };
 
-let app: INestApplication;
+let app: E2eApp;
 
 async function addCurrency(
   headers: Record<string, string>,
@@ -55,7 +53,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await cleanE2eData(MARKER);
   await app.close();
-  await prisma.$disconnect();
+  await closeTestDb();
 });
 
 describe("GET /api/v1/currencies/catalog (S12 — tabla ISO expuesta por la API)", () => {

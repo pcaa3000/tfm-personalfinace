@@ -10,6 +10,8 @@ import type {
 import type {
   ReviseAccountCommand,
 } from "../../modules/accounts/application/revise-account.use-case.js";
+import type { CategoryView } from "../../modules/categorization/index.js";
+import type { CurrencyView } from "../../modules/currencies/index.js";
 import type {
   CallerIdentity,
   WorkspaceContext,
@@ -51,6 +53,30 @@ function accountView(overrides: Partial<AccountView> = {}): AccountView {
     currency: "EUR",
     kind: "bank",
     initialBalance: "0.00",
+    archivedAt: null,
+    ...overrides,
+  };
+}
+
+function categoryView(overrides: Partial<CategoryView> = {}): CategoryView {
+  return {
+    id: "cat-1",
+    key: "e2e_mascotas",
+    label: "Mascotas",
+    nature: "discretionary",
+    custom: true,
+    ...overrides,
+  };
+}
+
+function currencyView(overrides: Partial<CurrencyView> = {}): CurrencyView {
+  return {
+    id: "cur-1",
+    workspaceId: "ws-1",
+    code: "EUR",
+    nameEn: "Euro",
+    nameEs: "Euro",
+    minorUnitExponent: 2,
     archivedAt: null,
     ...overrides,
   };
@@ -150,6 +176,43 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
         ): Promise<Result<AccountView, DomainError>> =>
           ok(accountView({ archivedAt: "2026-10-28T00:00:00.000Z" })),
       ),
+    },
+    categoryCatalog: {
+      listForWorkspace: vi.fn(async () => [categoryView()]),
+    },
+    createCategory: {
+      execute: vi.fn(async () => ok(categoryView())),
+    },
+    reviseCategory: {
+      execute: vi.fn(async () => ok(categoryView())),
+    },
+    archiveCategory: {
+      execute: vi.fn(async () => ok(categoryView())),
+    },
+    listCurrencies: {
+      execute: vi.fn(async () => [currencyView()]),
+    },
+    listIsoCatalog: {
+      execute: vi.fn(() => [
+        {
+          code: "USD",
+          nameEn: "US Dollar",
+          nameEs: "Dólar estadounidense",
+          minorUnitExponent: 2,
+        },
+      ]),
+    },
+    addCurrency: {
+      execute: vi.fn(async () => ok(currencyView())),
+    },
+    reviseCurrency: {
+      execute: vi.fn(async () => ok(currencyView())),
+    },
+    archiveCurrency: {
+      execute: vi.fn(async () => ok(currencyView())),
+    },
+    updatePreferences: {
+      execute: vi.fn(async () => ok(WORKSPACE)),
     },
   };
 }

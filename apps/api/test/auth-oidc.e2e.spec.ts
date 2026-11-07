@@ -1,10 +1,7 @@
-import "reflect-metadata";
-
 import { randomBytes, randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import type { INestApplication } from "@nestjs/common";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import {
   afterAll,
@@ -19,10 +16,11 @@ import {
   api,
   bootApp,
   cleanE2eData,
-  prisma,
+  closeTestDb,
   type AccountView,
   type ApiError,
   type TxView,
+  type E2eApp,
 } from "./e2e-helpers.js";
 
 /**
@@ -37,7 +35,7 @@ const ISSUER = "https://e2e.supabase.co/auth/v1";
 const AUDIENCE = "authenticated";
 const KEY_ID = "e2e-signing-key";
 
-let app: INestApplication;
+let app: E2eApp;
 let jwksServer: Server;
 let privateKey: Awaited<ReturnType<typeof generateKeyPair>>["privateKey"];
 
@@ -119,7 +117,7 @@ afterAll(async () => {
   delete process.env.OIDC_ISSUER;
   delete process.env.OIDC_AUDIENCE;
   delete process.env.OIDC_JWKS_URI;
-  await prisma.$disconnect();
+  await closeTestDb();
 });
 
 describe("authentication required", () => {

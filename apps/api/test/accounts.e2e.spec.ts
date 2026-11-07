@@ -1,8 +1,5 @@
-import "reflect-metadata";
-
 import { randomUUID } from "node:crypto";
 
-import type { INestApplication } from "@nestjs/common";
 import {
   afterAll,
   beforeAll,
@@ -16,17 +13,18 @@ import {
   api,
   bootApp,
   cleanE2eData,
-  prisma,
+  closeTestDb,
   type AccountView,
   type ApiError,
   type ApiResponse,
+  type E2eApp,
 } from "./e2e-helpers.js";
 
 const MARKER = "|e2e-acc-";
 const ALICE = { "x-dev-user": "e2e-acc-alice" };
 const BOB = { "x-dev-user": "e2e-acc-bob" };
 
-let app: INestApplication;
+let app: E2eApp;
 
 async function createAccount(
   headers: Record<string, string>,
@@ -51,7 +49,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await cleanE2eData(MARKER);
   await app.close();
-  await prisma.$disconnect();
+  await closeTestDb();
 });
 
 describe("POST /api/v1/accounts", () => {
