@@ -24,6 +24,13 @@ Mejoras decididas tras el análisis de desviaciones del spike/migración
 | T1 | RED+refactor: provisioning atómico en `createWorkspace` (factories + tx) | S1, S3 | parent | done | RED (no rechazaba + fila huérfana) → GREEN 8/8 |
 | T2 | RED+trigger `set_updated_at` + migración custom + spec | S2 | parent | done | RED (sin bump) → GREEN; `0001_set_updated_at_trigger.sql` aplicada a dev y verificada en DB fresca (bumped=t) |
 | T3 | docs/02 + cierre + espejo Engram | S2 | parent | done | docs/02 restricción de trigger agregada; suite 421/421 |
+| T4 | Bugfix: default PORT 3001→3000 en `main.ts` | S4 | parent | done | reproducido end-to-end via proxy vite :5173→:3000 |
+
+## Specs
+
+- **S4** (L24): el API debe escuchar por defecto en el puerto que el proxy de
+  vite del frontend espera (`localhost:3000`, `vite.config.ts`), no en el 3001
+  temporal del spike.
 
 ## Log
 
@@ -40,3 +47,9 @@ Mejoras decididas tras el análisis de desviaciones del spike/migración
 - **L23**: Ojo con `drizzle-kit push`: el trigger no vive en `schema.ts`
   (drizzle no modela triggers) → `push` lo ofrece para borrar como objeto
   desconocido; aceptarlo así (warning interactivo) o documentarlo al usar push.
+- **L24**: Bug reportado por el usuario: "No se pudo completar la operacion" en
+  TODA operación de escritura desde la web. Causa: el default `PORT ?? 3001`
+  heredado del spike dejó la API inalcanzable para el proxy vite (→:3000).
+  Verificado end-to-end tras el fix: POST /categories, PATCH /workspace,
+  GET /currencies/catalog (178 items) vía `localhost:5173` proxy → 200/201 en
+  `ws-local-dev`.

@@ -9,7 +9,7 @@ import { buildApp, envFromProcess } from "./hono/composition.js";
 
 const built = buildApp(envFromProcess());
 
-const port = Number(process.env.PORT ?? 3001);
+const port = Number(process.env.PORT ?? 3000);
 const server = serve({ fetch: built.app.fetch, port }, (info) => {
   console.log(`[api] listening on http://localhost:${info.port}`);
 });
