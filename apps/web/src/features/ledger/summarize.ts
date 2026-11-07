@@ -1,4 +1,8 @@
-import type { AccountView, TransactionView } from "./types";
+import type {
+  AccountView,
+  BalanceItemView,
+  TransactionView,
+} from "./types";
 
 export interface CurrencySummary {
   currency: string;
@@ -16,6 +20,42 @@ export function defaultCurrencyExponent(currency: string): number {
   return ({ JPY: 0, KRW: 0, BHD: 3, KWD: 3, CLF: 4 })[currency] ?? 2;
 }
 
+/** Decimal string → minor units using the currency's ISO exponent. */
+export function amountToMinor(
+  amount: string,
+  currency: string,
+  exponentOf: (code: string) => number = defaultCurrencyExponent,
+): bigint {
+  const [intPart = "0", fracPart = ""] = amount.split(".");
+  const exponent = exponentOf(currency);
+  const negative = intPart.startsWith("-");
+  const digits =
+    intPart.replace("-", "") + fracPart.padEnd(exponent, "0").slice(0, exponent);
+  const minor = BigInt(digits || "0");
+  return negative ? -minor : minor;
+}
+
+/**
+ * Maps the dedicated `GET /api/v1/balance` items to the
+ * {@link CurrencySummary} shape the strip renders — same totals the
+ * server already aggregated (T24).
+ */
+export function summariesFromBalanceItems(
+  items: BalanceItemView[],
+  exponentOf: (code: string) => number = defaultCurrencyExponent,
+): CurrencySummary[] {
+  const minor = (amount: string, currency: string) =>
+    amountToMinor(amount, currency, exponentOf);
+  return items.map((item) => ({
+    currency: item.currency,
+    incomeMinor: minor(item.income, item.currency),
+    expenseMinor: minor(item.expenses, item.currency),
+    netMinor: minor(item.net, item.currency),
+    initialBalanceMinor: minor(item.initialBalance, item.currency),
+    balanceMinor: minor(item.balance, item.currency),
+  }));
+}
+
 /**
  * Per-currency totals of confirmed transactions plus the initial balances
  * of the workspace accounts. Currencies are never summed together
@@ -27,15 +67,8 @@ export function summarizeByCurrency(
   accounts: AccountView[] = [],
   exponentOf: (code: string) => number = defaultCurrencyExponent,
 ): CurrencySummary[] {
-  const toMinor = (amount: string, currency: string): bigint => {
-    const [intPart = "0", fracPart = ""] = amount.split(".");
-    const exponent = exponentOf(currency);
-    const negative = intPart.startsWith("-");
-    const digits =
-      intPart.replace("-", "") + fracPart.padEnd(exponent, "0").slice(0, exponent);
-    const minor = BigInt(digits || "0");
-    return negative ? -minor : minor;
-  };
+  const toMinor = (amount: string, currency: string): bigint =>
+    amountToMinor(amount, currency, exponentOf);
 
   const totals = new Map<
     string,

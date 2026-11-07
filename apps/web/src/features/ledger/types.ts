@@ -1,5 +1,15 @@
 export type TransactionType = "income" | "expense" | "transfer";
 
+/** Per-currency aggregate returned by `GET /api/v1/balance` (T24). */
+export interface BalanceItemView {
+  readonly currency: string;
+  readonly initialBalance: string; // decimal string
+  readonly income: string;
+  readonly expenses: string;
+  readonly net: string;
+  readonly balance: string;
+}
+
 export interface TransactionView {
   id: string;
   workspaceId: string;

@@ -12,7 +12,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import i18n from "../../i18n";
 import { ThemeModeProvider } from "../../theme-mode";
-import { listTransactions, updateWorkspace } from "./api";
+import { fetchBalance, listTransactions, updateWorkspace } from "./api";
 import { LedgerPage, TRANSACTIONS_PAGE_SIZE } from "./LedgerPage";
 import type { TransactionView } from "./types";
 
@@ -21,6 +21,7 @@ vi.mock("./api", async (importOriginal) => {
   return {
     ...original,
     listTransactions: vi.fn(),
+    fetchBalance: vi.fn(async () => []),
     listAccounts: vi.fn(async () => []),
     listCategories: vi.fn(async () => []),
     listCurrencies: vi.fn(async () => [
@@ -220,7 +221,7 @@ describe("LedgerPage default period (S12-5)", () => {
 });
 
 describe("LedgerPage balance block (S12-5)", () => {
-  it("shows saldo actual = initial balances + income − expenses, transfers net 0", async () => {
+  it("renders the aggregate from the dedicated balance endpoint (T24)", async () => {
     const { listAccounts } = await import("./api");
     vi.mocked(listAccounts).mockResolvedValue([
       {
@@ -233,21 +234,17 @@ describe("LedgerPage balance block (S12-5)", () => {
         archivedAt: null,
       },
     ]);
-    vi.mocked(listTransactions).mockImplementation(async (filters) => {
-      if (filters?.limit === undefined) {
-        // balance query: unfiltered, all-time
-        return [
-          makeTx("t-in", { type: "income", amount: "100.00" }),
-          makeTx("t-out", { type: "expense", amount: "25.00" }),
-          makeTx("t-tr", {
-            type: "transfer",
-            amount: "999.00",
-            destinationAccountId: "acc-2",
-          }),
-        ];
-      }
-      return [];
-    });
+    vi.mocked(fetchBalance).mockResolvedValue([
+      {
+        currency: "PEN",
+        initialBalance: "1000.00",
+        income: "100.00",
+        expenses: "25.00",
+        net: "75.00",
+        balance: "1075.00",
+      },
+    ]);
+    vi.mocked(listTransactions).mockResolvedValue([]);
 
     const { container } = renderPage();
 
@@ -256,6 +253,7 @@ describe("LedgerPage balance block (S12-5)", () => {
       expect(pen?.textContent).toContain("1,075.00");
       expect(pen?.textContent).toContain("Saldo actual");
     });
+    expect(fetchBalance).toHaveBeenCalled();
   });
 });
 

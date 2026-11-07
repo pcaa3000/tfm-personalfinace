@@ -35,6 +35,15 @@ export {
   type RecordManualTransactionCommand,
 } from "./application/record-manual-transaction.use-case.js";
 export { ListTransactionsUseCase } from "./application/list-transactions.use-case.js";
+export { GetWorkspaceBalanceUseCase } from "./application/get-workspace-balance.use-case.js";
+export {
+  toBalanceItemView,
+  type BalanceItemView,
+} from "./application/balance.view.js";
+export {
+  type BalanceQueryPort,
+  type CurrencyTotals,
+} from "./application/ports/balance-query.port.js";
 export {
   ListTransactionRevisionsUseCase,
 } from "./application/list-transaction-revisions.use-case.js";

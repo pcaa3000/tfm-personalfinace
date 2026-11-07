@@ -192,6 +192,9 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     updatePreferences: {
       execute: vi.fn(async () => ok(WORKSPACE)),
     },
+    getBalance: {
+      execute: vi.fn(async () => []),
+    },
   };
 }
 

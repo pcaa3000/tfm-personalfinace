@@ -101,6 +101,7 @@ function makeDeps() {
     reviseCurrency: { execute: vi.fn(async () => ok(currencyView())) },
     archiveCurrency: { execute: vi.fn(async () => ok(currencyView())) },
     updatePreferences: { execute: vi.fn(async () => ok(WORKSPACE)) },
+    getBalance: { execute: vi.fn(async () => []) },
   };
 }
 

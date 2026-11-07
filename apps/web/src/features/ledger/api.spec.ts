@@ -7,6 +7,7 @@ import {
   archiveCurrency,
   createAccount,
   createCategory,
+  fetchBalance,
   listCurrencies,
   listCurrencyCatalog,
   listTransactions,
@@ -64,6 +65,14 @@ describe("listTransactions", () => {
     await listTransactions({ q: "", currency: "USD", category: undefined });
 
     expect(calledUrl()).toBe("/api/v1/transactions?currency=USD");
+  });
+});
+
+describe("fetchBalance", () => {
+  it("requests the balance aggregate endpoint", async () => {
+    await fetchBalance();
+
+    expect(calledUrl()).toBe("/api/v1/balance");
   });
 });
 

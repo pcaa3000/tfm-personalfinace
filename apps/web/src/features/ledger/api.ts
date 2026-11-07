@@ -1,5 +1,6 @@
 import type {
   AccountView,
+  BalanceItemView,
   CategoryView,
   CreateAccountInput,
   CreateCategoryInput,
@@ -50,6 +51,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(code, message, response.status);
   }
   return payload as T;
+}
+
+/** `GET /api/v1/balance` — per-currency aggregates for the strip (T24). */
+export function fetchBalance(): Promise<BalanceItemView[]> {
+  return request<BalanceItemView[]>("/balance");
 }
 
 export function createTransaction(input: CreateTransactionInput): Promise<TransactionView> {

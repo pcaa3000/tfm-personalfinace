@@ -197,6 +197,9 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
           ok(WORKSPACE),
       ),
     },
+    getBalance: {
+      execute: vi.fn(async () => []),
+    },
   };
 }
 

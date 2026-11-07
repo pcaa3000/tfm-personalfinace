@@ -25,6 +25,7 @@ import {
   listCategories,
   listCurrencies,
   listCurrencyCatalog,
+  fetchBalance,
   listTransactions,
   reviseAccount,
   reviseCategory,
@@ -53,7 +54,7 @@ import {
   Sidebar,
   storedRailCollapsed,
 } from "./Sidebar";
-import { summarizeByCurrency } from "./summarize";
+import { summariesFromBalanceItems } from "./summarize";
 import { TransactionDayCards } from "./TransactionDayCards";
 import { TransactionFilters } from "./TransactionFilters";
 import {
@@ -112,12 +113,11 @@ export function LedgerPage() {
         ? allPages.length * TRANSACTIONS_PAGE_SIZE
         : undefined,
   });
-  // All-time, unfiltered rows feed the general balance (S12-5):
-  // saldo actual = Σ initialBalance + income − expenses. A dedicated
-  // aggregate endpoint would avoid loading the whole ledger (API gap).
+  // Dedicated aggregate endpoint feeds the general balance (S12-5, T24):
+  // saldo actual = Σ initialBalance + income − expenses, computed in SQL.
   const balanceQuery = useQuery({
-    queryKey: ["transactions", "balance"],
-    queryFn: () => listTransactions(),
+    queryKey: ["balance"],
+    queryFn: fetchBalance,
   });
   const pendingQuery = useQuery({
     queryKey: PENDING_QUERY_KEY,
@@ -237,9 +237,8 @@ export function LedgerPage() {
   const pendingRows = (pendingQuery.data ?? []).map(toPendingView);
   const tableRows = [...pendingRows, ...transactions];
   const exponentOf = currencyExponentResolver(currencies);
-  const summaries = summarizeByCurrency(
+  const summaries = summariesFromBalanceItems(
     balanceQuery.data ?? [],
-    accounts,
     exponentOf,
   );
 

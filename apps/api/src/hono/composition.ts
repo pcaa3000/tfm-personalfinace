@@ -29,6 +29,8 @@ import { ListTransactionsUseCase } from "../modules/ledger/application/list-tran
 import { ReviseTransactionUseCase } from "../modules/ledger/application/revise-transaction.use-case.js";
 import { VoidTransactionUseCase } from "../modules/ledger/application/void-transaction.use-case.js";
 import { ListTransactionRevisionsUseCase } from "../modules/ledger/application/list-transaction-revisions.use-case.js";
+import { DrizzleBalanceAdapter } from "../modules/ledger/infrastructure/drizzle-balance.adapter.js";
+import { GetWorkspaceBalanceUseCase } from "../modules/ledger/application/get-workspace-balance.use-case.js";
 
 /**
  * Composition root (T4): explicit wiring, no DI container.
@@ -96,6 +98,8 @@ export function buildApp(env: AppEnv): BuiltApp {
     ),
     voidTransaction: new VoidTransactionUseCase(transactions, clock),
     listRevisions: new ListTransactionRevisionsUseCase(transactions),
+    // balance aggregate (GET /api/v1/balance)
+    getBalance: new GetWorkspaceBalanceUseCase(new DrizzleBalanceAdapter(db)),
     // accounts
     createAccount: new CreateAccountUseCase(accounts, currencies, ids),
     listAccounts: new ListAccountsUseCase(accounts),
