@@ -78,6 +78,8 @@ export const en: TranslationShape = {
     save: "Save changes",
     cancel: "Cancel",
     archive: "Archive",
+    archivedTitle: "Archived",
+    restore: "Restore",
     empty: "No accounts. Create one per currency.",
     kind: {
       cash: "Cash",

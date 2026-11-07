@@ -207,3 +207,24 @@ describe("Account.archive", () => {
     }
   });
 });
+
+describe("Account.unarchive (T25)", () => {
+  it("restores an archived account to active", () => {
+    const created = Account.create(baseInput);
+    if (!created.ok) throw new Error("setup failed");
+    created.value.archive();
+    const result = created.value.unarchive();
+    expect(result.ok).toBe(true);
+    expect(created.value.archivedAt).toBeNull();
+  });
+
+  it("rejects unarchiving an active account", () => {
+    const created = Account.create(baseInput);
+    if (!created.ok) throw new Error("setup failed");
+    const result = created.value.unarchive();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("ACCOUNT_NOT_ARCHIVED");
+    }
+  });
+});

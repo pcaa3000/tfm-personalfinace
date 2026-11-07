@@ -34,6 +34,8 @@ interface Props {
   onCreate: (input: CreateAccountInput) => void;
   onRevise: (id: string, input: ReviseAccountInput) => void;
   onArchive: (id: string) => void;
+  /** Restores an archived account (T25). Optional for older callers. */
+  onUnarchive?: (id: string) => void;
 }
 
 const DECIMAL = /^\d+(\.\d+)?$/;
@@ -52,9 +54,12 @@ export function AccountsDialog({
   onCreate,
   onRevise,
   onArchive,
+  onUnarchive,
 }: Props) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState<AccountView | null>(null);
+  const activeAccounts = accounts.filter((a) => a.archivedAt === null);
+  const archivedAccounts = accounts.filter((a) => a.archivedAt !== null);
   const [name, setName] = useState("");
   const [currency, setCurrency] = useState(currencies[0] ?? "PEN");
   const [kind, setKind] = useState<string>("bank");
@@ -121,11 +126,11 @@ export function AccountsDialog({
             {error}
           </Alert>
         ) : null}
-        {accounts.length === 0 ? (
+        {activeAccounts.length === 0 ? (
           <Typography color="text.secondary">{t("accounts.empty")}</Typography>
         ) : (
           <List dense>
-            {accounts.map((account) => (
+            {activeAccounts.map((account) => (
               <ManageListItem
                 key={account.id}
                 primary={account.name}
@@ -159,6 +164,34 @@ export function AccountsDialog({
             ))}
           </List>
         )}
+        {archivedAccounts.length > 0 ? (
+          <Box data-part="archived-accounts" sx={{ mt: 1.5 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontWeight: 700, textTransform: "uppercase" }}
+            >
+              {t("accounts.archivedTitle")}
+            </Typography>
+            <List dense>
+              {archivedAccounts.map((account) => (
+                <ManageListItem
+                  key={account.id}
+                  primary={account.name}
+                  secondary={`${account.currency} · ${t(`accounts.kind.${account.kind}`, { defaultValue: account.kind })}`}
+                  actions={
+                    <Button
+                      size="small"
+                      onClick={() => onUnarchive?.(account.id)}
+                    >
+                      {t("accounts.restore")}
+                    </Button>
+                  }
+                />
+              ))}
+            </List>
+          </Box>
+        ) : null}
         <Box
           sx={{
             display: "grid",

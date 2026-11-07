@@ -74,6 +74,8 @@ export const es = {
     save: "Guardar cambios",
     cancel: "Cancelar",
     archive: "Archivar",
+    archivedTitle: "Archivadas",
+    restore: "Restaurar",
     empty: "Sin cuentas. Creá una por moneda.",
     kind: {
       cash: "Efectivo",

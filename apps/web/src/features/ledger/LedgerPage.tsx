@@ -27,6 +27,7 @@ import {
   listCurrencyCatalog,
   fetchBalance,
   listTransactions,
+  unarchiveAccount,
   reviseAccount,
   reviseCategory,
   reviseCurrency,
@@ -125,7 +126,7 @@ export function LedgerPage() {
   });
   const accountsQuery = useQuery({
     queryKey: ["accounts"],
-    queryFn: listAccounts,
+    queryFn: () => listAccounts({ includeArchived: true }),
   });
   const currenciesQuery = useQuery({
     queryKey: ["currencies"],
@@ -169,10 +170,12 @@ export function LedgerPage() {
       action:
         | { kind: "create"; input: CreateAccountInput }
         | { kind: "revise"; id: string; input: ReviseAccountInput }
-        | { kind: "archive"; id: string },
+        | { kind: "archive"; id: string }
+        | { kind: "unarchive"; id: string },
     ) => {
       if (action.kind === "create") return createAccount(action.input);
       if (action.kind === "revise") return reviseAccount(action.id, action.input);
+      if (action.kind === "unarchive") return unarchiveAccount(action.id);
       return archiveAccount(action.id);
     },
     onSuccess: async () => {
@@ -229,7 +232,11 @@ export function LedgerPage() {
   });
 
   const categories = categoriesQuery.data ?? [];
-  const accounts = accountsQuery.data ?? [];
+  // Active accounts feed every select/balance usage; the management
+  // dialog receives the full list and renders the archived section.
+  const accounts = (accountsQuery.data ?? []).filter(
+    (a) => a.archivedAt === null,
+  );
   const currencies = currenciesQuery.data ?? [];
   const currencyCodes = currencies.map((c) => c.code);
   const workspace = workspaceQuery.data;
@@ -466,6 +473,9 @@ export function LedgerPage() {
           accountMutation.mutate({ kind: "revise", id, input })
         }
         onArchive={(id) => accountMutation.mutate({ kind: "archive", id })}
+        onUnarchive={(id) =>
+          accountMutation.mutate({ kind: "unarchive", id })
+        }
       />
       <CategoriesDialog
         open={management === "categories"}

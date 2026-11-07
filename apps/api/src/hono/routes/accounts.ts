@@ -39,12 +39,14 @@ const reviseAccountSchema = z
     name: z.string().min(1).max(64).optional(),
     kind: z.enum(KINDS).optional(),
     initialBalance: z.string().min(1).max(48).optional(),
+    archived: z.boolean().optional(),
   })
   .refine(
     (data) =>
       data.name !== undefined ||
       data.kind !== undefined ||
-      data.initialBalance !== undefined,
+      data.initialBalance !== undefined ||
+      data.archived !== undefined,
   );
 
 /** Same mapping as the Nest AccountsController.toHttpError. */
@@ -77,7 +79,12 @@ export function registerAccountRoutes(
 
   app.get("/api/v1/accounts", auth, async (c) => {
     const { workspace } = authContext(c);
-    return c.json(await deps.listAccounts.execute(workspace.workspaceId));
+    const includeArchived = c.req.query("includeArchived") === "true";
+    return c.json(
+      await deps.listAccounts.execute(workspace.workspaceId, {
+        includeArchived,
+      }),
+    );
   });
 
   app.post("/api/v1/accounts", auth, async (c) => {
@@ -126,6 +133,9 @@ export function registerAccountRoutes(
       ...(parsed.data.kind !== undefined ? { kind: parsed.data.kind } : {}),
       ...(parsed.data.initialBalance !== undefined
         ? { initialBalance: parsed.data.initialBalance }
+        : {}),
+      ...(parsed.data.archived !== undefined
+        ? { archived: parsed.data.archived }
         : {}),
     });
     if (!result.ok) {

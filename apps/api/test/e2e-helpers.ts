@@ -63,6 +63,7 @@ export interface AccountView {
   currency: string;
   kind: string;
   initialBalance: string;
+  archivedAt: string | null;
 }
 
 export interface RevisionView {

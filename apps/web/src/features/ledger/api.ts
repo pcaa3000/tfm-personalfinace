@@ -87,8 +87,11 @@ export function listTransactions(
   return request<TransactionView[]>(`/transactions${qs ? `?${qs}` : ""}`);
 }
 
-export function listAccounts(): Promise<AccountView[]> {
-  return request<AccountView[]>("/accounts");
+export function listAccounts(options?: {
+  includeArchived?: boolean;
+}): Promise<AccountView[]> {
+  const qs = options?.includeArchived ? "?includeArchived=true" : "";
+  return request<AccountView[]>(`/accounts${qs}`);
 }
 export function createAccount(input: CreateAccountInput): Promise<AccountView> {
   return request<AccountView>("/accounts", {
@@ -108,6 +111,13 @@ export function reviseAccount(
 export function archiveAccount(id: string): Promise<AccountView> {
   return request<AccountView>(`/accounts/${id}/archive`, {
     method: "POST",
+  });
+}
+/** Restores an archived account — PATCH {archived:false} (T25). */
+export function unarchiveAccount(id: string): Promise<AccountView> {
+  return request<AccountView>(`/accounts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ archived: false }),
   });
 }
 export function listCurrencies(): Promise<CurrencyView[]> {

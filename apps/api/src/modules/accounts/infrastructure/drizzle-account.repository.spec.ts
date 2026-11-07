@@ -163,3 +163,50 @@ describe("DrizzleAccountRepository (integration, real Postgres)", () => {
     expect(listed.map((r) => r.id)).not.toContain(account.id);
   });
 });
+
+describe("includeArchived (T25)", () => {
+  const { db, pool } = createDrizzleDb(DATABASE_URL);
+
+  afterAll(async () => {
+    await db
+      .delete(accounts)
+      .where(inArray(accounts.workspaceId, WORKSPACES));
+    await pool.end();
+  });
+
+  it("list returns archived rows only when includeArchived is set", async () => {
+    const repo = new DrizzleAccountRepository(db);
+    const ws = workspaceId(WS_A);
+    const active = makeAccount({ id: "t25-active", name: "Activa" });
+    const archived = makeAccount({ id: "t25-archived", name: "Archivada" });
+    await repo.save(active);
+    await repo.save(archived);
+    archived.archive();
+    await repo.save(archived);
+
+    const activeOnly = await repo.list(ws);
+    const all = await repo.list(ws, { includeArchived: true });
+
+    expect(activeOnly.map((a) => a.id)).toEqual(["t25-active"]);
+    expect(all.map((a) => a.id).sort()).toEqual([
+      "t25-active",
+      "t25-archived",
+    ]);
+  });
+
+  it("findById returns the archived row when includeArchived is set", async () => {
+    const repo = new DrizzleAccountRepository(db);
+    const ws = workspaceId(WS_A);
+    const archived = makeAccount({ id: "t25-find", name: "Para buscar" });
+    await repo.save(archived);
+    archived.archive();
+    await repo.save(archived);
+
+    expect(await repo.findById(ws, "t25-find")).toBeNull();
+    const found = await repo.findById(ws, "t25-find", {
+      includeArchived: true,
+    });
+    expect(found?.id).toBe("t25-find");
+    expect(found?.archivedAt).not.toBeNull();
+  });
+});

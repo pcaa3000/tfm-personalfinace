@@ -65,6 +65,8 @@ export interface ReviseAccountInput {
   name?: string;
   kind?: string;
   initialBalance?: string;
+  /** Archive/unarchive toggle (T25): `false` restores an archived account. */
+  archived?: boolean;
 }
 
 export interface WorkspaceView {

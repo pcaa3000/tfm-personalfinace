@@ -15,6 +15,8 @@ export interface ReviseAccountCommand {
   readonly name?: string;
   readonly kind?: string;
   readonly initialBalance?: string;
+  /** Archive/unarchive toggle (T25): `false` restores an archived account. */
+  readonly archived?: boolean;
 }
 
 export class ReviseAccountUseCase {
@@ -24,6 +26,7 @@ export class ReviseAccountUseCase {
     const account = await this.accounts.findById(
       command.workspaceId,
       command.accountId,
+      command.archived !== undefined ? { includeArchived: true } : undefined,
     );
     if (!account) {
       return err(
@@ -47,6 +50,13 @@ export class ReviseAccountUseCase {
       }
     }
 
+    if (command.archived === false) {
+      const restored = account.unarchive();
+      if (!restored.ok) {
+        return restored;
+      }
+    }
+
     let initialBalance: Money | undefined;
     if (command.initialBalance !== undefined) {
       const money = Money.create(command.initialBalance, account.currency.code);
@@ -56,13 +66,26 @@ export class ReviseAccountUseCase {
       initialBalance = money.value;
     }
 
-    const revised = account.revise({
-      ...(command.name !== undefined ? { name: command.name } : {}),
-      ...(command.kind !== undefined ? { kind: command.kind } : {}),
-      ...(initialBalance !== undefined ? { initialBalance } : {}),
-    });
-    if (!revised.ok) {
-      return revised;
+    const hasFieldChanges =
+      command.name !== undefined ||
+      command.kind !== undefined ||
+      command.initialBalance !== undefined;
+    if (hasFieldChanges) {
+      const revised = account.revise({
+        ...(command.name !== undefined ? { name: command.name } : {}),
+        ...(command.kind !== undefined ? { kind: command.kind } : {}),
+        ...(initialBalance !== undefined ? { initialBalance } : {}),
+      });
+      if (!revised.ok) {
+        return revised;
+      }
+    }
+
+    if (command.archived === true) {
+      const archived = account.archive();
+      if (!archived.ok) {
+        return archived;
+      }
     }
 
     await this.accounts.save(account);

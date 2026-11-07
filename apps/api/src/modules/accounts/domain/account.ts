@@ -246,4 +246,17 @@ export class Account {
     this._archivedAt = new Date();
     return ok(undefined);
   }
+
+  unarchive(): Result<void, DomainError> {
+    if (this._archivedAt === null) {
+      return err(
+        new DomainError(
+          "ACCOUNT_NOT_ARCHIVED",
+          "The account is not archived",
+        ),
+      );
+    }
+    this._archivedAt = null;
+    return ok(undefined);
+  }
 }

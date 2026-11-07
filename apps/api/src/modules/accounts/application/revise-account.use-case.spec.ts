@@ -21,6 +21,9 @@ class InMemoryAccounts implements AccountRepositoryPort {
   async findById(_workspaceId: unknown, accountId: string) {
     return this.saved.find((a) => a.id === accountId) ?? null;
   }
+  async findAll() {
+    return this.saved;
+  }
 }
 
 const ws = WorkspaceId.create("ws-1");
@@ -106,6 +109,95 @@ describe("ReviseAccountUseCase", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe("ACCOUNT_NEGATIVE_INITIAL_BALANCE");
+    }
+  });
+});
+
+describe("ReviseAccountUseCase archived flag (T25)", () => {
+  it("restores an archived account with {archived:false}", async () => {
+    const repo = new InMemoryAccounts();
+    const account = seedAccount(repo, "BCP viejo");
+    account.archive();
+    const useCase = new ReviseAccountUseCase(repo);
+
+    const result = await useCase.execute({
+      workspaceId: wsId,
+      accountId: account.id,
+      archived: false,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.archivedAt).toBeNull();
+    }
+    expect(account.archivedAt).toBeNull();
+  });
+
+  it("archives an active account with {archived:true}", async () => {
+    const repo = new InMemoryAccounts();
+    const account = seedAccount(repo, "BCP actual");
+    const useCase = new ReviseAccountUseCase(repo);
+
+    const result = await useCase.execute({
+      workspaceId: wsId,
+      accountId: account.id,
+      archived: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(account.archivedAt).not.toBeNull();
+  });
+
+  it("rejects {archived:false} on an active account", async () => {
+    const repo = new InMemoryAccounts();
+    const account = seedAccount(repo, "BCP activa");
+    const useCase = new ReviseAccountUseCase(repo);
+
+    const result = await useCase.execute({
+      workspaceId: wsId,
+      accountId: account.id,
+      archived: false,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("ACCOUNT_NOT_ARCHIVED");
+    }
+  });
+
+  it("returns ACCOUNT_NOT_FOUND when {archived:false} targets an unknown account", async () => {
+    const repo = new InMemoryAccounts();
+    const useCase = new ReviseAccountUseCase(repo);
+
+    const result = await useCase.execute({
+      workspaceId: wsId,
+      accountId: "acc-ghost",
+      archived: false,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("ACCOUNT_NOT_FOUND");
+    }
+  });
+
+  it("restores and revises fields in the same patch", async () => {
+    const repo = new InMemoryAccounts();
+    const account = seedAccount(repo, "BCP combo");
+    account.archive();
+    const useCase = new ReviseAccountUseCase(repo);
+
+    const result = await useCase.execute({
+      workspaceId: wsId,
+      accountId: account.id,
+      archived: false,
+      name: "BCP renombrada",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.name).toBe("BCP renombrada");
+      expect(result.value.archivedAt).toBeNull();
     }
   });
 });

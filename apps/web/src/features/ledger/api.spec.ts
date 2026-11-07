@@ -8,12 +8,14 @@ import {
   createAccount,
   createCategory,
   fetchBalance,
+  listAccounts,
   listCurrencies,
   listCurrencyCatalog,
   listTransactions,
   reviseAccount,
   reviseCategory,
   reviseCurrency,
+  unarchiveAccount,
   updateWorkspace,
 } from "./api";
 
@@ -218,5 +220,22 @@ describe("workspace preferences (RF-003)", () => {
     expect(JSON.parse(String(init?.body))).toEqual({
       defaultCurrency: "USD",
     });
+  });
+});
+
+describe("unarchive accounts (T25)", () => {
+  it("lists accounts including archived via query param", async () => {
+    await listAccounts({ includeArchived: true });
+
+    expect(calledUrl()).toBe("/api/v1/accounts?includeArchived=true");
+  });
+
+  it("restores an account with PATCH {archived:false}", async () => {
+    await unarchiveAccount("acc-9");
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toBe("/api/v1/accounts/acc-9");
+    expect(init?.method).toBe("PATCH");
+    expect(String(init?.body)).toBe(JSON.stringify({ archived: false }));
   });
 });
