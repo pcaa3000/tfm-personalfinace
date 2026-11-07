@@ -1,7 +1,9 @@
-import { alpha, Box, Chip, Typography } from "@mui/material";
+import { alpha, Box, Chip, IconButton, Typography } from "@mui/material";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AmountText } from "./AmountText";
+import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
 import { minorToDecimalString } from "./format";
 import type { CurrencySummary } from "./summarize";
 import type { AccountView } from "./types";
@@ -26,21 +28,66 @@ export function BalanceStrip({
   exponentOf = () => 2,
 }: Props) {
   const { t } = useTranslation();
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
   const accountNames = (currency: string) =>
     accounts
       .filter((a) => a.currency === currency)
       .map((a) => a.name)
       .join(" · ");
 
+  const cardStep = () => {
+    const card = scrollerRef.current?.querySelector<HTMLElement>(
+      "[data-currency]",
+    );
+    // gap 1.5 * 8px (theme.spacing) = 12px between cards.
+    return card ? card.offsetWidth + 24 : 0;
+  };
+
+  const scrollToCard = (index: number) => {
+    scrollerRef.current?.scrollTo({
+      left: index * cardStep(),
+      behavior: "smooth",
+    });
+  };
+
+  const scrollByCard = (direction: 1 | -1) => {
+    scrollerRef.current?.scrollBy({
+      left: direction * cardStep(),
+      behavior: "smooth",
+    });
+  };
+
+  const handleScroll = () => {
+    const scroller = scrollerRef.current;
+    const step = cardStep();
+    if (scroller && step > 0) {
+      setActiveIndex(Math.round(scroller.scrollLeft / step));
+    }
+  };
+
   const variantOf = (currency: string, index: number): string =>
     currency === defaultCurrency ? "primary" : index === 1 ? "accent" : "neutral";
 
   return (
-    <Box>
-      <Box
-        role="group"
-        aria-label={t("balance.title")}
-        sx={{
+    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+      {summaries.length > 1 ? (
+        <IconButton
+          aria-label={t("balance.previous")}
+          onClick={() => scrollByCard(-1)}
+          sx={{ display: { xs: "none", sm: "inline-flex" }, flex: "none" }}
+        >
+          <ChevronLeftIcon />
+        </IconButton>
+      ) : null}
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Box
+          ref={scrollerRef}
+          onScroll={handleScroll}
+          role="group"
+          aria-label={t("balance.title")}
+          sx={{
           display: "flex",
           gap: 1.5,
           overflowX: "auto",
@@ -201,27 +248,49 @@ export function BalanceStrip({
           );
         })}
       </Box>
-      {summaries.length > 0 ? (
-        <Box
-          aria-hidden
-          sx={{ display: "flex", justifyContent: "center", gap: 0.75, mt: 0.75 }}
+        {summaries.length > 0 ? (
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "center",
+              gap: 0.75,
+              mt: 0.75,
+            }}
+          >
+            {summaries.map((summary, index) => (
+              <Box
+                key={summary.currency}
+                component="button"
+                type="button"
+                aria-label={t("balance.dotLabel", { currency: summary.currency })}
+                data-part="carousel-dot"
+                data-active={index === activeIndex ? "true" : "false"}
+                onClick={() => scrollToCard(index)}
+                sx={(theme) => ({
+                  width: 18,
+                  height: 6,
+                  p: 0,
+                  border: 0,
+                  cursor: "pointer",
+                  borderRadius: "999px",
+                  bgcolor:
+                    index === activeIndex
+                      ? theme.palette.primary.main
+                      : theme.palette.divider,
+                })}
+              />
+            ))}
+          </Box>
+        ) : null}
+      </Box>
+      {summaries.length > 1 ? (
+        <IconButton
+          aria-label={t("balance.next")}
+          onClick={() => scrollByCard(1)}
+          sx={{ display: { xs: "none", sm: "inline-flex" }, flex: "none" }}
         >
-          {summaries.map((summary, index) => (
-            <Box
-              key={summary.currency}
-              component="span"
-              data-part="carousel-dot"
-              data-active={index === 0 ? "true" : "false"}
-              sx={(theme) => ({
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                bgcolor:
-                  index === 0 ? theme.palette.primary.main : theme.palette.divider,
-              })}
-            />
-          ))}
-        </Box>
+          <ChevronRightIcon />
+        </IconButton>
       ) : null}
     </Box>
   );

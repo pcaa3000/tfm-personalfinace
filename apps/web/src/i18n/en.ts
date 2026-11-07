@@ -122,6 +122,9 @@ export const en: TranslationShape = {
     income: "Income",
     expenses: "Expenses",
     cardLabel: "Balance in {{currency}}",
+    previous: "Previous currency",
+    next: "Next currency",
+    dotLabel: "Show balance in {{currency}}",
   },
   summary: {
     title: "Summary by currency",

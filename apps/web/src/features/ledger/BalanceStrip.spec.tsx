@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import i18n from "../../i18n";
 import { BalanceStrip } from "./BalanceStrip";
@@ -115,5 +115,69 @@ describe("BalanceStrip (S12-5, S12-7 financial design system)", () => {
     expect(
       container.querySelectorAll("[data-part='carousel-dot']"),
     ).toHaveLength(2);
+  });
+
+  it("offers prev/next buttons and dots as real buttons (mouse affordance, T23)", () => {
+    const { container, getByLabelText } = renderStrip();
+
+    expect(getByLabelText("Moneda anterior")).toBeTruthy();
+    expect(getByLabelText("Moneda siguiente")).toBeTruthy();
+    const dots = container.querySelectorAll("[data-part='carousel-dot']");
+    expect(dots[0]?.tagName).toBe("BUTTON");
+  });
+
+  it("clicking next scrolls the card track by one card", () => {
+    const { container, getByLabelText } = renderStrip();
+    const scroller = container.querySelector("[role='group']") as HTMLElement;
+    const firstCard = scroller.querySelector("[data-currency]");
+    Object.defineProperty(firstCard, "offsetWidth", {
+      value: 200,
+      configurable: true,
+    });
+    const scrollBy = vi.fn();
+    scroller.scrollBy = scrollBy;
+
+    fireEvent.click(getByLabelText("Moneda siguiente"));
+
+    expect(scrollBy).toHaveBeenCalledWith({ left: 224, behavior: "smooth" });
+  });
+
+  it("clicking a dot scrolls directly to that card", () => {
+    const { container } = renderStrip();
+    const scroller = container.querySelector("[role='group']") as HTMLElement;
+    const firstCard = scroller.querySelector("[data-currency]");
+    Object.defineProperty(firstCard, "offsetWidth", {
+      value: 200,
+      configurable: true,
+    });
+    const scrollTo = vi.fn();
+    scroller.scrollTo = scrollTo;
+
+    const dots = container.querySelectorAll("[data-part='carousel-dot']");
+    fireEvent.click(dots[1]!);
+
+    expect(scrollTo).toHaveBeenCalledWith({ left: 224, behavior: "smooth" });
+  });
+
+  it("the active dot follows the scroll position", () => {
+    const { container } = renderStrip();
+    const scroller = container.querySelector("[role='group']") as HTMLElement;
+    const firstCard = scroller.querySelector("[data-currency]");
+    Object.defineProperty(firstCard, "offsetWidth", {
+      value: 200,
+      configurable: true,
+    });
+
+    const dots = container.querySelectorAll("[data-part='carousel-dot']");
+    expect(dots[0]?.getAttribute("data-active")).toBe("true");
+
+    Object.defineProperty(scroller, "scrollLeft", {
+      value: 224,
+      configurable: true,
+    });
+    fireEvent.scroll(scroller);
+
+    expect(dots[1]?.getAttribute("data-active")).toBe("true");
+    expect(dots[0]?.getAttribute("data-active")).toBe("false");
   });
 });

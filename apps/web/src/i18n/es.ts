@@ -118,6 +118,9 @@ export const es = {
     income: "Ingresos",
     expenses: "Gastos",
     cardLabel: "Balance en {{currency}}",
+    previous: "Moneda anterior",
+    next: "Moneda siguiente",
+    dotLabel: "Ver balance en {{currency}}",
   },
   summary: {
     title: "Resumen por moneda",

@@ -165,6 +165,17 @@ export const ChevronLeftIcon = makeIcon(
   />,
 );
 
+export const ChevronRightIcon = makeIcon(
+  <path
+    d="M9.5 6l6 6-6 6"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.4"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  />,
+);
+
 export const MoreIcon = makeIcon(
   <path
     d="M6 12h.01M12 12h.01M18 12h.01"
