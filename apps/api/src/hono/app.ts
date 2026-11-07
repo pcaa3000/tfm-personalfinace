@@ -10,6 +10,8 @@ import type { CategoryRouteDeps } from "./routes/categories.js";
 import { registerCategoryRoutes } from "./routes/categories.js";
 import type { CurrencyRouteDeps } from "./routes/currencies.js";
 import { registerCurrencyRoutes } from "./routes/currencies.js";
+import type { NotificationRouteDeps } from "./routes/notifications.js";
+import { registerNotificationRoutes } from "./routes/notifications.js";
 import type { TransactionRouteDeps } from "./routes/transactions.js";
 import { registerTransactionRoutes } from "./routes/transactions.js";
 import type { WorkspaceRouteDeps } from "./routes/workspace.js";
@@ -23,7 +25,8 @@ export type HonoDeps = TransactionRouteDeps &
   BalanceRouteDeps &
   CategoryRouteDeps &
   CurrencyRouteDeps &
-  WorkspaceRouteDeps;
+  WorkspaceRouteDeps &
+  NotificationRouteDeps;
 
 /**
  * Builds the Hono app for the migrated HTTP slice. Routes are mounted
@@ -47,6 +50,7 @@ export function createApp(deps: HonoDeps): Hono<HonoEnv> {
   registerCategoryRoutes(app, deps);
   registerCurrencyRoutes(app, deps);
   registerWorkspaceRoutes(app, deps);
+  registerNotificationRoutes(app, deps);
 
   app.notFound((c) =>
     c.json(

@@ -31,6 +31,8 @@ import { VoidTransactionUseCase } from "../modules/ledger/application/void-trans
 import { ListTransactionRevisionsUseCase } from "../modules/ledger/application/list-transaction-revisions.use-case.js";
 import { DrizzleBalanceAdapter } from "../modules/ledger/infrastructure/drizzle-balance.adapter.js";
 import { GetWorkspaceBalanceUseCase } from "../modules/ledger/application/get-workspace-balance.use-case.js";
+import { DrizzleNotificationRepository } from "../modules/notifications/infrastructure/drizzle-notification.repository.js";
+import { ListNotificationsUseCase } from "../modules/notifications/application/list-notifications.use-case.js";
 
 /**
  * Composition root (T4): explicit wiring, no DI container.
@@ -118,6 +120,10 @@ export function buildApp(env: AppEnv): BuiltApp {
     archiveCurrency: new ArchiveCurrencyUseCase(currencies, currencyUsage),
     // workspace
     updatePreferences: new UpdateWorkspacePreferencesUseCase(workspace),
+    // notifications (worker consumer output)
+    listNotifications: new ListNotificationsUseCase(
+      new DrizzleNotificationRepository(db),
+    ),
   };
 
   return {

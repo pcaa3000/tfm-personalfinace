@@ -221,6 +221,9 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
           ok(WORKSPACE),
       ),
     },
+    listNotifications: {
+      execute: vi.fn(async () => []),
+    },
     getBalance: {
       execute: vi.fn(async () => []),
     },
