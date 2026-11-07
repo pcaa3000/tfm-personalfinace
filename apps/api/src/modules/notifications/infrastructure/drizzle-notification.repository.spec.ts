@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 
 import { createDrizzleDb } from "../../../drizzle/db.js";
 import { notifications } from "../../../drizzle/schema.js";

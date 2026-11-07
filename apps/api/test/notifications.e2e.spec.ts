@@ -18,6 +18,7 @@ import {
   type AccountView,
   type ApiResponse,
   type E2eApp,
+  type TxView,
 } from "./e2e-helpers.js";
 import {
   LEDGER_EVENTS_QUEUE,
@@ -62,7 +63,7 @@ describe("outbox → queue → notifications pipeline (worker-pgboss S2)", () =>
     });
     expect(account.status).toBe(201);
 
-    const tx = await api("/api/v1/transactions", {
+    const tx = await api<TxView>("/api/v1/transactions", {
       method: "POST",
       headers: CAROL,
       body: {
