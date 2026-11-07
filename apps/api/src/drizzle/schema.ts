@@ -1,0 +1,161 @@
+import {
+  bigint,
+  date,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
+
+/**
+ * Drizzle mirror of the Prisma-managed schema (apps/api/prisma/schema.prisma).
+ * Table and column names are EXACT: Prisma @@map names the tables and every
+ * field maps 1:1 to a camelCase quoted column. This file only describes the
+ * existing tables — it never generates migrations.
+ */
+
+export const workspaces = pgTable("identity_workspace_workspaces", {
+  id: text("id").primaryKey(),
+  identityKey: text("identityKey").notNull().unique(),
+  kind: text("kind").notNull().default("personal"),
+  locale: text("locale").notNull().default("en-US"),
+  timezone: text("timezone").notNull().default("UTC"),
+  defaultCurrency: text("defaultCurrency").notNull().default("USD"),
+  createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
+    .notNull()
+    .defaultNow(),
+});
+
+export const categories = pgTable(
+  "categorization_categories",
+  {
+    id: text("id").primaryKey(),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    nature: text("nature").notNull(),
+    workspaceId: text("workspaceId"),
+    archivedAt: timestamp("archivedAt", { mode: "date", precision: 3 }),
+  },
+  (table) => [
+    unique("categorization_categories_key_workspaceId_key").on(
+      table.key,
+      table.workspaceId,
+    ),
+  ],
+);
+
+export const currencies = pgTable(
+  "currencies_currencies",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspaceId").notNull(),
+    code: text("code").notNull(),
+    archivedAt: timestamp("archivedAt", { mode: "date", precision: 3 }),
+    createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("currencies_currencies_workspaceId_code_key").on(
+      table.workspaceId,
+      table.code,
+    ),
+    index("currencies_currencies_workspaceId_idx").on(table.workspaceId),
+  ],
+);
+
+export const accounts = pgTable(
+  "accounts_accounts",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspaceId").notNull(),
+    name: text("name").notNull(),
+    currency: text("currency").notNull(),
+    kind: text("kind").notNull().default("bank"),
+    initialBalanceMinor: bigint("initialBalanceMinor", {
+      mode: "bigint",
+    })
+      .notNull()
+      .default(0n),
+    archivedAt: timestamp("archivedAt", { mode: "date", precision: 3 }),
+    createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("accounts_accounts_workspaceId_name_key").on(
+      table.workspaceId,
+      table.name,
+    ),
+    index("accounts_accounts_workspaceId_idx").on(table.workspaceId),
+  ],
+);
+
+export const ledgerTransactions = pgTable(
+  "ledger_transactions",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspaceId").notNull(),
+    idempotencyKey: text("idempotencyKey").notNull(),
+    type: text("type").notNull(),
+    amountMinor: bigint("amountMinor", { mode: "bigint" }).notNull(),
+    currency: text("currency").notNull(),
+    businessDate: date("businessDate", { mode: "date" }).notNull(),
+    timezone: text("timezone").notNull(),
+    concept: text("concept").notNull(),
+    accountId: text("accountId").references(() => accounts.id, {
+      onDelete: "set null",
+    }),
+    destinationAccountId: text("destinationAccountId").references(
+      () => accounts.id,
+      { onDelete: "set null" },
+    ),
+    categoryId: text("categoryId"),
+    status: text("status").notNull().default("confirmed"),
+    origin: text("origin").notNull().default("manual"),
+    originRef: text("originRef"),
+    confirmedAt: timestamp("confirmedAt", { mode: "date", precision: 3 }).notNull(),
+    confirmedBy: text("confirmedBy").notNull(),
+    createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ledger_transactions_workspaceId_idempotencyKey_key").on(
+      table.workspaceId,
+      table.idempotencyKey,
+    ),
+    index("ledger_transactions_workspaceId_businessDate_idx").on(
+      table.workspaceId,
+      table.businessDate,
+    ),
+  ],
+);
+
+export const ledgerTransactionRevisions = pgTable(
+  "ledger_transaction_revisions",
+  {
+    id: text("id").primaryKey(),
+    transactionId: text("transactionId")
+      .notNull()
+      .references(() => ledgerTransactions.id, { onDelete: "cascade" }),
+    revisionNumber: integer("revisionNumber").notNull(),
+    kind: text("kind").notNull(),
+    changes: jsonb("changes").notNull(),
+    occurredAt: timestamp("occurredAt", { mode: "date", precision: 3 }).notNull(),
+    actor: text("actor").notNull(),
+  },
+  (table) => [
+    unique("ledger_transaction_revisions_transactionId_revisionNumber_key").on(
+      table.transactionId,
+      table.revisionNumber,
+    ),
+  ],
+);
