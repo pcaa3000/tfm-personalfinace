@@ -100,7 +100,7 @@ Si un ticket incluye datos de tarjeta, dirección u otra información incidental
 - El logout limpia sesión local, vacía la cola local de la PWA e inicia cierre OIDC cuando esté disponible. La sesión demo termina además por cierre de la aplicación o 10 minutos de inactividad, descartando cualquier modificación.
 - Los errores de autenticación no revelan si una cuenta concreta existe.
 
-La autenticación social y las passkeys se delegan por completo al proveedor OIDC gestionado (Supabase Auth en etapa 1). No se implementan credenciales propias en NestJS.
+La autenticación social y las passkeys se delegan por completo al proveedor OIDC gestionado (Supabase Auth en etapa 1). No se implementan credenciales propias en la API.
 
 ### Tokens
 

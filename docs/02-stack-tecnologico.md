@@ -5,9 +5,9 @@ La propuesta utiliza TypeScript en web y API, PostgreSQL como fuente de verdad y
 ## Decisión
 
 - **Frontend:** React y Vite como PWA estática desplegable de forma independiente, con cola local offline sobre IndexedDB.
-- **Backend:** NestJS sobre Node.js LTS; API REST y worker comparten **un solo proceso** en el MVP (módulos separados, mismo despliegue).
+- **Backend:** Hono sobre Node.js LTS; API REST y worker comparten **un solo proceso** en el MVP (módulos separados, mismo despliegue). Decisión revisada tras un spike con evidencia (ver "Cambio de stack" más abajo): la composición explícita reemplaza al contenedor DI de NestJS.
 - **Arquitectura:** monolito modular con Clean Architecture y principios SOLID; dominio y casos de uso libres de frameworks.
-- **Persistencia:** PostgreSQL gestionado por Supabase; Prisma solo dentro de adaptadores.
+- **Persistencia:** PostgreSQL gestionado por Supabase; Drizzle ORM solo dentro de adaptadores.
 - **Asincronía:** pg-boss sobre el mismo PostgreSQL — el job se encola en la misma transacción del caso de uso (outbox sin relay ni Redis).
 - **Archivos:** Supabase Storage (API compatible con S3, privado, ciclo de vida ≤30 días).
 - **Identidad:** OpenID Connect mediante Supabase Auth (usuario/contraseña, Google, Facebook, passkeys); la pareja issuer–subject aísla al proveedor.
@@ -40,7 +40,7 @@ Se recomienda un monorepo con espacios de trabajo técnicos de `pnpm`. Este uso 
 
 | Unidad | Responsabilidad | Dependencias permitidas |
 |---|---|---|
-| Web (PWA) | Interfaz, captura del navegador, cola local offline, validación de experiencia y consumo de API | Cliente generado desde el contrato público; nunca Prisma ni módulos internos de API |
+| Web (PWA) | Interfaz, captura del navegador, cola local offline, validación de experiencia y consumo de API | Cliente generado desde el contrato público; nunca Drizzle ni módulos internos de API |
 | API + worker | HTTP, autorización, validación de entrada, casos de uso síncronos y consulta de estados; en el mismo proceso, handlers de trabajos pg-boss (OCR, voz, mantenimiento y agregados) | Módulos de aplicación y adaptadores configurados en composición |
 
 ### Compartición permitida
@@ -52,7 +52,7 @@ Se recomienda un monorepo con espacios de trabajo técnicos de `pnpm`. Este uso 
 ### Compartición prohibida
 
 - Entidades de dominio entre web y API.
-- Tipos generados por Prisma fuera del adaptador de persistencia.
+- Tipos de esquema de Drizzle fuera del adaptador de persistencia.
 - Modelos de respuesta de Azure, Supabase o S3 fuera de sus adaptadores.
 - Acceso de un módulo a tablas, repositorios o servicios internos de otro módulo.
 
@@ -109,21 +109,21 @@ Para usuarios personales, `(issuer, subject)` resuelve el único workspace persi
 
 ## API y backend
 
-### Node.js y NestJS
+### Node.js y Hono
 
-Se utilizará una versión LTS activa de Node.js y una versión estable soportada de NestJS al iniciar la implementación.
+Se utilizará una versión LTS activa de Node.js y una versión estable soportada de Hono (con `@hono/node-server`) al iniciar la implementación.
 
-NestJS aporta composición modular, inyección de dependencias, validación HTTP, OpenAPI, health checks y adaptadores de transporte. No define el dominio.
+Hono aporta routing, middleware por path, validación con `zValidator`/zod y streaming nativo, sin imponer un modelo de aplicación. No define el dominio ni la composición.
 
-| Elemento NestJS | Ubicación permitida |
+| Elemento Hono | Ubicación permitida |
 |---|---|
-| Controllers, DTO HTTP, pipes e interceptors | Adaptador de entrada HTTP |
-| Guards y validación de claims | Adaptador de seguridad HTTP |
-| Módulos y tokens de inyección | Raíz de composición |
-| Configuración de Prisma, pg-boss, S3-compatible, Supabase Auth y Azure | Adaptadores de infraestructura |
-| Decoradores de framework | Prohibidos en dominio y aplicación |
+| Handlers de ruta y validación zod | Adaptador de entrada HTTP (`src/hono/routes/`) |
+| Middleware de auth (caller + workspace) y de errores | `src/hono/middleware/` |
+| Wiring explícito (`buildApp`) | Raíz de composición (`src/hono/composition.ts`) |
+| Configuración de Drizzle, pg-boss, S3-compatible, Supabase Auth y Azure | Adaptadores de infraestructura |
+| Cualquier import de `hono` | Prohibido en dominio y aplicación |
 
-Los casos de uso reciben dependencias por constructor mediante puertos propios. La raíz de composición los conecta con adaptadores NestJS; no se utiliza el contenedor del framework como localizador de servicios dentro del dominio.
+Los casos de uso reciben dependencias por constructor mediante puertos propios. La raíz de composición (`buildApp(env)`) los conecta con adaptadores concretos mediante una función explícita — no hay contenedor DI: el único lugar donde vive la elección de implementación es la composición. Desviaciones conocidas frente a NestJS (aceptadas): la autenticación por middleware precede a la validación del body (401 antes que 400 en requests inválidos sin auth), el JSON malformado devuelve el sobre `INVALID_BODY`, el trailing slash es estricto y los query params duplicados colapsan a un valor.
 
 ### Contrato HTTP
 
@@ -150,17 +150,28 @@ PostgreSQL será la fuente de verdad para workspaces, vínculos de identidad/ses
 - Relaciones dentro del mismo contexto pueden usar claves foráneas; referencias entre contextos se resuelven mediante interfaces públicas y eventos.
 - Las proyecciones de lectura pueden combinar datos de forma controlada, sin convertirse en una ruta de escritura.
 
-### Prisma
+### Drizzle ORM
 
-Prisma se selecciona por productividad, migraciones y acceso tipado a PostgreSQL, con estas restricciones:
+Drizzle se selecciona por SQL explícito y legible, esquema en TypeScript puro (sin DSL ni codegen), acceso tipado a PostgreSQL y mejor encaje con pg-boss (la transacción del caso de uso puede encolar el job pasando el `PoolClient` de `node-postgres`), con estas restricciones:
 
-- Cliente y tipos generados solo existen en adaptadores de persistencia.
-- Cada repositorio traduce explícitamente registros a entidades o valores de dominio.
-- El dominio no conoce IDs, enums o decimales propios de Prisma.
-- Las migraciones se serializan para la base compartida y cada cambio declara el módulo propietario.
+- `src/drizzle/schema.ts` es el espejo físico del esquema (nombres exactos de tablas, índices y FKs); solo existe en adaptadores de persistencia.
+- Cada repositorio traduce explícitamente filas a entidades o valores de dominio.
+- El dominio no conoce columnas, tipos ni helpers de Drizzle.
+- Las migraciones se generan con `drizzle-kit` (`db:generate`/`db:migrate`; `db:push` sincroniza el esquema en desarrollo) y cada cambio declara el módulo propietario.
 - Una transacción técnica no debe atravesar varios contextos como solución habitual; los flujos entre módulos usan casos de uso y, cuando corresponda, trabajos encolados en la misma transacción.
 
-Si Prisma impide expresar una consulta analítica o migración segura, se permite SQL encapsulado en infraestructura. La herramienta no gobierna el modelo financiero.
+Si Drizzle impide expresar una consulta analítica o migración segura, se permite SQL encapsulado en infraestructura. La herramienta no gobierna el modelo financiero.
+
+### Cambio de stack (ADR): de NestJS + Prisma a Hono + Drizzle
+
+La decisión original fue NestJS + Prisma. Tras implementar los módulos de ledger, accounts, categorización, monedas e identity-workspace, un spike paralelo (`spike/drizzle-hono`, nov 2026) portó toda la API a Drizzle + Hono con evidencia:
+
+- Los 95 e2e HTTP (transactions, accounts, currencies, auth-oidc) pasaron sin modificar assertions contra la app Hono + Drizzle sobre el mismo PostgreSQL; suite completa 420/420.
+- El acoplamiento real a NestJS era mínimo (controllers con zod manual, auth resuelta por handler, errores mapeados a mano): el middleware compartido de Hono elimina ese boilerplate.
+- Prisma quedó aislado por los puertos como se exigía, pero su API fluida ocultaba el SQL y complicaba la transacción única negocio+job de pg-boss; Drizzle hace el SQL explícito y el `PoolClient` de `node-postgres` encaja directo.
+- `drizzle-kit push` verificó que el esquema Drizzle es espejo físico exacto de las tablas creadas por las migraciones Prisma (sin diffs).
+
+Consecuencias aceptadas: se escriben ~50 líneas de glue propia (graceful shutdown, error middleware, health), no hay contenedor DI (composición por función explícita), y el historial de migraciones Prisma queda como baseline en `drizzle/`.
 
 ## Trabajos asíncronos y fiabilidad
 
@@ -282,7 +293,7 @@ No se despliega plataforma de observabilidad ni se instrumenta OpenTelemetry en 
 
 | Nivel | Herramientas | Objetivo |
 |---|---|---|
-| Unidad | Vitest | Entidades, valores, políticas y casos de uso sin NestJS ni red |
+| Unidad | Vitest | Entidades, valores, políticas y casos de uso sin framework HTTP ni red |
 | Componentes | React Testing Library | Formularios, estados, accesibilidad y errores |
 | Integración | Vitest y servicios efímeros | PostgreSQL (con pg-boss), Supabase Storage local/mock y adaptadores de persistencia |
 | Offline PWA | Vitest + Playwright | Cola IndexedDB, orden de sincronización, idempotencia y reconexión |
@@ -361,17 +372,15 @@ La extracción de microservicios se evalúa solo con las métricas y umbrales de
 - Elegir la versión LTS o estable soportada al iniciar cada fase, nunca previews.
 - Fijar versiones exactas mediante lockfile durante la implementación.
 - No adoptar una publicación con menos de siete días salvo parche de seguridad evaluado y aprobado.
-- Revisar compatibilidad de Node.js, NestJS, Prisma y PostgreSQL como conjunto.
+- Revisar compatibilidad de Node.js, Hono, Drizzle y PostgreSQL como conjunto.
 - Mantener actualizaciones de seguridad y probar migraciones/restauración antes de promover.
 - Registrar cualquier cambio de tecnología o major version como decisión arquitectónica.
 
 ## Referencias oficiales verificadas
 
-- [NestJS: módulos](https://docs.nestjs.com/modules)
-- [NestJS: microservicios](https://docs.nestjs.com/microservices/basics)
-- [NestJS: colas](https://docs.nestjs.com/techniques/queues)
+- [Hono](https://hono.dev/) y [@hono/node-server](https://github.com/honojs/node-server)
 - [Vite: build de producción](https://vite.dev/guide/build.html)
-- [Prisma ORM](https://www.prisma.io/docs/orm)
+- [Drizzle ORM](https://orm.drizzle.team/) y [drizzle-kit](https://orm.drizzle.team/kit-docs/overview)
 - [pg-boss](https://pgboss.io/)
 - [Supabase Auth](https://supabase.com/docs/guides/auth) y [Supabase Storage](https://supabase.com/docs/guides/storage)
 - [Vite PWA / Workbox](https://vite-pwa-org.netlify.app/)

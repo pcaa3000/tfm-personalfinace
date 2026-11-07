@@ -10,7 +10,7 @@ Fecha de auditoría: 2026-11-01 · Alcance: revisión estática del diseño (`do
 | A02 — Security Misconfiguration | Brecha | Auth fail-open hacia el resolver dev, sin hardening HTTP (Helmet/CORS/límites), Zod sin validación estricta de campos |
 | A03 — Software Supply Chain Failures | Parcial | Lockfile + depcruise; sin edad mínima de paquetes ni gate de `pnpm audit` en CI |
 | A04 — Cryptographic Failures | Parcial | JWT solo ES256/RS256, IDs `crypto.randomUUID`; cola IndexedDB en claro y sin vaciado al cerrar sesión |
-| A05 — Injection | Alineado | Prisma parametrizado (sin SQL crudo), Zod en frontera HTTP, React sin HTML crudo |
+| A05 — Injection | Alineado | Drizzle parametrizado (query builder tipado), Zod en frontera HTTP, React sin HTML crudo |
 | A06 — Insecure Design | Alineado | Invariantes de dominio en todos los paths de mutación, idempotencia obligatoria, libro inmutable con revisiones, Result pattern |
 | A07 — Authentication Failures | Parcial | Resource server JWT robusto; falta flujo OIDC+PKCE del cliente web (T6) y el fallback dev es fail-open |
 | A08 — Software or Data Integrity Failures | Parcial | Transacciones atómicas + idempotencia; la cola offline no está ligada a la sesión que la creó |
@@ -22,14 +22,14 @@ Fecha de auditoría: 2026-11-01 · Alcance: revisión estática del diseño (`do
 ### A01 — Broken Access Control
 
 - El workspace nunca llega del cliente: se resuelve en servidor desde `(issuer, subject)` (`JwtCallerResolver`, `DeterministicWorkspaceAdapter`).
-- Todos los repositorios filtran por `workspaceId` en lectura y escritura (`PrismaTransactionRepository`, `PrismaAccountRepository`, `PrismaCategoryValidationAdapter`).
+- Todos los repositorios filtran por `workspaceId` en lectura y escritura (`DrizzleTransactionRepository`, `DrizzleAccountRepository`, `DrizzleCategoryValidationAdapter`).
 - Recurso inexistente y recurso ajeno responden igual (404) — e2e `auth-oidc.e2e.spec.ts` "keeps workspaces isolated between token subjects".
 - IDs opacos vía `crypto.randomUUID` (`CryptoIdGenerator`).
 - SSRF: la API no descarga URLs provistas por el cliente (sin superficie actual; se mantiene como restricción de diseño en `docs/05`).
 
 ### A05 — Injection
 
-- Persistencia 100% parametrizada con Prisma; no hay `$queryRaw`/`$executeRaw` inseguros.
+- Persistencia 100% parametrizada con Drizzle; no hay SQL crudo sin interpolación segura.
 - Validación Zod de body y query en todos los controladores.
 - Sin `dangerouslySetInnerHTML` en web; React escapa la salida por defecto.
 
@@ -47,8 +47,8 @@ Fecha de auditoría: 2026-11-01 · Alcance: revisión estática del diseño (`do
 | GAP-SEC-01 | A02/A07 | Alta | `apps/api/src/composition/app.module.ts`, `identity-workspace/infrastructure/http/dev-caller.ts` | Si `AUTH_MODE` no es `oidc` (incluida la variable ausente) se activa `DevHeaderCallerResolver`; y sin header `x-dev-user` cae en el subject por defecto `dev-user` → autenticación implícita (fail-open) |
 | GAP-SEC-02 | A02 | Alta | `apps/api/src/main.ts` | Bootstrap sin Helmet (HSTS, CSP, `X-Content-Type-Options`, `Referrer-Policy`), sin política CORS explícita ni límites de payload deliberados |
 | GAP-SEC-03 | A02 | Media | Controladores HTTP (`transactions`, `accounts`, `workspace`, `categories`) | Schemas Zod sin validación estricta: los campos inesperados se eliminan silenciosamente, contra el requisito de `docs/05` de validar campos inesperados |
-| GAP-SEC-04 | A10 | Media-alta | Composición de la API | Sin ExceptionFilter global: errores no controlados de Prisma/infraestructura pueden filtrar detalles internos; además los 400 devuelven `details: parsed.error.issues` crudo |
-| GAP-SEC-05 | A10/A02 | Media | Toda la API | Sin rate limiting por IP/identidad/operación sensible (exigido en `docs/05`); no hay `@nestjs/throttler` ni equivalente |
+| GAP-SEC-04 | A10 | Media-alta | Composición de la API | Error handler global existe (`onError` de Hono) pero errores no controlados de Drizzle/infraestructura pueden filtrar detalles internos; además los 400 devuelven `details: parsed.error.issues` crudo |
+| GAP-SEC-05 | A10/A02 | Media | Toda la API | Sin rate limiting por IP/identidad/operación sensible (exigido en `docs/05`); no hay middleware de rate limiting |
 | GAP-SEC-06 | A09 | Media | API | Sin logging estructurado con lista de campos prohibidos (`docs/05`) ni eventos de seguridad observables (rechazos 401, intentos de acceso cruzado 404) |
 | GAP-SEC-07 | A03 | Media | `package.json` de ambas apps, `.npmrc`/CI | Rangos `^` sin política de edad mínima de publicación (`minimum-release-age`) y sin `pnpm audit` como gate de integración |
 | GAP-SEC-08 | A04/A08 | Media | `apps/web/src/features/ledger/offline/queue.ts`, `sync.ts` | Cola IndexedDB en claro, no se vacía al cerrar sesión y los ítems no están ligados al workspace/sesión que los creó — otra identidad en el mismo navegador drenaría el outbox con su propio token |
@@ -64,7 +64,7 @@ Funcionalidades de seguridad diseñadas en `docs/05` pero aún sin feature asoci
 1. **GAP-SEC-01** — fail-closed: rechazar `AUTH_MODE` desconocido y exigir header en el resolver dev (sin subject por defecto).
 2. **GAP-SEC-02** — Helmet + `enableCors` con allowlist de orígenes + límite explícito de body.
 3. **GAP-SEC-04** — `ExceptionFilter` global con respuesta `{code, message}` genérica en 500 y `details` de Zod saneados.
-4. **GAP-SEC-05** — `@nestjs/throttler` con límites por operación sensible.
+4. **GAP-SEC-05** — middleware de rate limiting (p. ej. `hono-rate-limiter`) con límites por operación sensible.
 5. **GAP-SEC-03** — validación estricta de campos en schemas HTTP (`z.strictObject`/equivalente).
 6. **GAP-SEC-06** — logger estructurado con redacción de campos prohibidos y eventos 401/404.
 7. **GAP-SEC-08** — vaciar `pendingTransactions` al cerrar sesión y guardar `workspaceId` por ítem para abortar el sync si cambia la identidad.

@@ -75,7 +75,7 @@ Los módulos son fronteras de negocio, no microservicios anticipados.
 - Insights no corrige el Libro; consume eventos y expone evidencias que enlazan a movimientos.
 - Planificación no consulta tablas del Libro ni de Insights; recibe un snapshot financiero versionado.
 - Perfil no se confunde con el proveedor OIDC: credenciales y sesiones permanecen fuera de la base de negocio.
-- Ningún módulo importa el repositorio, servicio interno o modelo Prisma de otro.
+- Ningún módulo importa el repositorio, servicio interno o modelo Drizzle de otro.
 
 ## Clean Architecture dentro de cada módulo
 
@@ -86,10 +86,10 @@ Los módulos son fronteras de negocio, no microservicios anticipados.
 | Dominio | Entidades, value objects, invariantes, políticas y eventos de dominio | Lenguaje y un shared kernel mínimo |
 | Aplicación | Casos de uso, puertos de entrada/salida, autorización contextual y transacciones lógicas | Dominio |
 | Adaptadores de entrada | Controllers HTTP, handlers de worker, tareas programadas y mapeo de DTO | Aplicación y dominio para mapeo |
-| Adaptadores de salida | Repositorios Prisma, pg-boss, S3-compatible, Azure, OIDC, reloj y telemetría | Puertos de aplicación y modelos externos |
-| Composición | Módulos NestJS, configuración e inyección concreta | Todas las capas para ensamblarlas |
+| Adaptadores de salida | Repositorios Drizzle, pg-boss, S3-compatible, Azure, OIDC, reloj y telemetría | Puertos de aplicación y modelos externos |
+| Composición | Función `buildApp` (wiring explícito), configuración e inyección concreta | Todas las capas para ensamblarlas |
 
-La dirección es hacia el dominio. Dominio y aplicación no importan React, NestJS, Prisma, pg-boss, SDK de Azure, S3 ni proveedores OIDC concretos.
+La dirección es hacia el dominio. Dominio y aplicación no importan React, Hono, Drizzle, pg-boss, SDK de Azure, S3 ni proveedores OIDC concretos.
 
 ### Shared kernel permitido
 
@@ -109,7 +109,7 @@ Una regla financiera específica, DTO, categoría o entidad no entra en el share
 |---|---|
 | HTTP → aplicación | DTO validado a comando o consulta del caso de uso |
 | Aplicación → HTTP | Resultado neutral a respuesta y error HTTP |
-| Prisma → dominio | Registro y decimal de infraestructura a entidad/value object |
+| Drizzle → dominio | Fila y decimal de infraestructura a entidad/value object |
 | Proveedor → aplicación | Respuesta bruta a extracción o transcripción neutral |
 | Dominio → evento | Evento interno a contrato de integración versionado |
 
@@ -121,7 +121,7 @@ Durante la implementación se deben aplicar:
 - Reglas estáticas que prohíban imports externos desde dominio/aplicación.
 - API pública explícita por módulo; los archivos internos no son importables desde otros módulos.
 - Pruebas de arquitectura que fallen ante dependencias prohibidas.
-- Revisiones que rechacen decoradores NestJS o tipos Prisma en el núcleo.
+- Revisiones que rechacen imports de `hono`/`drizzle-orm` o tipos de esquema en el núcleo.
 
 ### Principios SOLID aplicados
 
@@ -184,10 +184,10 @@ Los payloads de jobs incluyen ID del trabajo, versión, tipo, instante, workspac
 
 Se utilizará una base física en el MVP para mantener transacciones, backups y operación simples. La separación se aplica mediante propiedad de esquemas/tablas, permisos cuando sean viables y reglas de importación.
 
-### Prisma
+### Drizzle
 
-- Puede existir un cliente generado común en infraestructura, pero cada módulo encapsula sus modelos y repositorios.
-- Los tipos generados no se exportan desde el adaptador.
+- Existe un esquema común en infraestructura (`src/drizzle/schema.ts`), pero cada módulo encapsula sus repositorios.
+- Los tipos de fila no se exportan desde el adaptador.
 - Una migración declara módulo propietario y no añade escrituras cruzadas.
 - No se crean claves foráneas entre contextos como mecanismo de integración. Se prefieren referencias estables y validación mediante la interfaz propietaria.
 - Las lecturas analíticas cruzadas se canalizan mediante proyecciones; nunca habilitan escrituras fuera del propietario.

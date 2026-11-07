@@ -137,7 +137,7 @@ Entregar el núcleo financiero sin depender de OCR o voz.
 - Una petición repetida devuelve la misma transacción.
 - Solo confirmado participa en una consulta de resumen básica.
 - Editar/anular deja revisión y no rompe propiedad.
-- No existe acceso a Prisma desde dominio/aplicación.
+- No existe acceso a Drizzle desde dominio/aplicación.
 - Una transferencia entre cuentas de la misma moneda mueve saldo entre ambas sin alterar ingresos ni gastos del balance.
 - El balance general por moneda muestra ingresos, gastos y saldo actual; balance y filtros permanecen visibles al desplazarse en móvil, tablet y escritorio.
 

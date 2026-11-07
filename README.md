@@ -43,8 +43,8 @@ La solución comenzará como un **monolito modular con Clean Architecture y prin
 | Capa | Etapa 1: MVP (free tier, <20 usuarios) | Etapa 2: producción y escalado (AWS) |
 |---|---|---|
 | Web y PWA | TypeScript, React, Vite, Material UI, Recharts, Workbox + IndexedDB (Dexie), alojado en **Vercel free** | Amazon S3 + CloudFront |
-| API y worker | Node.js LTS, NestJS (API REST + worker en un proceso), alojado en **Render / Koyeb free** | AWS ECS Fargate / App Runner (API y worker separados) |
-| Base de datos | **Supabase PostgreSQL** (free tier) + Prisma como adaptador | Amazon RDS / Aurora PostgreSQL |
+| API y worker | Node.js LTS, Hono (API REST + worker en un proceso), alojado en **Render / Koyeb free** | AWS ECS Fargate / App Runner (API y worker separados) |
+| Base de datos | **Supabase PostgreSQL** (free tier) + Drizzle ORM como adaptador | Amazon RDS / Aurora PostgreSQL |
 | Cola asíncrona | **pg-boss** sobre el mismo PostgreSQL (sin Redis en el MVP) | Amazon SQS o BullMQ sobre Amazon ElastiCache (Redis) |
 | Archivos | **Supabase Storage** (API S3-compatible, privado, ciclo de vida ≤30 días) | Amazon S3 con políticas de ciclo de vida |
 | Identidad | **Supabase Auth** (email/contraseña, Google, Facebook, passkeys; OIDC) | Amazon Cognito o proveedor OIDC dedicado |
