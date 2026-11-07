@@ -1,7 +1,7 @@
 // Public API of the categorization module.
 // Owns the category catalog, natures and explainable suggestion rules.
-export { PrismaCategoryValidationAdapter } from "./infrastructure/prisma-category-validation.adapter.js";
-export { PrismaCategoryRepository } from "./infrastructure/prisma-category.repository.js";
+export { DrizzleCategoryValidationAdapter } from "./infrastructure/drizzle-category-validation.adapter.js";
+export { DrizzleCategoryRepository } from "./infrastructure/drizzle-category.repository.js";
 export { CreateCategoryUseCase } from "./application/create-category.use-case.js";
 export { ReviseCategoryUseCase } from "./application/revise-category.use-case.js";
 export { ArchiveCategoryUseCase } from "./application/archive-category.use-case.js";

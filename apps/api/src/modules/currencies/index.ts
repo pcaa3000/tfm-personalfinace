@@ -19,6 +19,5 @@ export { ReviseCurrencyUseCase } from "./application/revise-currency.use-case.js
 export { ArchiveCurrencyUseCase } from "./application/archive-currency.use-case.js";
 export { toCurrencyView, type CurrencyView } from "./application/currency.view.js";
 export type { IsoCurrencyView } from "./application/iso-currency.view.js";
-export { PrismaCurrencyRepository } from "./infrastructure/prisma-currency.repository.js";
-export { PrismaCurrencyUsageAdapter } from "./infrastructure/prisma-currency-usage.adapter.js";
-export { CurrenciesController } from "./infrastructure/http/currencies.controller.js";
+export { DrizzleCurrencyRepository } from "./infrastructure/drizzle-currency.repository.js";
+export { DrizzleCurrencyUsageAdapter } from "./infrastructure/drizzle-currency-usage.adapter.js";

@@ -1,4 +1,3 @@
-import { Injectable } from "@nestjs/common";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import type { CallerResolverPort } from "../../application/caller-resolver.port.js";
@@ -20,7 +19,6 @@ export interface OidcConfig {
  * "<project>.supabase.co/auth/v1" and audience is "authenticated".
  * Any failure yields null → generic 401, never account existence hints.
  */
-@Injectable()
 export class JwtCallerResolver implements CallerResolverPort {
   private readonly jwks: ReturnType<typeof createRemoteJWKSet>;
 
