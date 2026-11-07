@@ -1,6 +1,8 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -18,17 +20,25 @@ import {
  * existing tables — it never generates migrations.
  */
 
-export const workspaces = pgTable("identity_workspace_workspaces", {
-  id: text("id").primaryKey(),
-  identityKey: text("identityKey").notNull().unique(),
-  kind: text("kind").notNull().default("personal"),
-  locale: text("locale").notNull().default("en-US"),
-  timezone: text("timezone").notNull().default("UTC"),
-  defaultCurrency: text("defaultCurrency").notNull().default("USD"),
-  createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
-    .notNull()
-    .defaultNow(),
-});
+export const workspaces = pgTable(
+  "identity_workspace_workspaces",
+  {
+    id: text("id").primaryKey(),
+    identityKey: text("identityKey").notNull(),
+    kind: text("kind").notNull().default("personal"),
+    locale: text("locale").notNull().default("en-US"),
+    timezone: text("timezone").notNull().default("UTC"),
+    defaultCurrency: text("defaultCurrency").notNull().default("USD"),
+    createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("identity_workspace_workspaces_identityKey_key").on(
+      table.identityKey,
+    ),
+  ],
+);
 
 export const categories = pgTable(
   "categorization_categories",
@@ -41,7 +51,7 @@ export const categories = pgTable(
     archivedAt: timestamp("archivedAt", { mode: "date", precision: 3 }),
   },
   (table) => [
-    unique("categorization_categories_key_workspaceId_key").on(
+    uniqueIndex("categorization_categories_key_workspaceId_key").on(
       table.key,
       table.workspaceId,
     ),
@@ -83,7 +93,7 @@ export const accounts = pgTable(
       mode: "bigint",
     })
       .notNull()
-      .default(0n),
+      .default(sql`0`),
     archivedAt: timestamp("archivedAt", { mode: "date", precision: 3 }),
     createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
       .notNull()
@@ -110,13 +120,8 @@ export const ledgerTransactions = pgTable(
     businessDate: date("businessDate", { mode: "date" }).notNull(),
     timezone: text("timezone").notNull(),
     concept: text("concept").notNull(),
-    accountId: text("accountId").references(() => accounts.id, {
-      onDelete: "set null",
-    }),
-    destinationAccountId: text("destinationAccountId").references(
-      () => accounts.id,
-      { onDelete: "set null" },
-    ),
+    accountId: text("accountId"),
+    destinationAccountId: text("destinationAccountId"),
     categoryId: text("categoryId"),
     status: text("status").notNull().default("confirmed"),
     origin: text("origin").notNull().default("manual"),
@@ -136,6 +141,16 @@ export const ledgerTransactions = pgTable(
       table.workspaceId,
       table.businessDate,
     ),
+    foreignKey({
+      name: "ledger_transactions_accountId_fkey",
+      columns: [table.accountId],
+      foreignColumns: [accounts.id],
+    }).onDelete("set null").onUpdate("cascade"),
+    foreignKey({
+      name: "ledger_transactions_destinationAccountId_fkey",
+      columns: [table.destinationAccountId],
+      foreignColumns: [accounts.id],
+    }).onDelete("set null").onUpdate("cascade"),
   ],
 );
 
@@ -143,9 +158,7 @@ export const ledgerTransactionRevisions = pgTable(
   "ledger_transaction_revisions",
   {
     id: text("id").primaryKey(),
-    transactionId: text("transactionId")
-      .notNull()
-      .references(() => ledgerTransactions.id, { onDelete: "cascade" }),
+    transactionId: text("transactionId").notNull(),
     revisionNumber: integer("revisionNumber").notNull(),
     kind: text("kind").notNull(),
     changes: jsonb("changes").notNull(),
@@ -153,9 +166,14 @@ export const ledgerTransactionRevisions = pgTable(
     actor: text("actor").notNull(),
   },
   (table) => [
-    unique("ledger_transaction_revisions_transactionId_revisionNumber_key").on(
+    uniqueIndex("ledger_transaction_revisions_transactionId_revisionNumber_key").on(
       table.transactionId,
       table.revisionNumber,
     ),
+    foreignKey({
+      name: "ledger_transaction_revisions_transactionId_fkey",
+      columns: [table.transactionId],
+      foreignColumns: [ledgerTransactions.id],
+    }).onDelete("cascade").onUpdate("cascade"),
   ],
 );
