@@ -28,7 +28,7 @@ implementación existente**: convive en archivos paralelos.
 | T2 | `src/drizzle/schema.ts` + Drizzle repos (transactions, accounts) + specs de integración contra Postgres real | S1, S3 | worker | done | RED 16/16 → GREEN 16/16 integración real; suite 343 + archivos hono in-flight |
 | T3 | `src/hono/` app factory + middlewares + rutas + specs `app.request()` | S2, S3 | worker | done | RED 21/21 → GREEN 21/21; suite 364/364, typecheck+depcruise limpios |
 | T4 | `src/main.hono.ts` composición real + suite completa + typecheck + lint + depcruise | S3 | parent | done | 364/364, 36 files; typecheck+lint+depcruise 0 violaciones; smoke test E2E OK (health, account, txn, idempotencia, filtros) |
-| T5 | Espejo Engram + reporte de evidencia para decisión | S4 | parent | in-progress | |
+| T5 | Espejo Engram + reporte de evidencia para decisión | S4 | parent | done | espejo `odd/spike-drizzle-hono/tasks` sincronizado; spike completado por decisión del usuario (migrar ambos) |
 
 ## Log
 
