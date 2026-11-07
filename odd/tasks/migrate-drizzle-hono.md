@@ -41,7 +41,7 @@ accounts, hono app+middleware+rutas, main.hono.ts) son la base.
 | T4 | `src/hono/composition.ts` buildApp(env) + e2e helpers port + e2e verde | S3 | parent | done | **95 e2e verde contra Hono+Drizzle real** (suite 427/427); specs solo tocaron helpers+fixture |
 | T5 | Migraciones drizzle-kit (baseline + push para dev) + seed.ts port | S4 | parent | done | `push` drift cero; `migrate` en DB fresca crea 6 tablas+15 índices; seed drizzle OK |
 | T6 | Borrar Nest/Prisma (src + deps + prisma/) + main.hono.ts→main.ts + scripts | S4 | parent | done | 420/420 verde; lint+typecheck+depcruise limpios; smoke E2E OK; 8 deps eliminadas |
-| T7 | docs/02 + desviaciones + cierre ODD + espejo Engram | S5, S6 | parent | in-progress | |
+| T7 | docs/02 + desviaciones + cierre ODD + espejo Engram | S5, S6 | parent | done | docs/02 (sección ADR + secciones Hono/Drizzle), docs/03, 05, 06, 07, README actualizados |
 
 ## Log
 
@@ -63,3 +63,4 @@ accounts, hono app+middleware+rutas, main.hono.ts) son la base.
 - **L16**: T4 completada: `buildApp(env)` → `{app, db, close}`; `main.hono.ts` slim; `e2e-helpers` portado (serve + drizzle para fixtures); los 95 e2e pasan SIN tocar assertions — paridad total de comportamiento HTTP+DB.
 - **L17**: T5 completada: 3 fixes de fidelidad en `schema.ts` descubiertos por `drizzle-kit push`: `.default(0n)` BigInt no serializa en snapshot → `sql`0``; `.unique()` genera CONSTRAINT y Prisma creó UNIQUE INDEX → `uniqueIndex` con nombre exacto; FKs de Prisma llevan `ON UPDATE CASCADE` → `foreignKey` con nombre `_fkey` + onUpdate cascade. `push` resultante: cero diffs de schema (solo quiere borrar `_prisma_migrations`, legacy que se elimina en T6). `migrate` verificado en DB descartable: 6 tablas + 15 índices.
 - **L18**: T6 completada: borrados 21 archivos (composition/, controllers ×6, prisma-* ×9, deterministic adapter, mapper, prisma/ entera con schema+migrations+seed); `main.hono.ts`→`main.ts`; scripts `db:generate`/`db:migrate`/`db:push`/`db:seed` sobre drizzle-kit; deps eliminadas (@nestjs/*, @prisma/client, prisma, reflect-metadata, rxjs, @types/express); `_prisma_migrations` dropeada; smoke test OK (income creado sobre cuenta previa = continuidad de datos entre stacks sobre la misma base).
+- **L19**: T7 completada: `docs/02` registra la decisión con sección ADR (evidencia del spike: 95 e2e sin tocar, 420/420, push drift cero) y secciones Hono/Drizzle reescritas; docs/03 (capas, fronteras, control de dependencias), docs/05 (sin "NestJS"), docs/06 (acceso Drizzle), docs/07 (nombres Drizzle*, hono-rate-limiter), README actualizados. Commits: cddfa99 (spike), 997953d (adapters), 1d6f826 (routes+composición+e2e+tooling), 3c00961 (borrado), a698cef (docs), a98319f (lockfile).
