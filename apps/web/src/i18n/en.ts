@@ -257,6 +257,20 @@ export const en: TranslationShape = {
     misconfigBody:
       "Missing environment variables VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY. Set them to enable sign-in; in development you can also set VITE_AUTH_BYPASS=true to open the ledger without login.",
   },
+  account: {
+    menuAria: "Account menu",
+    signedInAs: "Signed in as",
+    changePassword: "Change password",
+    newPassword: "New password",
+    confirmPassword: "Confirm password",
+    passwordRequired: "Password is required",
+    passwordTooShort: "Minimum 6 characters",
+    passwordMismatch: "Passwords do not match",
+    passwordUpdated: "Password updated",
+    error: "Could not update the password. Try again.",
+    cancel: "Cancel",
+    save: "Save",
+  },
   errors: {
     GENERIC: "The operation could not be completed. Try again.",
     UNAUTHENTICATED: "Please sign in to continue.",

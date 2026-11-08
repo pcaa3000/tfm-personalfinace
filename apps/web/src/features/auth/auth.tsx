@@ -25,6 +25,8 @@ export interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Updates the signed-in user's password via Supabase Auth (T29). */
+  updatePassword: (newPassword: string) => Promise<void>;
 }
 
 const defaultValue: AuthContextValue = {
@@ -40,6 +42,9 @@ const defaultValue: AuthContextValue = {
     throw new Error("Auth is not configured");
   },
   signOut: async () => {},
+  updatePassword: async () => {
+    throw new Error("Auth is not configured");
+  },
 };
 
 const AuthContext = createContext<AuthContextValue>(defaultValue);
@@ -106,6 +111,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await getSupabaseClient().auth.signOut();
   }, []);
 
+  const updatePassword = useCallback(async (newPassword: string) => {
+    const { error } = await getSupabaseClient().auth.updateUser({
+      password: newPassword,
+    });
+    if (error) throw error;
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       bypassed,
@@ -116,8 +128,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn,
       signUp,
       signOut,
+      updatePassword,
     }),
-    [bypassed, configured, misconfigured, loading, session, signIn, signUp, signOut],
+    [
+      bypassed,
+      configured,
+      misconfigured,
+      loading,
+      session,
+      signIn,
+      signUp,
+      signOut,
+      updatePassword,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

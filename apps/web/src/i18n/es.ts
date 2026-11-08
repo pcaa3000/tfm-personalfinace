@@ -253,6 +253,20 @@ export const es = {
     misconfigBody:
       "Faltan las variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY. Configuralas para habilitar el inicio de sesión; en desarrollo también podés definir VITE_AUTH_BYPASS=true para entrar al libro sin login.",
   },
+  account: {
+    menuAria: "Menú de cuenta",
+    signedInAs: "Sesión iniciada como",
+    changePassword: "Cambiar contraseña",
+    newPassword: "Nueva contraseña",
+    confirmPassword: "Confirmar contraseña",
+    passwordRequired: "La contraseña es obligatoria",
+    passwordTooShort: "Mínimo 6 caracteres",
+    passwordMismatch: "Las contraseñas no coinciden",
+    passwordUpdated: "Contraseña actualizada",
+    error: "No se pudo actualizar la contraseña. Intentá de nuevo.",
+    cancel: "Cancelar",
+    save: "Guardar",
+  },
   errors: {
     GENERIC: "No se pudo completar la operación. Intentá de nuevo.",
     UNAUTHENTICATED: "Iniciá sesión para continuar.",

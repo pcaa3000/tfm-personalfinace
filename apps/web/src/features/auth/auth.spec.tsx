@@ -29,6 +29,7 @@ function makeClient(overrides: Record<string, unknown> = {}) {
       signInWithPassword: vi.fn(async () => ({ data: {}, error: null })),
       signUp: vi.fn(async () => ({ data: {}, error: null })),
       signOut: vi.fn(async () => ({ error: null })),
+      updateUser: vi.fn(async () => ({ data: {}, error: null })),
       ...overrides,
     },
     unsubscribe,
@@ -231,6 +232,72 @@ describe("AuthProvider", () => {
         email: "new@example.com",
         password: "pw",
       });
+    });
+  });
+
+  it("updatePassword delegates to supabase updateUser", async () => {
+    isAuthConfigured.mockReturnValue(true);
+    const client = makeClient();
+    getSupabaseClient.mockReturnValue(client);
+
+    function PwProbe() {
+      const { updatePassword } = useAuth();
+      return (
+        <button onClick={() => void updatePassword("new-secret-1")}>
+          go
+        </button>
+      );
+    }
+    render(
+      <AuthProvider>
+        <PwProbe />
+      </AuthProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "go" }));
+
+    await waitFor(() => {
+      expect(client.auth.updateUser).toHaveBeenCalledWith({
+        password: "new-secret-1",
+      });
+    });
+  });
+
+  it("updatePassword rethrows the auth error", async () => {
+    isAuthConfigured.mockReturnValue(true);
+    const failure = new Error("New password should be different");
+    const client = makeClient({
+      updateUser: vi.fn(async () => ({ data: {}, error: failure })),
+    });
+    getSupabaseClient.mockReturnValue(client);
+
+    let caught: unknown = null;
+    function FailProbe() {
+      const { updatePassword } = useAuth();
+      return (
+        <button
+          onClick={async () => {
+            try {
+              await updatePassword("weak");
+            } catch (error) {
+              caught = error;
+            }
+          }}
+        >
+          go
+        </button>
+      );
+    }
+    render(
+      <AuthProvider>
+        <FailProbe />
+      </AuthProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "go" }));
+
+    await waitFor(() => {
+      expect(caught).toBe(failure);
     });
   });
 

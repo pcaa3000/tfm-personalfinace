@@ -25,7 +25,7 @@ afterEach(() => {
   isAuthBypassed.mockReturnValue(false);
 });
 
-function makeClient() {
+function makeClient(overrides: Record<string, unknown> = {}) {
   const unsubscribe = vi.fn();
   return {
     auth: {
@@ -39,6 +39,8 @@ function makeClient() {
       signInWithPassword: vi.fn(),
       signUp: vi.fn(),
       signOut: vi.fn(async () => ({ error: null })),
+      updateUser: vi.fn(async () => ({ data: {}, error: null })),
+      ...overrides,
     },
   };
 }
@@ -62,54 +64,63 @@ async function openManagementMenu() {
   fireEvent.click(await screen.findByRole("button", { name: "Gestión" }));
 }
 
-describe("TopBar logout (T6-web)", () => {
-  it("offers a logout action inside the Gestión menu when a session exists", async () => {
+describe("TopBar user menu (T29, L38)", () => {
+  it("shows the session email and account actions when a session exists", async () => {
     const client = makeClient();
     getSupabaseClient.mockReturnValue(client);
     isAuthConfigured.mockReturnValue(true);
 
     renderTopBar();
-    await openManagementMenu();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Menú de cuenta" }),
+    );
 
-    const item = await screen.findByRole("menuitem", { name: "Cerrar sesión" });
-    fireEvent.click(item);
-
-    await waitFor(() => {
-      expect(client.auth.signOut).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("hides the logout action when auth is not configured", async () => {
-    isAuthConfigured.mockReturnValue(false);
-
-    renderTopBar();
-    await openManagementMenu();
-
-    await screen.findByRole("menuitem", { name: "Cuentas" });
+    expect(await screen.findByText("a@b.c")).toBeTruthy();
     expect(
-      screen.queryByRole("menuitem", { name: "Cerrar sesión" }),
-    ).toBeNull();
+      screen.getByRole("menuitem", { name: "Cambiar contraseña" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: "Cerrar sesión" }),
+    ).toBeTruthy();
   });
 
-  it("hides the logout action in bypass mode even with credentials present", async () => {
+  it("hides the user menu when there is no session (bypass)", async () => {
     isAuthBypassed.mockReturnValue(true);
     isAuthConfigured.mockReturnValue(true);
     const client = makeClient();
     getSupabaseClient.mockReturnValue(client);
 
     renderTopBar();
-    await openManagementMenu();
 
-    await screen.findByRole("menuitem", { name: "Cuentas" });
+    await screen.findByRole("button", { name: "Gestión" });
     expect(
-      screen.queryByRole("menuitem", { name: "Cerrar sesión" }),
+      screen.queryByRole("button", { name: "Menú de cuenta" }),
     ).toBeNull();
     expect(client.auth.getSession).not.toHaveBeenCalled();
   });
 
-  it("hides the logout action when auth is misconfigured (no bypass, no credentials)", async () => {
-    isAuthBypassed.mockReturnValue(false);
-    isAuthConfigured.mockReturnValue(false);
+  it("hides the user menu when configured but the session is empty", async () => {
+    isAuthConfigured.mockReturnValue(true);
+    const client = makeClient({
+      getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
+    });
+    getSupabaseClient.mockReturnValue(client);
+
+    renderTopBar();
+
+    await waitFor(() => {
+      expect(client.auth.getSession).toHaveBeenCalled();
+    });
+    await screen.findByRole("button", { name: "Gestión" });
+    expect(
+      screen.queryByRole("button", { name: "Menú de cuenta" }),
+    ).toBeNull();
+  });
+
+  it("no longer offers logout inside the Gestión menu", async () => {
+    const client = makeClient();
+    getSupabaseClient.mockReturnValue(client);
+    isAuthConfigured.mockReturnValue(true);
 
     renderTopBar();
     await openManagementMenu();
@@ -118,5 +129,41 @@ describe("TopBar logout (T6-web)", () => {
     expect(
       screen.queryByRole("menuitem", { name: "Cerrar sesión" }),
     ).toBeNull();
+  });
+
+  it("signs out from the user menu", async () => {
+    const client = makeClient();
+    getSupabaseClient.mockReturnValue(client);
+    isAuthConfigured.mockReturnValue(true);
+
+    renderTopBar();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Menú de cuenta" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Cerrar sesión" }),
+    );
+
+    await waitFor(() => {
+      expect(client.auth.signOut).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("opens the change-password dialog from the user menu", async () => {
+    const client = makeClient();
+    getSupabaseClient.mockReturnValue(client);
+    isAuthConfigured.mockReturnValue(true);
+
+    renderTopBar();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Menú de cuenta" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Cambiar contraseña" }),
+    );
+
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(screen.getByLabelText("Nueva contraseña")).toBeTruthy();
+    expect(screen.getByLabelText("Confirmar contraseña")).toBeTruthy();
   });
 });
