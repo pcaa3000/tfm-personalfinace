@@ -24,6 +24,7 @@ import {
   unarchiveAccount,
   updateWorkspace,
   voidTransaction,
+  setAccessTokenProvider,
 } from "./api";
 
 const fetchMock = vi.fn<typeof fetch>(
@@ -392,5 +393,40 @@ describe("unarchive accounts (T25)", () => {
     expect(String(url)).toBe("/api/v1/accounts/acc-9");
     expect(init?.method).toBe("PATCH");
     expect(String(init?.body)).toBe(JSON.stringify({ archived: false }));
+  });
+});
+
+describe("access token provider (T6-web)", () => {
+  afterEach(() => {
+    setAccessTokenProvider(null);
+  });
+
+  it("sends Authorization: Bearer when the provider yields a token", async () => {
+    setAccessTokenProvider(async () => "token-abc");
+
+    await listTransactions();
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    const headers = new Headers(init?.headers);
+    expect(headers.get("authorization")).toBe("Bearer token-abc");
+    expect(headers.get("content-type")).toBe("application/json");
+  });
+
+  it("omits the Authorization header when no provider is set", async () => {
+    await listTransactions();
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    const headers = new Headers(init?.headers);
+    expect(headers.get("authorization")).toBeNull();
+  });
+
+  it("omits the Authorization header when the provider yields null", async () => {
+    setAccessTokenProvider(async () => null);
+
+    await listTransactions();
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    const headers = new Headers(init?.headers);
+    expect(headers.get("authorization")).toBeNull();
   });
 });

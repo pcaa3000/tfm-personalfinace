@@ -31,9 +31,28 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Injectable bearer-token provider (T6-web). The auth module wires it to
+ * the current Supabase session; dev mode (no provider) sends no header.
+ */
+export type AccessTokenProvider = () => Promise<string | null>;
+
+let accessTokenProvider: AccessTokenProvider | null = null;
+
+export function setAccessTokenProvider(
+  provider: AccessTokenProvider | null,
+): void {
+  accessTokenProvider = provider;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = accessTokenProvider ? await accessTokenProvider() : null;
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (token) headers.authorization = `Bearer ${token}`;
   const response = await fetch(`${BASE}${path}`, {
-    headers: { "content-type": "application/json" },
+    headers,
     ...init,
   });
   const payload = (await response.json().catch(() => null)) as

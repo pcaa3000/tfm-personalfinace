@@ -11,6 +11,8 @@ import {
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { BrandMark } from "./BrandMark";
+import { useAuth } from "../auth/auth";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import { useThemeMode } from "../../theme-mode";
 import {
@@ -18,6 +20,7 @@ import {
   ChevronLeftIcon,
   CoinIcon,
   GearIcon,
+  LogoutIcon,
   MoonIcon,
   PlusIcon,
   SunIcon,
@@ -40,32 +43,6 @@ interface Props {
   onOpenManagement: (section: ManagementSection) => void;
 }
 
-/** Brand mark: violet gradient chip shared by topbar and sidebar. */
-export function BrandMark() {
-  return (
-    <Box
-      aria-hidden
-      sx={{
-        width: 34,
-        height: 34,
-        borderRadius: "12px",
-        flex: "none",
-        background:
-          "linear-gradient(135deg, #4c1d95 0%, #7c3aed 55%, #9333ea 100%)",
-        color: "#fff",
-        display: "grid",
-        placeItems: "center",
-        fontWeight: 800,
-        fontSize: 12.5,
-        letterSpacing: "0.02em",
-        boxShadow: "0 8px 18px -8px rgb(111 45 244 / 0.6)",
-      }}
-    >
-      TF
-    </Box>
-  );
-}
-
 /**
  * Sticky top bar (S12-6): brand/crumb, "+ Nuevo movimiento" CTA, the
  * Gestión menu (Cuentas/Categorías/Monedas/Preferencias), the theme
@@ -78,6 +55,7 @@ export function TopBar({
   onOpenManagement,
 }: Props) {
   const { t } = useTranslation();
+  const { configured, signOut } = useAuth();
   const { mode, toggleMode } = useThemeMode();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
@@ -199,6 +177,20 @@ export function TopBar({
             <GearIcon fontSize="small" sx={{ mr: 1.25 }} />
             {t("management.preferences")}
           </MenuItem>
+          {configured ? (
+            <>
+              <Divider />
+              <MenuItem
+                onClick={() => {
+                  setMenuAnchor(null);
+                  void signOut();
+                }}
+              >
+                <LogoutIcon fontSize="small" sx={{ mr: 1.25 }} />
+                {t("topbar.logout")}
+              </MenuItem>
+            </>
+          ) : null}
         </Menu>
         <IconButton
           onClick={toggleMode}

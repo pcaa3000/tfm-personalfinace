@@ -196,3 +196,14 @@ export const ChevronDownIcon = makeIcon(
     strokeLinejoin="round"
   />,
 );
+
+export const LogoutIcon = makeIcon(
+  <path
+    d="M14 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8M10 12h10m-3-3 3 3-3 3"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  />,
+);
