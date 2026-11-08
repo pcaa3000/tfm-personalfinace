@@ -510,3 +510,42 @@ describe("LedgerPage list error surface", () => {
     ).toBeTruthy();
   });
 });
+
+describe("LedgerPage accounts management (T25)", () => {
+  it("passes archived accounts to the Cuentas dialog so they can be restored", async () => {
+    const { listAccounts } = await import("./api");
+    vi.mocked(listTransactions).mockResolvedValue([]);
+    vi.mocked(listAccounts).mockResolvedValue([
+      {
+        id: "acc-active",
+        workspaceId: "ws-1",
+        name: "BCP Soles",
+        currency: "PEN",
+        kind: "bank",
+        initialBalance: "0.00",
+        archivedAt: null,
+      },
+      {
+        id: "acc-archived",
+        workspaceId: "ws-1",
+        name: "Caja vieja",
+        currency: "PEN",
+        kind: "cash",
+        initialBalance: "0.00",
+        archivedAt: "2026-11-01T00:00:00.000Z",
+      },
+    ]);
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Gestión" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Cuentas" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Cuentas" });
+    await waitFor(() => {
+      expect(dialog.querySelector('[data-part="archived-accounts"]')).toBeTruthy();
+      expect(within(dialog).getByText("Caja vieja")).toBeTruthy();
+      expect(within(dialog).getByText("Archivadas")).toBeTruthy();
+    });
+  });
+});

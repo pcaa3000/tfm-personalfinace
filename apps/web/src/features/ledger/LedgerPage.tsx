@@ -234,9 +234,8 @@ export function LedgerPage() {
   const categories = categoriesQuery.data ?? [];
   // Active accounts feed every select/balance usage; the management
   // dialog receives the full list and renders the archived section.
-  const accounts = (accountsQuery.data ?? []).filter(
-    (a) => a.archivedAt === null,
-  );
+  const allAccounts = accountsQuery.data ?? [];
+  const accounts = allAccounts.filter((a) => a.archivedAt === null);
   const currencies = currenciesQuery.data ?? [];
   const currencyCodes = currencies.map((c) => c.code);
   const workspace = workspaceQuery.data;
@@ -455,7 +454,7 @@ export function LedgerPage() {
       />
       <AccountsDialog
         open={management === "accounts"}
-        accounts={accounts}
+        accounts={allAccounts}
         currencies={
           currencyCodes.length
             ? currencyCodes
