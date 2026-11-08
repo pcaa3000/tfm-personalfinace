@@ -23,13 +23,35 @@ function ThemedApp() {
 }
 
 /**
- * T6-web gate: with Supabase configured the ledger requires a session
- * (login screen otherwise); without it the app keeps the dev passthrough.
+ * T6-web gate + T26 (L35): bypassed or missing credentials never reach
+ * the login screen silently — bypassed passes through to the ledger,
+ * misconfigured fails closed with a configuration error screen.
  */
 function AuthGate() {
   const { t } = useTranslation();
-  const { configured, loading, session } = useAuth();
+  const { configured, misconfigured, loading, session } = useAuth();
 
+  if (misconfigured) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          px: 3,
+        }}
+      >
+        <Box sx={{ maxWidth: 520, textAlign: "center" }}>
+          <Typography component="h1" variant="h6" gutterBottom>
+            {t("login.misconfigTitle")}
+          </Typography>
+          <Typography color="text.secondary">
+            {t("login.misconfigBody")}
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
   if (!configured || session) {
     return <LedgerPage />;
   }

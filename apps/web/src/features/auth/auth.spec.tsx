@@ -4,11 +4,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const getSupabaseClient = vi.hoisted(() => vi.fn());
 const isAuthConfigured = vi.hoisted(() => vi.fn(() => true));
-vi.mock("./supabase", () => ({ getSupabaseClient, isAuthConfigured }));
+const isAuthBypassed = vi.hoisted(() => vi.fn(() => false));
+vi.mock("./supabase", () => ({
+  getSupabaseClient,
+  isAuthConfigured,
+  isAuthBypassed,
+}));
 
 import { AuthProvider, useAuth } from "./auth";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  isAuthBypassed.mockReturnValue(false);
+});
 
 function makeClient(overrides: Record<string, unknown> = {}) {
   const unsubscribe = vi.fn();
@@ -28,10 +36,11 @@ function makeClient(overrides: Record<string, unknown> = {}) {
 }
 
 function Probe() {
-  const { configured, loading, session, signOut } = useAuth();
+  const { configured, misconfigured, loading, session, signOut } = useAuth();
   return (
     <div>
       <span data-testid="configured">{String(configured)}</span>
+      <span data-testid="misconfigured">{String(misconfigured)}</span>
       <span data-testid="loading">{String(loading)}</span>
       <span data-testid="email">{session?.user.email ?? "none"}</span>
       <button onClick={() => void signOut()}>logout</button>
@@ -48,8 +57,10 @@ function renderProvider() {
 }
 
 describe("AuthProvider", () => {
-  it("reports configured=false and never loads a session when auth is off", async () => {
-    isAuthConfigured.mockReturnValue(false);
+  it("bypasses auth in dev: configured=false, misconfigured=false, no session load", async () => {
+    isAuthBypassed.mockReturnValue(true);
+    // Credentials present must not matter: bypass wins (T26).
+    isAuthConfigured.mockReturnValue(true);
     const client = makeClient();
     getSupabaseClient.mockReturnValue(client);
 
@@ -58,9 +69,27 @@ describe("AuthProvider", () => {
     await waitFor(() => {
       expect(screen.getByTestId("configured").textContent).toBe("false");
     });
+    expect(screen.getByTestId("misconfigured").textContent).toBe("false");
+    expect(screen.getByTestId("loading").textContent).toBe("false");
     expect(client.auth.getSession).not.toHaveBeenCalled();
     expect(client.auth.onAuthStateChange).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when auth is required but credentials are missing", async () => {
+    isAuthBypassed.mockReturnValue(false);
+    isAuthConfigured.mockReturnValue(false);
+    const client = makeClient();
+    getSupabaseClient.mockReturnValue(client);
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("misconfigured").textContent).toBe("true");
+    });
+    expect(screen.getByTestId("configured").textContent).toBe("false");
     expect(screen.getByTestId("loading").textContent).toBe("false");
+    expect(client.auth.getSession).not.toHaveBeenCalled();
+    expect(client.auth.onAuthStateChange).not.toHaveBeenCalled();
   });
 
   it("resolves the initial session via getSession", async () => {
@@ -79,6 +108,7 @@ describe("AuthProvider", () => {
     await waitFor(() => {
       expect(screen.getByTestId("loading").textContent).toBe("false");
     });
+    expect(screen.getByTestId("misconfigured").textContent).toBe("false");
     expect(screen.getByTestId("email").textContent).toBe("ana@example.com");
     expect(client.auth.getSession).toHaveBeenCalledTimes(1);
     expect(client.auth.onAuthStateChange).toHaveBeenCalledTimes(1);

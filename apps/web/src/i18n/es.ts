@@ -249,6 +249,9 @@ export const es = {
     error: "No se pudo iniciar sesión. Revisá los datos e intentá de nuevo.",
     signUpError: "No se pudo crear la cuenta. Revisá los datos e intentá de nuevo.",
     loading: "Cargando…",
+    misconfigTitle: "Autenticación mal configurada",
+    misconfigBody:
+      "Faltan las variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY. Configuralas para habilitar el inicio de sesión; en desarrollo también podés definir VITE_AUTH_BYPASS=true para entrar al libro sin login.",
   },
   errors: {
     GENERIC: "No se pudo completar la operación. Intentá de nuevo.",

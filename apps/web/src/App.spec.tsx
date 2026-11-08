@@ -3,12 +3,16 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const isAuthConfigured = vi.hoisted(() => vi.fn(() => true));
+const isAuthBypassed = vi.hoisted(() => vi.fn(() => false));
 const useAuth = vi.hoisted(() => vi.fn());
 vi.mock("./features/auth/auth", () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => children,
   useAuth,
 }));
-vi.mock("./features/auth/supabase", () => ({ isAuthConfigured }));
+vi.mock("./features/auth/supabase", () => ({
+  isAuthConfigured,
+  isAuthBypassed,
+}));
 
 // LedgerPage pulls the whole api surface; keep it real but stub network.
 vi.mock("./features/ledger/api", async (importOriginal) => {
@@ -45,6 +49,8 @@ afterEach(cleanup);
 function authValue(overrides: Record<string, unknown> = {}) {
   return {
     configured: true,
+    bypassed: false,
+    misconfigured: false,
     loading: false,
     session: null,
     signIn: vi.fn(),
@@ -86,9 +92,11 @@ describe("App auth gate (T6-web)", () => {
     expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
   });
 
-  it("renders LedgerPage without login when auth is not configured (dev passthrough)", async () => {
+  it("renders LedgerPage without login when auth is bypassed (dev passthrough)", async () => {
     isAuthConfigured.mockReturnValue(false);
-    useAuth.mockReturnValue(authValue({ configured: false }));
+    useAuth.mockReturnValue(
+      authValue({ configured: false, misconfigured: false, bypassed: true }),
+    );
 
     render(<App />);
 
@@ -96,5 +104,21 @@ describe("App auth gate (T6-web)", () => {
       expect(screen.getAllByText("Movimientos").length).toBeGreaterThan(0);
     });
     expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
+  });
+
+  it("fails closed with the misconfiguration screen when auth is neither configured nor bypassed", async () => {
+    isAuthConfigured.mockReturnValue(false);
+    useAuth.mockReturnValue(
+      authValue({ configured: false, misconfigured: true }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByText("Autenticación mal configurada"),
+    ).toBeTruthy();
+    expect(screen.getByText(/VITE_AUTH_BYPASS/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
+    expect(screen.queryByText("Movimientos")).toBeNull();
   });
 });

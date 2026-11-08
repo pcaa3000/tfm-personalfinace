@@ -4,7 +4,12 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const getSupabaseClient = vi.hoisted(() => vi.fn());
 const isAuthConfigured = vi.hoisted(() => vi.fn(() => true));
-vi.mock("../auth/supabase", () => ({ getSupabaseClient, isAuthConfigured }));
+const isAuthBypassed = vi.hoisted(() => vi.fn(() => false));
+vi.mock("../auth/supabase", () => ({
+  getSupabaseClient,
+  isAuthConfigured,
+  isAuthBypassed,
+}));
 
 import i18n from "../../i18n";
 import { AuthProvider } from "../auth/auth";
@@ -15,7 +20,10 @@ beforeAll(async () => {
   await i18n.changeLanguage("es");
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  isAuthBypassed.mockReturnValue(false);
+});
 
 function makeClient() {
   const unsubscribe = vi.fn();
@@ -72,6 +80,35 @@ describe("TopBar logout (T6-web)", () => {
   });
 
   it("hides the logout action when auth is not configured", async () => {
+    isAuthConfigured.mockReturnValue(false);
+
+    renderTopBar();
+    await openManagementMenu();
+
+    await screen.findByRole("menuitem", { name: "Cuentas" });
+    expect(
+      screen.queryByRole("menuitem", { name: "Cerrar sesión" }),
+    ).toBeNull();
+  });
+
+  it("hides the logout action in bypass mode even with credentials present", async () => {
+    isAuthBypassed.mockReturnValue(true);
+    isAuthConfigured.mockReturnValue(true);
+    const client = makeClient();
+    getSupabaseClient.mockReturnValue(client);
+
+    renderTopBar();
+    await openManagementMenu();
+
+    await screen.findByRole("menuitem", { name: "Cuentas" });
+    expect(
+      screen.queryByRole("menuitem", { name: "Cerrar sesión" }),
+    ).toBeNull();
+    expect(client.auth.getSession).not.toHaveBeenCalled();
+  });
+
+  it("hides the logout action when auth is misconfigured (no bypass, no credentials)", async () => {
+    isAuthBypassed.mockReturnValue(false);
     isAuthConfigured.mockReturnValue(false);
 
     renderTopBar();

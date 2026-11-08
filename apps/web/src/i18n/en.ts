@@ -253,6 +253,9 @@ export const en: TranslationShape = {
     error: "Could not sign in. Check your credentials and try again.",
     signUpError: "Could not create the account. Check your data and try again.",
     loading: "Loading…",
+    misconfigTitle: "Authentication is not configured",
+    misconfigBody:
+      "Missing environment variables VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY. Set them to enable sign-in; in development you can also set VITE_AUTH_BYPASS=true to open the ledger without login.",
   },
   errors: {
     GENERIC: "The operation could not be completed. Try again.",

@@ -10,11 +10,15 @@ import {
 import type { Session } from "@supabase/supabase-js";
 
 import { setAccessTokenProvider } from "../ledger/api";
-import { getSupabaseClient, isAuthConfigured } from "./supabase";
+import { getSupabaseClient, isAuthBypassed, isAuthConfigured } from "./supabase";
 
 export interface AuthContextValue {
-  /** True when VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY are set. */
+  /** True when VITE_AUTH_BYPASS=true in a dev build (T26). */
+  bypassed: boolean;
+  /** True when credentials are set and auth is not bypassed. */
   configured: boolean;
+  /** True when auth is required but credentials are missing (fail closed). */
+  misconfigured: boolean;
   /** True while the initial getSession() call is in flight. */
   loading: boolean;
   session: Session | null;
@@ -24,7 +28,9 @@ export interface AuthContextValue {
 }
 
 const defaultValue: AuthContextValue = {
+  bypassed: false,
   configured: false,
+  misconfigured: false,
   loading: false,
   session: null,
   signIn: async () => {
@@ -39,7 +45,12 @@ const defaultValue: AuthContextValue = {
 const AuthContext = createContext<AuthContextValue>(defaultValue);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const configured = isAuthConfigured();
+  // T26: three explicit states — bypassed (dev passthrough), configured
+  // (credentials present → login required) or misconfigured (fail closed).
+  const bypassed = isAuthBypassed();
+  const hasCredentials = isAuthConfigured();
+  const configured = !bypassed && hasCredentials;
+  const misconfigured = !bypassed && !hasCredentials;
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(configured);
 
@@ -96,8 +107,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ configured, loading, session, signIn, signUp, signOut }),
-    [configured, loading, session, signIn, signUp, signOut],
+    () => ({
+      bypassed,
+      configured,
+      misconfigured,
+      loading,
+      session,
+      signIn,
+      signUp,
+      signOut,
+    }),
+    [bypassed, configured, misconfigured, loading, session, signIn, signUp, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
