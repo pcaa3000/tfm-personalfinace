@@ -30,6 +30,13 @@
       "tradeoff": "Desktop con sidebar dashboard y tabla densa; mobile con carrusel, cards por día, tabbar y FAB — un solo codebase responsivo. Es la opción de mayor cobertura pero la más extensa de mantener: dos layout systems en un solo artboard.",
       "width": 1440,
       "height": 900
+    },
+    {
+      "file": "04-hybrid.html",
+      "title": "Híbrido 01+02 — vista móvil (390px)",
+      "tradeoff": "Mismo artboard responsivo que 04, renderizado a ancho móvil para revisar el layout <960px: carrusel de monedas, quick actions, cards por día, FAB y tabbar.",
+      "width": 390,
+      "height": 844
     }
   ]
 }

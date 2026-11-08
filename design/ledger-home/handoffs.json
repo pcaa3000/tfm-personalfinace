@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "chosen": "04-hybrid.html",
+  "handoffs": {
+    "04-hybrid.html": {
+      "status": "implemented",
+      "queued": false,
+      "sentAt": "2026-11-04T23:30:09.351Z",
+      "startedAt": "2026-11-04T23:30:15.604Z",
+      "implementedAt": "2026-11-04T23:46:32.701Z",
+      "feature": "odd/tasks/ledger-income-expenses.md",
+      "note": "T17 implementado en apps/web (commit 3089f59): layout híbrido responsive, dark mode tfm-theme-mode, menú Gestión, balance sticky por moneda y +Nuevo movimiento. 95 tests verdes, typecheck+lint limpios.",
+      "previewUrl": "http://localhost:5173/"
+    }
+  }
+}
