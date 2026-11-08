@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "VITE_AUTH_BYPASS=true vite",
+    "qa": "VITE_AUTH_BYPASS=false vite --mode qa",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "preview": "vite preview",

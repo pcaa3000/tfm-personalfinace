@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "AUTH_MODE=dev tsx watch src/main.ts",
+    "qa": "AUTH_MODE=oidc OIDC_ISSUER=https://vdpwwgrqtryjwknckewa.supabase.co/auth/v1 OIDC_AUDIENCE=authenticated OIDC_JWKS_URI=https://vdpwwgrqtryjwknckewa.supabase.co/auth/v1/.well-known/jwks.json tsx src/main.ts",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run --passWithNoTests",
     "test:arch": "depcruise src --config .dependency-cruiser.cjs",
