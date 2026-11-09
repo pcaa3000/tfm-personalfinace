@@ -33,6 +33,7 @@ separado que drena a pg-boss, y primer consumidor real (notificaciones).
 | T3 | `src/worker.ts`: drainer SKIP LOCKED → `boss.send` + `boss.work` handler → `notifications` + scripts | S2, S4 | inline | done | specs drain+consumer + smoke pg-boss real E2E (~4s) |
 | T4 | `GET /api/v1/notifications` (puerto + use case + adapter + route) | S3 | inline | done | módulo `notifications` + route; 4 specs |
 | T5 | Spec pipeline E2E + docs/06 + espejo Engram + cierre | S2 | inline | done | e2e `notifications.e2e.spec` + docs/02 jobs + 456 api verdes |
+| T6 | RDD review slice outbox: fix idempotencia consumidor (R3-001/R4-1) | S2 | inline | done | `62a2c71` · receipt `review-3b527839184d9e77` approved (9 advisories, 0 blocking) |
 
 ## Log
 
@@ -69,3 +70,19 @@ separado que drena a pg-boss, y primer consumidor real (notificaciones).
   con dispatcher fake → handleLedgerEvent → GET /notifications. Suite:
   **456 api verdes**, typecheck + eslint + depcruise (0 violaciones).
   docs/02 actualizado (worker proceso separado + sección Jobs asíncronos).
+- **T6** (2026-11-07): RDD review nativa del slice outbox (candidate
+  `b9ea7b0..8c55682`, worktree `/tmp/tfm-outbox-review`, tier medium, lentes
+  resilience/readability/reliability). 2 hallazgos CRITICAL confirmed por
+  refuter: **R3-001** (consumidor inserta sin dedup → duplicados con
+  redelivery) y **R4-1** (drain en una sola tx: rollback de `processedAt`
+  con jobs ya encolados → re-drain reenvía → `randomUUID()` por entrega →
+  notificaciones duplicadas visibles). Fix bounded (`62a2c71`, 44 líneas de
+  diff): job envuelve `outboxEventId` (id estable de la fila outbox) y el
+  consumidor hace `insert…onConflictDoNothing()` con ese id. TDD: RED
+  2/4 → GREEN 4/4 focales, **469/469 api**, typecheck + eslint + depcruise
+  limpios. Targeted validator aprobó; receipt `review-3b527839184d9e77`
+  **approved** (9 advisories informationales: R2-1..R2-4, R3-002..R3-006;
+  0 blocking; autoridad quemada, delivery a política normal de repo).
+  Lección: el at-least-once prometido en el comentario del drain solo era
+  cierto si el consumidor deduplicaba; la identidad estable del evento debe
+  viajar en el job, no generarse en el consumidor.
