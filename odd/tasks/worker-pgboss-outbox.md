@@ -34,6 +34,7 @@ separado que drena a pg-boss, y primer consumidor real (notificaciones).
 | T4 | `GET /api/v1/notifications` (puerto + use case + adapter + route) | S3 | inline | done | módulo `notifications` + route; 4 specs |
 | T5 | Spec pipeline E2E + docs/06 + espejo Engram + cierre | S2 | inline | done | e2e `notifications.e2e.spec` + docs/02 jobs + 456 api verdes |
 | T6 | RDD review slice outbox: fix idempotencia consumidor (R3-001/R4-1) | S2 | inline | done | `62a2c71` · receipt `review-3b527839184d9e77` approved (9 advisories, 0 blocking) |
+| T7 | RDD review slice `1742b8e..HEAD`: fix legacy in-flight jobs sin `outboxEventId` (R3-001 deploy window) | S2 | inline | done | `d9c6744` · receipt `review-0e765bad3f2dbac7` approved (2 advisories, 0 blocking) |
 
 ## Log
 
@@ -86,3 +87,22 @@ separado que drena a pg-boss, y primer consumidor real (notificaciones).
   Lección: el at-least-once prometido en el comentario del drain solo era
   cierto si el consumidor deduplicaba; la identidad estable del evento debe
   viajar en el job, no generarse en el consumidor.
+
+- **T7** done (2026-11-08): el slice review `1742b8e..HEAD` (el rango cubre también
+  T28/T29 del ledger; el receipt ampara la slice entera) encontró 1 CRITICAL en el
+  código outbox, confirmado por refuter: **R3-001** — los jobs in-flight en pg-boss
+  encolados por el drain pre-fix no llevan `outboxEventId`; el consumidor nuevo
+  pasaba `id: undefined` → fallo de insert NOT NULL durante la ventana de deploy
+  one-time (y los reintentos de pg-boss revivían las duplicaciones). Fix TDD
+  `d9c6744` (3 files, 40 líneas de diff): `LedgerEventJob.outboxEventId` pasa a
+  opcional (`?`) y el consumidor cae a `randomUUID()` solo cuando el campo ausente
+  (jobs legacy); los jobs nuevos mantienen el id estable de la fila outbox y la
+  idempotencia por `onConflictDoNothing()` se conserva. Spec nuevo "handles legacy
+  in-flight jobs without outboxEventId (deploy window, R3-001)". RED: 1 fallando
+  (NOT NULL) → GREEN: 4/4 focales, **470/470 api**, typecheck + lint + depcruise
+  limpios. Targeted validator aprobó; receipt `review-0e765bad3f2dbac7`
+  **approved** (2 advisories informativos: R3-002 `TopBar.tsx:227`, R4-1
+  `ledger-notifications.ts:24`; 0 blocking; autoridad quemada, delivery a política
+  normal de repo). Nota: este R3-001 es distinto del R3-001 de la slice anterior
+  (`review-3b527839184d9e77`): aquel era la falta de dedup en el insert; este es la
+  ventana de compatibilidad del propio fix.
