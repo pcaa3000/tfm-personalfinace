@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { DrizzleDb } from "../drizzle/db.js";
 import { notifications } from "../drizzle/schema.js";
 import type { LedgerEventJob } from "./drain-outbox.js";
@@ -26,8 +27,10 @@ export async function handleLedgerEvent(
     .join(" · ");
   // Idempotent per outbox event (R3-001/R4-1): drain is at-least-once, so a
   // redelivered job re-inserts the same row id and is a no-op, not a duplicate.
+  // Legacy in-flight jobs (enqueued by the pre-fix drain) lack outboxEventId:
+  // a generated uuid keeps the insert valid through the one-time deploy window.
   await db.insert(notifications).values({
-    id: job.outboxEventId,
+    id: job.outboxEventId ?? randomUUID(),
     workspaceId: job.workspaceId,
     kind: job.eventType,
     title: TITLES[job.eventType] ?? job.eventType,

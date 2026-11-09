@@ -9,8 +9,11 @@ export const LEDGER_EVENTS_QUEUE = "ledger-events";
 export interface LedgerEventJob {
   readonly eventType: string;
   readonly workspaceId: string;
-  /** Stable outbox row id — consumers deduplicate on this (at-least-once). */
-  readonly outboxEventId: string;
+  /**
+   * Stable outbox row id — consumers deduplicate on this (at-least-once).
+   * Optional: jobs enqueued by the pre-fix drain lack it (deploy window).
+   */
+  readonly outboxEventId?: string;
   readonly payload: Record<string, unknown>;
 }
 

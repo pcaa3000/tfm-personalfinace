@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 
 import { createDrizzleDb, type DrizzleDb } from "../drizzle/db.js";
 import { outboxEvents } from "../drizzle/schema.js";
 import { insertOutboxEvent } from "../drizzle/outbox.js";
 import {
   drainOutboxOnce,
+  type LedgerEventJob,
   type OutboxDispatcher,
 } from "./drain-outbox.js";
 import { handleLedgerEvent } from "./ledger-notifications.js";
@@ -124,5 +125,30 @@ describe("handleLedgerEvent consumer (T3, S2)", () => {
       .from(notifications)
       .where(eq(notifications.id, "notif-idempotency-2"));
     expect(rows).toHaveLength(1);
+  });
+
+  it("handles legacy in-flight jobs without outboxEventId (deploy window, R3-001)", async () => {
+    // Jobs enqueued by the pre-fix drain lack outboxEventId; the consumer
+    // must not pass undefined as the notification primary key.
+    const legacyJob = {
+      eventType: "transaction.confirmed" as const,
+      workspaceId: WS,
+      payload: {
+        transactionId: "tx-legacy",
+        concept: "Compra",
+        amount: "120.00",
+        currency: "PEN",
+      },
+    } as LedgerEventJob;
+
+    await expect(handleLedgerEvent(db, legacyJob)).resolves.toBeUndefined();
+
+    const rows = await db
+      .select()
+      .from(notifications)
+      .where(and(eq(notifications.workspaceId, WS), like(notifications.body, "%Compra%")));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBeTruthy();
+    expect(rows[0]?.kind).toBe("transaction.confirmed");
   });
 });
