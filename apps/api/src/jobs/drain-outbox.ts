@@ -9,6 +9,8 @@ export const LEDGER_EVENTS_QUEUE = "ledger-events";
 export interface LedgerEventJob {
   readonly eventType: string;
   readonly workspaceId: string;
+  /** Stable outbox row id — consumers deduplicate on this (at-least-once). */
+  readonly outboxEventId: string;
   readonly payload: Record<string, unknown>;
 }
 
@@ -51,6 +53,7 @@ export async function drainOutboxOnce(
       await dispatcher.send(LEDGER_EVENTS_QUEUE, {
         eventType: row.type,
         workspaceId: row.workspaceId,
+        outboxEventId: row.id,
         payload: row.payload,
       });
       await tx

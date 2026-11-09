@@ -40,6 +40,13 @@ describe("drainOutboxOnce (T3)", () => {
       type: "transaction.confirmed",
       payload: { transactionId: "tx-drain-1", concept: "Sueldo" },
     });
+    const rowsBefore = await db
+      .select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.workspaceId, WS));
+    const ours = rowsBefore.find(
+      (r) => (r.payload as Record<string, unknown>).transactionId === "tx-drain-1",
+    )!;
     const dispatcher: OutboxDispatcher = { send: vi.fn(async () => "job-1") };
 
     const drained = await drainOutboxOnce(db, dispatcher);
@@ -50,6 +57,7 @@ describe("drainOutboxOnce (T3)", () => {
     expect(dispatcher.send).toHaveBeenCalledWith("ledger-events", {
       eventType: "transaction.confirmed",
       workspaceId: WS,
+      outboxEventId: ours.id,
       payload: { transactionId: "tx-drain-1", concept: "Sueldo" },
     });
     const rows = await db
@@ -74,6 +82,7 @@ describe("handleLedgerEvent consumer (T3, S2)", () => {
     await handleLedgerEvent(db, {
       eventType: "transaction.confirmed",
       workspaceId: WS,
+      outboxEventId: "notif-idempotency-1",
       payload: {
         transactionId: "tx-drain-1",
         concept: "Sueldo",
@@ -91,5 +100,29 @@ describe("handleLedgerEvent consumer (T3, S2)", () => {
     expect(rows[0]?.title).toBe("Movimiento registrado");
     expect(rows[0]?.body).toContain("Sueldo");
     expect(rows[0]?.body).toContain("4500.00");
+  });
+
+  it("is idempotent per outbox event: redelivery inserts no duplicate row (R3-001/R4-1)", async () => {
+    const job = {
+      eventType: "transaction.confirmed" as const,
+      workspaceId: WS,
+      outboxEventId: "notif-idempotency-2",
+      payload: {
+        transactionId: "tx-drain-2",
+        concept: "Alquiler",
+        amount: "900.00",
+        currency: "PEN",
+      },
+    };
+
+    await handleLedgerEvent(db, job);
+    await handleLedgerEvent(db, job);
+    await handleLedgerEvent(db, job);
+
+    const rows = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.id, "notif-idempotency-2"));
+    expect(rows).toHaveLength(1);
   });
 });

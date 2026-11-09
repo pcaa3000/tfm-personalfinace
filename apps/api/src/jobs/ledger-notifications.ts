@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type { DrizzleDb } from "../drizzle/db.js";
 import { notifications } from "../drizzle/schema.js";
 import type { LedgerEventJob } from "./drain-outbox.js";
@@ -26,11 +24,13 @@ export async function handleLedgerEvent(
   const detail = [concept, [amount, currency].filter(Boolean).join(" ")]
     .filter(Boolean)
     .join(" · ");
+  // Idempotent per outbox event (R3-001/R4-1): drain is at-least-once, so a
+  // redelivered job re-inserts the same row id and is a no-op, not a duplicate.
   await db.insert(notifications).values({
-    id: randomUUID(),
+    id: job.outboxEventId,
     workspaceId: job.workspaceId,
     kind: job.eventType,
     title: TITLES[job.eventType] ?? job.eventType,
     body: detail || job.eventType,
-  });
+  }).onConflictDoNothing();
 }
