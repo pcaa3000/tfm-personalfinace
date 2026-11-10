@@ -36,17 +36,27 @@ export type HonoDeps = TransactionRouteDeps &
 export interface HttpSecurityConfig {
   readonly corsOrigins: readonly string[];
   readonly bodyLimitBytes: number;
+  /** Fixed-window cap for write methods (POST/PATCH/PUT/DELETE). */
   readonly rateLimit: {
+    readonly max: number;
+    readonly windowMs: number;
+  };
+  /** S2: separate (higher) cap for every other method on /api/v1/*. */
+  readonly rateLimitRead: {
     readonly max: number;
     readonly windowMs: number;
   };
 }
 
-/** Dev defaults: the Vite origin, 1 MiB bodies, 60 writes/minute per IP. */
+/**
+ * Dev defaults: the Vite origin, 1 MiB bodies, 60 writes/minute and
+ * 240 reads/minute per IP (S2 — reads get their own looser bucket).
+ */
 export const DEFAULT_HTTP_SECURITY: HttpSecurityConfig = {
   corsOrigins: ["http://localhost:5173"],
   bodyLimitBytes: 1024 * 1024,
   rateLimit: { max: 60, windowMs: 60_000 },
+  rateLimitRead: { max: 240, windowMs: 60_000 },
 };
 
 const WRITE_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
@@ -59,7 +69,8 @@ const WRITE_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
  * GAP-SEC-02 (S4): `secureHeaders` on every response, a CORS origin
  * allowlist (the web client authenticates via Authorization header, so no
  * credentials), and a deliberate body cap on write methods.
- * GAP-SEC-05 (S5): per-IP rate limiting on /api/v1 writes.
+ * GAP-SEC-05 (S5 + second pass S2): per-IP rate limiting on all of
+ * /api/v1 — writes at `rateLimit`, every other method at `rateLimitRead`.
  */
 export function createApp(
   deps: HonoDeps,
@@ -91,8 +102,19 @@ export function createApp(
         ),
     })(c, next);
   });
+  // S2: two limiter instances — two window maps — so writes and reads
+  // each get their own budget and neither consumes the other's.
   if (config.rateLimit.max > 0) {
     app.use("/api/v1/*", rateLimitMiddleware(config.rateLimit));
+  }
+  if (config.rateLimitRead.max > 0) {
+    app.use(
+      "/api/v1/*",
+      rateLimitMiddleware({
+        ...config.rateLimitRead,
+        shouldLimit: (method) => !WRITE_METHODS.has(method),
+      }),
+    );
   }
 
   app.get("/health", (c) =>
