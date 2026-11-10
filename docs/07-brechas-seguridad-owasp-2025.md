@@ -139,3 +139,32 @@ Cerradas en la rama `feature/security-hardening` (commits `0b39bdf`, `2c2cb06`):
 **Siguen programables**: GAP-03 (zod strict), GAP-06 (logging estructurado + eventos de seguridad), GAP-07 (sin CI — pre-release recomendado: workflow mínimo + `pnpm audit`/`minimum-release-age`), GAP-10, NEW-11 (`/notifications` sin `LIMIT`), NEW-14.
 
 **Publicable**: con los bloqueantes cerrados, la app cumple la postura mínima del doc. Antes de exponer a internet se recomienda además: CI con tests+audit, limitación de rate a nivel edge, y NEW-11 (cap de notificaciones).
+
+## Segunda re-auditoría 2026-11-10
+
+Re-verificación previa a publicación (`odd/tasks/security-prelaunch.md`, L1/L2),
+sobre `main` post-merge del PR #2 (`feature/security-hardening`). Alcance
+autorizado: cerrar los remanentes bloqueantes (1) guard de producción para
+`AUTH_MODE=dev`, (3) rate limit en lecturas, (5) headers de seguridad en la
+web. El resto queda como advisory documentado.
+
+### Hallazgos nuevos y estado post-remediación
+
+| Hallazgo | OWASP | Estado | Evidencia |
+|---|---|---|---|
+| `AUTH_MODE=dev` sin guard de producción (`hono/composition.ts` `envFromProcess`) | A02/A07 | **CERRADA (S1/T1)** | `envFromProcess` lanza `AUTH_MODE=dev is forbidden when NODE_ENV=production` — un deploy productivo mal configurado ya no sirve la identidad dev implícita |
+| GETs sin rate limit en `/api/v1/*` | A10/A02 | **CERRADA (S2/T1)** | Dos instancias del limiter: escrituras (POST/PATCH/PUT/DELETE) al límite existente `RATE_LIMIT_MAX` (60/min por defecto), todo otro método al nuevo `RATE_LIMIT_READ_MAX` (240/min por defecto, `RATE_LIMIT_READ_WINDOW_MS`); cada clase con su propia ventana — 429 `{code:"RATE_LIMITED"}` |
+| Web sin CSP ni headers de seguridad | A02 | **CERRADA (S3/T2)** | `<meta http-equiv="Content-Security-Policy">` en `apps/web/index.html` + `apps/web/public/_headers` (formato Netlify/CF Pages): CSP (`default-src 'self'`, `connect-src` same-origin + Supabase https/wss + API local), `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`, `X-Frame-Options: DENY`. **Caveat**: hosts que no honran `_headers` deben replicar estos headers (documentado en el propio archivo); el CSP vía meta solo cubre esa política |
+
+### Advisories abiertos (fuera de alcance autorizado)
+
+- **X-Forwarded-For spoofable en el rate limiter**: la clave de cliente toma el primer hop de `x-forwarded-for`; detrás de un proxy que no saneé el header, un atacante rota buckets. Depende de la decisión de hosting/proxy — mitigar en el edge o fijar una lista de proxies confiables al elegir plataforma.
+- **Tokens Supabase en `localStorage`**: expuestos a cualquier XSS que sobreviva a la CSP. Mitigar requiere migración a cookies `httpOnly` (decisión mayor de arquitectura de sesión).
+- **Postgres `5432` con credenciales débiles en docker-compose**: solo dev; verificar que ningún despliegue real expone el puerto ni reutiliza esas credenciales.
+- **Sin auditoría de 401/429 (A09)**: sigue pendiente el logging estructurado de eventos de seguridad — follow-up junto a GAP-SEC-06.
+- **TLS de DB depende de `sslmode`**: `DATABASE_URL` gobierna el cifrado a Postgres; el despliegue debe exigir `sslmode=require` (o superior) en la cadena de conexión.
+
+### Notas post-implementación (2026-11-10, segunda pasada)
+
+- **CSP meta solo en build**: el `<meta>` CSP con `script-src 'self'` bloqueaba el preamble inline de react-refresh del dev server de Vite. Resuelto: el meta ya no vive en `index.html`; el plugin `tfm-csp-meta` (`vite.config.ts`, `apply: "build"` + `transformIndexHtml`) lo inyecta solo en la salida de `vite build`. `pnpm dev` queda libre y `_headers` sigue siendo la fuente autoritativa.
+- **Vitest exit 1 sin fallos**: `auth.spec.tsx` disparaba `void signOut()` y el `signOut` re-lanzaba el `{error}` de supabase-js → unhandled rejection → runner exit 1 con los 217 tests verdes. Resuelto en la spec con un probe que captura el error (además ahora aserta que el error sí se propaga al caller).

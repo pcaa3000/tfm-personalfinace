@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  waitForElementToBeRemoved,
   within,
 } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -314,18 +315,23 @@ describe("LedgerPage top bar actions (S12-1)", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Gestión" }));
 
     fireEvent.click(await screen.findByRole("menuitem", { name: "Cuentas" }));
-    expect(
-      await screen.findByRole("dialog", { name: "Cuentas" }),
-    ).toBeTruthy();
+    const cuentasDialog = await screen.findByRole("dialog", {
+      name: "Cuentas",
+    });
 
-    // MUI closes on Escape only when the keydown targets the modal root
+    // MUI closes on Escape only when the keydown targets the modal root.
+    // `document.querySelector(".MuiModal-root")` is ambiguous — the
+    // Gestión Menu renders in its own Modal and can still be unmounting,
+    // so the first .MuiModal-root may be the menu's, not the dialog's
+    // (the real source of this test's flake). Target the modal root
+    // that actually contains this dialog.
     fireEvent.keyDown(
-      document.querySelector(".MuiModal-root") ?? document.body,
+      cuentasDialog.closest(".MuiModal-root") ?? cuentasDialog,
       { key: "Escape" },
     );
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "Cuentas" })).toBeNull();
-    });
+    // Assert removal with headroom: the exit transition + portal unmount
+    // can exceed waitFor's default 1 s under full-suite load.
+    await waitForElementToBeRemoved(cuentasDialog, { timeout: 3_000 });
 
     fireEvent.click(screen.getByRole("button", { name: "Gestión" }));
     fireEvent.click(
