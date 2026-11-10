@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 
 import { createDrizzleDb, type DrizzleDb } from "../drizzle/db.js";
 import { outboxEvents } from "../drizzle/schema.js";
@@ -85,6 +85,11 @@ describe("drainOutboxOnce (T3)", () => {
       type: "transaction.confirmed",
       payload: { transactionId: "tx-drain-poison", concept: "Poison" },
     });
+    await insertOutboxEvent(db, {
+      workspaceId: WS,
+      type: "transaction.confirmed",
+      payload: { transactionId: "tx-drain-healthy", concept: "Healthy" },
+    });
     const rowsBefore = await db
       .select()
       .from(outboxEvents)
@@ -93,6 +98,11 @@ describe("drainOutboxOnce (T3)", () => {
       (r) =>
         (r.payload as Record<string, unknown>).transactionId ===
         "tx-drain-poison",
+    )!;
+    const good = rowsBefore.find(
+      (r) =>
+        (r.payload as Record<string, unknown>).transactionId ===
+        "tx-drain-healthy",
     )!;
     const dispatcher: OutboxDispatcher = {
       send: vi.fn(async (_queue: string, job: LedgerEventJob) => {
@@ -103,14 +113,22 @@ describe("drainOutboxOnce (T3)", () => {
 
     const drained = await drainOutboxOnce(db, dispatcher);
 
-    // drain resolves; the poison row remains pending, other rows processed
-    expect(drained).toBeGreaterThanOrEqual(0);
-    expect(dispatcher.send).toHaveBeenCalled();
+    // the sibling row WAS sent and marked processed; the poison row stays pending
+    expect(drained).toBeGreaterThanOrEqual(1);
+    expect(dispatcher.send).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ outboxEventId: good.id }),
+    );
     const rowsAfter = await db
       .select()
       .from(outboxEvents)
-      .where(eq(outboxEvents.id, bad.id));
-    expect(rowsAfter[0]?.processedAt).toBeNull();
+      .where(inArray(outboxEvents.id, [bad.id, good.id]));
+    expect(
+      rowsAfter.find((r) => r.id === bad.id)?.processedAt,
+    ).toBeNull();
+    expect(
+      rowsAfter.find((r) => r.id === good.id)?.processedAt,
+    ).not.toBeNull();
 
     // cleanup: mark it processed so it cannot interfere with later drains
     await db
