@@ -11,6 +11,7 @@ import {
   type HonoEnv,
 } from "../middleware/auth.js";
 import { HttpError } from "../middleware/errors.js";
+import { sanitizeZodIssues } from "../middleware/zod-details.js";
 
 // Zod schema is copied verbatim from the Nest WorkspaceController so
 // validation envelopes (INVALID_BODY + details) stay identical.
@@ -76,7 +77,7 @@ export function registerWorkspaceRoutes(
       throw new HttpError(400, {
         code: "INVALID_BODY",
         message: "Invalid workspace payload",
-        details: parsed.error.issues,
+        details: sanitizeZodIssues(parsed.error.issues),
       });
     }
 

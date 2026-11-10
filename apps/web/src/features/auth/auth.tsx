@@ -10,6 +10,7 @@ import {
 import type { Session } from "@supabase/supabase-js";
 
 import { setAccessTokenProvider } from "../ledger/api";
+import { clearClientCaches } from "./client-caches";
 import { getSupabaseClient, isAuthBypassed, isAuthConfigured } from "./supabase";
 
 export interface AuthContextValue {
@@ -107,8 +108,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }, []);
 
+  // GAP-SEC-08 (S6): after the server session ends, wipe the offline
+  // outbox and the query cache so nothing of this identity survives on
+  // a shared browser. Skipped when the auth call itself fails — the
+  // session is still valid and the user's data must not be destroyed.
   const signOut = useCallback(async () => {
-    await getSupabaseClient().auth.signOut();
+    // supabase-js resolves {error} on server 5xx without throwing;
+    // in that path the session is still valid, so the wipe must not run.
+    const { error } = await getSupabaseClient().auth.signOut();
+    if (error) throw error;
+    await clearClientCaches();
   }, []);
 
   const updatePassword = useCallback(async (newPassword: string) => {

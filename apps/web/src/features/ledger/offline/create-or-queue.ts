@@ -43,13 +43,6 @@ export async function createTransactionOrQueue(
     if (!isNetworkError(error)) {
       throw error;
     }
-    await enqueueTransaction(input);
-    return toPendingView({
-      idempotencyKey: input.idempotencyKey,
-      input,
-      enqueuedAt: new Date().toISOString(),
-      attempts: 0,
-      lastError: null,
-    });
+    return toPendingView(await enqueueTransaction(input));
   }
 }

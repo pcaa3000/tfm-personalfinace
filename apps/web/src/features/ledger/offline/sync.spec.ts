@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { inputFixture, viewFixture } from "./fixtures";
+import { setAccessTokenProvider } from "../api";
+import { inputFixture, jwtFixture, viewFixture } from "./fixtures";
 import {
   enqueueTransaction,
   ledgerDb,
@@ -13,11 +14,13 @@ const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
 beforeEach(async () => {
+  setAccessTokenProvider(null);
   await ledgerDb.pendingTransactions.clear();
   fetchMock.mockReset();
 });
 
 afterEach(() => {
+  setAccessTokenProvider(null);
   fetchMock.mockReset();
 });
 
@@ -36,7 +39,7 @@ describe("syncPendingTransactions", () => {
 
     const result = await syncPendingTransactions();
 
-    expect(result).toEqual({ synced: 2, remaining: 0 });
+    expect(result).toEqual({ synced: 2, dropped: 0, remaining: 0 });
     expect(await listPendingTransactions()).toHaveLength(0);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const bodies = fetchMock.mock.calls.map(
@@ -53,7 +56,7 @@ describe("syncPendingTransactions", () => {
 
     const result = await syncPendingTransactions();
 
-    expect(result).toEqual({ synced: 0, remaining: 1 });
+    expect(result).toEqual({ synced: 0, dropped: 0, remaining: 1 });
     const [item] = await listPendingTransactions();
     expect(item?.attempts).toBe(1);
     expect(item?.lastError).toContain("fetch failed");
@@ -68,9 +71,75 @@ describe("syncPendingTransactions", () => {
 
     const result = await syncPendingTransactions();
 
-    expect(result).toEqual({ synced: 1, remaining: 1 });
+    expect(result).toEqual({ synced: 1, dropped: 0, remaining: 1 });
     const [item] = await listPendingTransactions();
     expect(item?.idempotencyKey).toBe("stuck");
+  });
+
+  // GAP-SEC-08 (S6): an item stamped under another identity must never
+  // be sent with the current token — it is dropped instead of drained.
+  it("drops items bound to another identity without sending them", async () => {
+    setAccessTokenProvider(async () => jwtFixture("user-a"));
+    await enqueueTransaction(inputFixture({ idempotencyKey: "foreign" }));
+    setAccessTokenProvider(async () => jwtFixture("user-b"));
+    fetchMock.mockResolvedValue(okResponse());
+
+    const result = await syncPendingTransactions();
+
+    expect(result).toEqual({ synced: 0, dropped: 1, remaining: 0 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await listPendingTransactions()).toHaveLength(0);
+  });
+
+  it("retains unverifiable items under a real session (pre-upgrade rows)", async () => {
+    // Rows written before ownerSubject existed — or under dev bypass —
+    // carry null owner. Under an authenticated session we cannot tell
+    // "orphan" from "same user's pre-upgrade item": never send them
+    // (identity leak) and never destroy them (same-identity data loss).
+    await enqueueTransaction(inputFixture({ idempotencyKey: "bypass-era" }));
+    setAccessTokenProvider(async () => jwtFixture("user-b"));
+    fetchMock.mockResolvedValue(okResponse());
+
+    const result = await syncPendingTransactions();
+
+    expect(result).toEqual({ synced: 0, dropped: 0, remaining: 1 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await listPendingTransactions()).toHaveLength(1);
+  });
+
+  it("drains own items while dropping foreign ones", async () => {
+    setAccessTokenProvider(async () => jwtFixture("user-a"));
+    await enqueueTransaction(inputFixture({ idempotencyKey: "mine" }));
+    setAccessTokenProvider(async () => jwtFixture("user-b"));
+    await enqueueTransaction(inputFixture({ idempotencyKey: "theirs" }));
+    setAccessTokenProvider(async () => jwtFixture("user-a"));
+    fetchMock.mockResolvedValue(okResponse());
+
+    const result = await syncPendingTransactions();
+
+    expect(result).toEqual({ synced: 1, dropped: 1, remaining: 0 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    ) as { idempotencyKey: string };
+    expect(body.idempotencyKey).toBe("mine");
+    expect(await listPendingTransactions()).toHaveLength(0);
+  });
+
+  it("retains items when the caller subject is unresolvable (transient null)", async () => {
+    // If the token provider transiently resolves no subject, ownership
+    // cannot be verified: the item must be retained, not sent under an
+    // anonymous/foreign token and not destroyed.
+    setAccessTokenProvider(async () => jwtFixture("user-a"));
+    await enqueueTransaction(inputFixture({ idempotencyKey: "mine-unverifiable" }));
+    setAccessTokenProvider(null);
+    fetchMock.mockResolvedValue(okResponse());
+
+    const result = await syncPendingTransactions();
+
+    expect(result).toEqual({ synced: 0, dropped: 0, remaining: 1 });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await listPendingTransactions()).toHaveLength(1);
   });
 
   it("retries a previously failed item on the next run", async () => {

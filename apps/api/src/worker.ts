@@ -1,5 +1,6 @@
 import { PgBoss } from "pg-boss";
 
+import { requiredEnv } from "./env.js";
 import { createDrizzleDb } from "./drizzle/db.js";
 import {
   LEDGER_EVENTS_QUEUE,
@@ -16,9 +17,8 @@ const DRAIN_INTERVAL_MS = Number(process.env.WORKER_DRAIN_MS ?? 2_000);
  * and in the jobs adapters — domain/application stay framework-free (S5).
  */
 async function main(): Promise<void> {
-  const databaseUrl =
-    process.env.DATABASE_URL ??
-    "postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance";
+  // NEW-SEC-13 (S8): no silent localhost fallback — fail fast at boot.
+  const databaseUrl = requiredEnv("DATABASE_URL");
   const { db, pool } = createDrizzleDb(databaseUrl);
   const boss = new PgBoss({ connectionString: databaseUrl });
 

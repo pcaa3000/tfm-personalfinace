@@ -14,6 +14,7 @@ import {
   type HonoEnv,
 } from "../middleware/auth.js";
 import { HttpError } from "../middleware/errors.js";
+import { sanitizeZodIssues } from "../middleware/zod-details.js";
 
 // Zod schemas are copied verbatim from the Nest CurrenciesController so
 // validation envelopes (INVALID_BODY + details) stay identical.
@@ -75,7 +76,7 @@ export function registerCurrencyRoutes(
       throw new HttpError(400, {
         code: "INVALID_BODY",
         message: "Invalid currency payload",
-        details: parsed.error.issues,
+        details: sanitizeZodIssues(parsed.error.issues),
       });
     }
 
@@ -98,7 +99,7 @@ export function registerCurrencyRoutes(
       throw new HttpError(400, {
         code: "INVALID_BODY",
         message: "Invalid currency revision payload",
-        details: parsed.error.issues,
+        details: sanitizeZodIssues(parsed.error.issues),
       });
     }
 

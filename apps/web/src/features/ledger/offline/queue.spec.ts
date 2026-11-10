@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { inputFixture } from "./fixtures";
+import { setAccessTokenProvider } from "../api";
+import { inputFixture, jwtFixture } from "./fixtures";
 import {
+  clearPendingTransactions,
   enqueueTransaction,
   ledgerDb,
   listPendingTransactions,
@@ -10,6 +12,7 @@ import {
 } from "./queue";
 
 beforeEach(async () => {
+  setAccessTokenProvider(null);
   await ledgerDb.pendingTransactions.clear();
 });
 
@@ -38,6 +41,32 @@ describe("offline queue", () => {
     const input = inputFixture();
     await enqueueTransaction(input);
     await removePendingTransaction(input.idempotencyKey);
+
+    expect(await listPendingTransactions()).toHaveLength(0);
+  });
+
+  // GAP-SEC-08 (S6): every queued item is bound to the identity that
+  // created it, so sync can refuse to drain it under another session.
+  it("stamps the current caller subject on the queued item", async () => {
+    setAccessTokenProvider(async () => jwtFixture("user-a"));
+    await enqueueTransaction(inputFixture());
+
+    const [item] = await listPendingTransactions();
+    expect(item?.ownerSubject).toBe("user-a");
+  });
+
+  it("leaves ownerSubject null with no identity provider (dev bypass)", async () => {
+    await enqueueTransaction(inputFixture());
+
+    const [item] = await listPendingTransactions();
+    expect(item?.ownerSubject).toBeNull();
+  });
+
+  it("clearPendingTransactions empties the outbox", async () => {
+    await enqueueTransaction(inputFixture());
+    await enqueueTransaction(inputFixture());
+
+    await clearPendingTransactions();
 
     expect(await listPendingTransactions()).toHaveLength(0);
   });

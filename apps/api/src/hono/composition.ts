@@ -1,4 +1,10 @@
-import { createApp, type HonoDeps } from "./app.js";
+import {
+  createApp,
+  DEFAULT_HTTP_SECURITY,
+  type HonoDeps,
+  type HttpSecurityConfig,
+} from "./app.js";
+import { requiredEnv } from "../env.js";
 import { createDrizzleDb, type DrizzleDb } from "../drizzle/db.js";
 import { DevHeaderCallerResolver } from "../modules/identity-workspace/infrastructure/http/dev-header-caller.resolver.js";
 import { JwtCallerResolver } from "../modules/identity-workspace/infrastructure/http/jwt-caller.resolver.js";
@@ -48,6 +54,7 @@ export interface AppEnv {
     readonly audience: string;
     readonly jwksUri: string;
   };
+  readonly security: HttpSecurityConfig;
 }
 
 export interface BuiltApp {
@@ -127,7 +134,7 @@ export function buildApp(env: AppEnv): BuiltApp {
   };
 
   return {
-    app: createApp(deps),
+    app: createApp(deps, env.security),
     db,
     close: async () => {
       await pool.end();
@@ -135,12 +142,61 @@ export function buildApp(env: AppEnv): BuiltApp {
   };
 }
 
-/** Convenience env builder for main.ts; e2e helpers pass explicit values. */
+/** HTTP hardening config (S4/S5): env-driven with dev-safe defaults. */
+function securityFromProcess(): HttpSecurityConfig {
+  const corsOrigins = process.env.CORS_ORIGINS?.split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+  return {
+    corsOrigins:
+      corsOrigins && corsOrigins.length > 0
+        ? corsOrigins
+        : DEFAULT_HTTP_SECURITY.corsOrigins,
+    bodyLimitBytes: DEFAULT_HTTP_SECURITY.bodyLimitBytes,
+    rateLimit: {
+      max: parsePositiveInt(
+        "RATE_LIMIT_MAX",
+        process.env.RATE_LIMIT_MAX,
+        DEFAULT_HTTP_SECURITY.rateLimit.max,
+      ),
+      windowMs: parsePositiveInt(
+        "RATE_LIMIT_WINDOW_MS",
+        process.env.RATE_LIMIT_WINDOW_MS,
+        DEFAULT_HTTP_SECURITY.rateLimit.windowMs,
+      ),
+    },
+  };
+}
+
+/**
+ * Positive-int env parse (R3-rate-limit-env-unvalidated): an explicit
+ * misconfiguration must fail fast at boot — NaN or non-positive values
+ * would silently disable the limiter or make windows never expire.
+ */
+function parsePositiveInt(
+  name: string,
+  raw: string | undefined,
+  fallback: number,
+): number {
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer, got ${JSON.stringify(raw)}`);
+  }
+  return value;
+}
+
+/**
+ * Convenience env builder for main.ts; e2e helpers pass explicit values.
+ * GAP-SEC-01 (S3): AUTH_MODE fails closed — anything other than the
+ * explicit "dev" or "oidc" throws at boot. NEW-SEC-13 (S8): DATABASE_URL
+ * is required, no localhost fallback.
+ */
 export function envFromProcess(): AppEnv {
-  const databaseUrl =
-    process.env.DATABASE_URL ??
-    "postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance";
-  if (process.env.AUTH_MODE === "oidc") {
+  const databaseUrl = requiredEnv("DATABASE_URL");
+  const security = securityFromProcess();
+  const authMode = process.env.AUTH_MODE;
+  if (authMode === "oidc") {
     const required = (name: string): string => {
       const value = process.env[name];
       if (!value) {
@@ -151,6 +207,7 @@ export function envFromProcess(): AppEnv {
     return {
       databaseUrl,
       authMode: "oidc",
+      security,
       oidc: {
         issuer: required("OIDC_ISSUER"),
         audience: required("OIDC_AUDIENCE"),
@@ -158,5 +215,12 @@ export function envFromProcess(): AppEnv {
       },
     };
   }
-  return { databaseUrl, authMode: "dev" };
+  if (authMode === "dev") {
+    return { databaseUrl, authMode: "dev", security };
+  }
+  throw new Error(
+    `AUTH_MODE must be "dev" or "oidc"; got ${
+      authMode === undefined ? "unset" : JSON.stringify(authMode)
+    }`,
+  );
 }

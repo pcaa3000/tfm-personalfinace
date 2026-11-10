@@ -36,6 +36,7 @@ beforeEach(() => {
   vi.mocked(syncPendingTransactions).mockReset();
   vi.mocked(syncPendingTransactions).mockResolvedValue({
     synced: 0,
+    dropped: 0,
     remaining: 0,
   });
 });
@@ -59,6 +60,7 @@ describe("usePendingSync", () => {
   it("invalidates the ledger and pending queries when items were synced", async () => {
     vi.mocked(syncPendingTransactions).mockResolvedValue({
       synced: 2,
+      dropped: 0,
       remaining: 0,
     });
     const { invalidate, wrapper } = setup();
@@ -74,7 +76,28 @@ describe("usePendingSync", () => {
   it("invalidates only the pending query when items remain queued", async () => {
     vi.mocked(syncPendingTransactions).mockResolvedValue({
       synced: 0,
+      dropped: 0,
       remaining: 1,
+    });
+    const { invalidate, wrapper } = setup();
+
+    renderHook(() => usePendingSync(), { wrapper });
+
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: PENDING_QUERY_KEY });
+    });
+    expect(invalidate).not.toHaveBeenCalledWith({
+      queryKey: ["transactions"],
+    });
+  });
+
+  // GAP-SEC-08 (S6): foreign-identity items dropped by sync still
+  // change the outbox, so the pending list must refresh.
+  it("invalidates the pending query when foreign items were dropped", async () => {
+    vi.mocked(syncPendingTransactions).mockResolvedValue({
+      synced: 0,
+      dropped: 2,
+      remaining: 0,
     });
     const { invalidate, wrapper } = setup();
 

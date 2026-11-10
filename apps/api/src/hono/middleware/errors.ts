@@ -42,6 +42,9 @@ export function httpErrorHandler(): ErrorHandler<HonoEnv> {
           : 400;
       return c.json({ code: err.code, message: err.message }, status);
     }
+    // NEW-SEC-12 (S7): unknown exceptions leave a forensic trail; the
+    // client still gets the generic envelope that leaks nothing.
+    console.error("[api] unhandled error:", err);
     return c.json(
       { code: "INTERNAL_ERROR", message: "Internal server error" },
       500,

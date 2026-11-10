@@ -11,11 +11,22 @@ vi.mock("./supabase", () => ({
   isAuthBypassed,
 }));
 
+import { queryClient } from "../../query-client";
+import { setAccessTokenProvider } from "../ledger/api";
+import { inputFixture } from "../ledger/offline/fixtures";
+import {
+  enqueueTransaction,
+  ledgerDb,
+  listPendingTransactions,
+} from "../ledger/offline/queue";
 import { AuthProvider, useAuth } from "./auth";
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   isAuthBypassed.mockReturnValue(false);
+  setAccessTokenProvider(null);
+  queryClient.clear();
+  await ledgerDb.pendingTransactions.clear();
 });
 
 function makeClient(overrides: Record<string, unknown> = {}) {
@@ -299,6 +310,70 @@ describe("AuthProvider", () => {
     await waitFor(() => {
       expect(caught).toBe(failure);
     });
+  });
+
+  // GAP-SEC-08 (S6): on a shared browser nothing of identity A may
+  // survive logout — the Dexie outbox and the React Query cache are
+  // wiped together with the session.
+  it("signOut clears the offline queue and the React Query cache", async () => {
+    isAuthConfigured.mockReturnValue(true);
+    const session = {
+      access_token: "tok-9",
+      user: { id: "u-9", email: "di@example.com" },
+    };
+    const client = makeClient({
+      getSession: vi.fn(async () => ({ data: { session }, error: null })),
+    });
+    getSupabaseClient.mockReturnValue(client);
+    setAccessTokenProvider(null);
+    await enqueueTransaction(inputFixture({ idempotencyKey: "queued-1" }));
+    queryClient.setQueryData(["transactions"], [{ id: "cached" }]);
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("email").textContent).toBe("di@example.com");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "logout" }));
+
+    await waitFor(() => {
+      expect(client.auth.signOut).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(async () => {
+      expect(await listPendingTransactions()).toHaveLength(0);
+    });
+    expect(queryClient.getQueryData(["transactions"])).toBeUndefined();
+  });
+
+  it("signOut keeps the offline queue and cache when the auth call returns an error (S6)", async () => {
+    // supabase-js signOut resolves {error} on server 5xx — it does not
+    // throw. The session is still valid, so queued financial data and
+    // the cache must NOT be destroyed.
+    isAuthConfigured.mockReturnValue(true);
+    const session = {
+      access_token: "tok-err",
+      user: { id: "u-err", email: "e@example.com" },
+    };
+    const client = makeClient({
+      getSession: vi.fn(async () => ({ data: { session }, error: null })),
+      signOut: vi.fn(async () => ({ error: new Error("server error") })),
+    });
+    getSupabaseClient.mockReturnValue(client);
+    setAccessTokenProvider(null);
+    await enqueueTransaction(inputFixture({ idempotencyKey: "keep-me" }));
+    queryClient.setQueryData(["transactions"], [{ id: "cached" }]);
+
+    renderProvider();
+    await waitFor(() => {
+      expect(screen.getByTestId("email").textContent).toBe("e@example.com");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "logout" }));
+
+    await waitFor(() => {
+      expect(client.auth.signOut).toHaveBeenCalledTimes(1);
+    });
+    expect(await listPendingTransactions()).toHaveLength(1);
+    expect(queryClient.getQueryData(["transactions"])).toBeDefined();
   });
 
   it("signOut clears the session through the auth client", async () => {

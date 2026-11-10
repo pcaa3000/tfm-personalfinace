@@ -127,3 +127,142 @@ describe("hono app shell", () => {
     });
   });
 });
+
+describe("HTTP hardening (S4 — GAP-SEC-02)", () => {
+  it("sets security headers on every response", async () => {
+    const app = createApp(makeDeps());
+    const res = await app.request("/health");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+    expect(res.headers.get("strict-transport-security")).toContain(
+      "max-age=",
+    );
+  });
+
+  it("reflects only allowlisted origins", async () => {
+    const app = createApp(makeDeps(), {
+      corsOrigins: ["https://app.example.com"],
+    });
+
+    const allowed = await app.request("/api/v1/balance", {
+      headers: { origin: "https://app.example.com" },
+    });
+    expect(allowed.headers.get("access-control-allow-origin")).toBe(
+      "https://app.example.com",
+    );
+
+    const rejected = await app.request("/api/v1/balance", {
+      headers: { origin: "https://evil.example.com" },
+    });
+    expect(rejected.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("answers CORS preflight for allowlisted origins", async () => {
+    const app = createApp(makeDeps(), {
+      corsOrigins: ["https://app.example.com"],
+    });
+    const res = await app.request("/api/v1/transactions", {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://app.example.com",
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type,authorization",
+      },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe(
+      "https://app.example.com",
+    );
+  });
+
+  it("rejects oversized write bodies with a 413 envelope", async () => {
+    const app = createApp(makeDeps(), { bodyLimitBytes: 64 });
+    const res = await app.request("/api/v1/transactions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ concept: "x".repeat(200) }),
+    });
+    expect(res.status).toBe(413);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("PAYLOAD_TOO_LARGE");
+  });
+});
+
+describe("rate limiting on writes (S5 — GAP-SEC-05)", () => {
+  it("returns 429 RATE_LIMITED once the configured max is exceeded", async () => {
+    const app = createApp(makeDeps(), {
+      rateLimit: { max: 2, windowMs: 60_000 },
+    });
+    const post = () =>
+      app.request("/api/v1/transactions", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-for": "203.0.113.99",
+        },
+        body: JSON.stringify({}),
+      });
+
+    await post();
+    await post();
+    const res = await post();
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({
+      code: "RATE_LIMITED",
+      message: "Too many requests",
+    });
+  });
+
+  it("does not rate-limit read requests", async () => {
+    const app = createApp(makeDeps(), {
+      rateLimit: { max: 1, windowMs: 60_000 },
+    });
+    for (let i = 0; i < 3; i++) {
+      const res = await app.request("/api/v1/balance");
+      expect(res.status).toBe(200);
+    }
+  });
+});
+
+describe("error hardening (S7 — NEW-SEC-12 + GAP-SEC-04)", () => {
+  it("logs unknown exceptions before the generic 500 envelope", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const deps = makeDeps();
+      deps.listNotifications.execute.mockRejectedValue(new Error("db down"));
+      const app = createApp(deps);
+      const res = await app.request("/api/v1/notifications");
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({
+        code: "INTERNAL_ERROR",
+        message: "Internal server error",
+      });
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("sanitizes zod details in 400 envelopes", async () => {
+    const app = createApp(makeDeps());
+    const res = await app.request("/api/v1/transactions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "expense" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as {
+      code: string;
+      details: Array<Record<string, unknown>>;
+    };
+    expect(body.code).toBe("INVALID_BODY");
+    expect(body.details.length).toBeGreaterThan(0);
+    for (const detail of body.details) {
+      expect(Object.keys(detail).sort()).toEqual([
+        "code",
+        "message",
+        "path",
+      ]);
+    }
+  });
+});

@@ -464,6 +464,7 @@ describe("LedgerPage pending sync (T7)", () => {
     enqueuedAt: "2026-10-05T10:00:00.000Z",
     attempts: 0,
     lastError: null,
+    ownerSubject: "user-a",
   };
 
   it("shows the pending count badge and marks queued rows", async () => {
