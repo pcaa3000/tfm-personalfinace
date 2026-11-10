@@ -35,6 +35,7 @@ separado que drena a pg-boss, y primer consumidor real (notificaciones).
 | T5 | Spec pipeline E2E + docs/06 + espejo Engram + cierre | S2 | inline | done | e2e `notifications.e2e.spec` + docs/02 jobs + 456 api verdes |
 | T6 | RDD review slice outbox: fix idempotencia consumidor (R3-001/R4-1) | S2 | inline | done | `62a2c71` · receipt `review-3b527839184d9e77` approved (9 advisories, 0 blocking) |
 | T7 | RDD review slice `1742b8e..HEAD`: fix legacy in-flight jobs sin `outboxEventId` (R3-001 deploy window) | S2 | inline | done | `d9c6744` · receipt `review-0e765bad3f2dbac7` approved (2 advisories, 0 blocking) |
+| T8 | RDD review slice `f0a9405..b9ea7b0` (cierre de cobertura del PR): 2 CRITICAL — R3-drain-send-inside-tx (send dentro de la tx → poison pill aborta el batch y stall permanente del pipeline) + R4-001 (consumidor sin dedup → duplicados en redelivery). Fix: try/catch por fila en el drain (fila fallida queda pending, resto del batch commitea) + `outboxEventId`/`onConflictDoNothing` portado | S2 | inline | done | `83abdb5` (slice worktree) → portado `a6139d6` · spec poison-row RED→GREEN 6/6 · receipt `review-80633cd4e223f6d1` approved (11 advisories, 0 blocking) |
 
 ## Log
 
@@ -106,3 +107,20 @@ separado que drena a pg-boss, y primer consumidor real (notificaciones).
   normal de repo). Nota: este R3-001 es distinto del R3-001 de la slice anterior
   (`review-3b527839184d9e77`): aquel era la falta de dedup en el insert; este es la
   ventana de compatibilidad del propio fix.
+- **T8** done (2026-11-09): slice 5b del cierre de cobertura RDD del PR
+  (`f0a9405..b9ea7b0`, 36 files / 1.928 líneas, tier medium, worktree
+  `.atl/slice-b9ea7b0`, lineage `review-80633cd4e223f6d1`, lentes
+  risk/resilience/reliability). 2 CRITICAL confirmados por refuter:
+  **R3-drain-send-inside-tx** (determinístico — `dispatcher.send` dentro de la tx
+  de marcado: abort del batch → resend de ya enviados + poison-pill stall
+  permanente del pipeline) y **R4-001** (inferencial — consumidor minteaba
+  randomUUID sin dedup → notificaciones duplicadas en redelivery). Corrección
+  acotada (120 líneas planificadas): drain gana try/catch por fila (fila fallida
+  queda pending, batch sigue) + job `outboxEventId` + consumidor
+  `id=outboxEventId ?? randomUUID()` con `onConflictDoNothing()` (port de
+  `62a2c71`/`d9c6744` — este slice precede esos fixes) + spec poison-row.
+  GREEN 6/6 en worktree. Targeted validator aprobó → **approved** (11 advisories
+  no bloqueantes: R1-001/002, R3-*, R4-002..005 — warnings en `worker.ts` y
+  `drizzle-notification.repository.ts`, trabajo aparte). El per-row skip se
+  portó a la rama como `a6139d6` (el drain de HEAD tenía el mismo hueco);
+  dedup ya existía allí.
