@@ -52,3 +52,9 @@ Branch: `feature/deploy-mvp`
   barato), el placeholder `API_HOST` de netlify.toml (ya documentado), y
   `plan: starter` del worker vs el comentario free-tier (ambos señalados
   en docs/08).
+- L5 (2026-11-10): "aplica el user mode, cambie la imagen del dockerfile a
+  lts-apline" — advisory R1-docker-runner-root aplicado: runner usa
+  `node:lts-alpine` + `USER node` (+`--chown=node:node` en el COPY).
+  `corepack` no existe en alpine → pnpm@12.15.0 pineado vía `npm i -g`.
+  Rebuild OK; verificado en imagen: `whoami` = node, Node v26.13.0, guard
+  AUTH_MODE=dev+prod dispara igual. Imagen ~577MB.
