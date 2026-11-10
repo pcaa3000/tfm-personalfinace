@@ -1,0 +1,58 @@
+# Render blueprint (S2, deploy-mvp) — https://render.com/docs/blueprint-spec
+# Two processes off the SAME image: the HTTP API and the outbox/pg-boss
+# worker. Apply with: New + -> Blueprint -> this repo.
+
+services:
+  # --- HTTP API ---
+  - type: web
+    name: tfm-api
+    runtime: docker
+    dockerfilePath: apps/api/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_MODE
+        value: oidc
+      - key: OIDC_ISSUER
+        sync: false          # https://<project>.supabase.co/auth/v1
+      - key: OIDC_AUDIENCE
+        value: authenticated
+      - key: OIDC_JWKS_URI
+        sync: false          # https://<project>.supabase.co/auth/v1/.well-known/jwks.json
+      - key: DATABASE_URL
+        sync: false          # Supabase SESSION-mode pooler (port 5432) + sslmode=require — see docs/08
+      - key: CORS_ORIGINS
+        sync: false          # not needed while Netlify proxies /api; set to the Netlify domain if the SPA ever calls the API cross-origin
+      - key: RATE_LIMIT_MAX
+        value: "60"
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: RATE_LIMIT_READ_MAX
+        value: "240"
+      - key: RATE_LIMIT_READ_WINDOW_MS
+        value: "60000"
+      - key: PORT
+        value: "3000"        # Render injects its own PORT; app already honors it
+
+  # --- Outbox worker (pg-boss consumer) ---
+  # Free tier caveat: Render charges for background workers. Options for
+  # MVP-free: run this exact image as a Koyeb/Fly instance with the same
+  # start command, or defer it — the worker only materializes ledger
+  # notifications (outbox rows accumulate safely until it runs).
+  - type: worker
+    name: tfm-worker
+    runtime: docker
+    dockerfilePath: apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: node dist/src/worker.js
+    plan: starter            # see caveat above
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false          # same session-mode pooler URL as the API
+      - key: WORKER_DRAIN_MS
+        value: "2000"
