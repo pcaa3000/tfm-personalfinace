@@ -107,6 +107,13 @@ export interface E2eApp {
 }
 
 export async function bootApp(): Promise<E2eApp> {
+  // S3/S8/S5: envFromProcess now fails closed — e2e defaults are explicit:
+  // dev auth (specs send x-dev-user per request, or AUTH_MODE=oidc), the
+  // docker DATABASE_URL fallback of this helper, and a rate limit high
+  // enough that the write-heavy e2e flows never trip it.
+  process.env.DATABASE_URL ??= DATABASE_URL;
+  process.env.AUTH_MODE ??= "dev";
+  process.env.RATE_LIMIT_MAX ??= "100000";
   const built = buildApp(envFromProcess());
   const server = serve({ fetch: built.app.fetch, port: 0 });
   const address = server.address() as AddressInfo;

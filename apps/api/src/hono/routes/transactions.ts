@@ -17,6 +17,7 @@ import {
   type HonoEnv,
 } from "../middleware/auth.js";
 import { HttpError } from "../middleware/errors.js";
+import { sanitizeZodIssues } from "../middleware/zod-details.js";
 
 // Zod schemas are copied verbatim from the Nest TransactionsController so
 // validation envelopes (INVALID_BODY / INVALID_QUERY + details) stay identical.
@@ -92,7 +93,7 @@ export function registerTransactionRoutes(
       throw new HttpError(400, {
         code: "INVALID_BODY",
         message: "Invalid transaction payload",
-        details: parsed.error.issues,
+        details: sanitizeZodIssues(parsed.error.issues),
       });
     }
 
@@ -131,7 +132,7 @@ export function registerTransactionRoutes(
       throw new HttpError(400, {
         code: "INVALID_QUERY",
         message: "Invalid list filters",
-        details: parsed.error.issues,
+        details: sanitizeZodIssues(parsed.error.issues),
       });
     }
 
@@ -163,7 +164,7 @@ export function registerTransactionRoutes(
       throw new HttpError(400, {
         code: "INVALID_BODY",
         message: "Invalid revision payload",
-        details: parsed.error.issues,
+        details: sanitizeZodIssues(parsed.error.issues),
       });
     }
 

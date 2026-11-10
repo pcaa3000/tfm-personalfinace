@@ -13,6 +13,7 @@ import {
   type HonoEnv,
 } from "../middleware/auth.js";
 import { HttpError } from "../middleware/errors.js";
+import { sanitizeZodIssues } from "../middleware/zod-details.js";
 
 // Zod schemas are copied verbatim from the Nest AccountsController so
 // validation envelopes (INVALID_BODY + details) stay identical.
@@ -95,7 +96,7 @@ export function registerAccountRoutes(
       throw new HttpError(400, {
         code: "INVALID_BODY",
         message: "Invalid account payload",
-        details: parsed.error.issues,
+        details: sanitizeZodIssues(parsed.error.issues),
       });
     }
     const { workspace } = authContext(c);
@@ -122,7 +123,7 @@ export function registerAccountRoutes(
       throw new HttpError(400, {
         code: "INVALID_BODY",
         message: "Invalid account revision payload",
-        details: parsed.error.issues,
+        details: sanitizeZodIssues(parsed.error.issues),
       });
     }
     const { workspace } = authContext(c);
