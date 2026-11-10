@@ -1,6 +1,6 @@
 # Brechas de seguridad — auditoría OWASP Top 10:2025
 
-Fecha de auditoría: 2026-11-01 · Alcance: revisión estática del diseño (`docs/05-seguridad-privacidad.md`, `docs/02`) contra el código vigente de `apps/api` y `apps/web` en la rama `feature/ledger-income-expenses`. No incluye pruebas dinámicas, pentesting ni revisión de infraestructura de despliegue. Este documento complementa a `docs/05`; no lo reemplaza.
+Fecha de auditoría: 2026-11-01 · Re-auditoría: 2026-11-10 (post-merge PR #1 — ver `## Re-auditoría 2026-11-10` para el estado vigente) · Alcance: revisión estática del diseño (`docs/05-seguridad-privacidad.md`, `docs/02`) contra el código vigente de `apps/api` y `apps/web` en la rama `feature/ledger-income-expenses`. No incluye pruebas dinámicas, pentesting ni revisión de infraestructura de despliegue. Este documento complementa a `docs/05`; no lo reemplaza.
 
 ## Resumen por categoría
 
@@ -77,3 +77,49 @@ Funcionalidades de seguridad diseñadas en `docs/05` pero aún sin feature asoci
 - OWASP Top 10:2025 — https://owasp.org/Top10/2025/
 - `docs/05-seguridad-privacidad.md` — política de diseño: amenazas, controles y criterios de aceptación
 - `odd/tasks/ledger-income-expenses.md` — `T14` (esta auditoría), `L13`
+
+## Re-auditoría 2026-11-10 (estado vigente)
+
+Re-verificación estática sobre `main` post-merge del PR #1 (login web real, `VITE_AUTH_BYPASS` fail-closed, modos dev/qa, worker pg-boss + feed de notificaciones, módulos balance/currencies). Las rutas originales del doc referenciaban NestJS; el wiring vigente es `apps/api/src/hono/composition.ts`, `hono/app.ts`, `middleware/errors.ts`, `src/main.ts`.
+
+### Estado por brecha
+
+| ID | Estado 2026-11-10 | Evidencia |
+|---|---|---|
+| GAP-SEC-01 | **ABIERTA — bloqueante** | `hono/composition.ts` `envFromProcess`: cualquier `AUTH_MODE` ≠ `oidc` (incluida ausente) → `authMode:"dev"`; `dev-caller.ts` sin header → subject por defecto `dev-user`. T26 solo cerró el lado web. |
+| GAP-SEC-02 | **ABIERTA — bloqueante** | `hono/app.ts` sin `cors`/`secureHeaders`/`bodyLimit`; `main.ts` sin opciones de `serve`. |
+| GAP-SEC-03 | ABIERTA (programable) | Schemas `z.object` sin `.strict()` en todas las rutas — campos extra se eliminan en silencio. |
+| GAP-SEC-04 | PARCIAL → ABIERTA (programable) | Envelope 500 genérico ya existe (`middleware/errors.ts`), pero `details: parsed.error.issues` crudo en 9 sitios (transactions ×3, accounts ×2, categories ×2, currencies ×2? — ver NEW-12 además). |
+| GAP-SEC-05 | **ABIERTA — bloqueante** | Sin middleware de rate limiting en `apps/api/src`. |
+| GAP-SEC-06 | ABIERTA — peor | Solo `console.log/error`; sin logger estructurado ni eventos 401/404. Ver NEW-SEC-12. |
+| GAP-SEC-07 | ABIERTA — peor que lo documentado | No existe `.npmrc` ni `.github/workflows/` — no hay CI en absoluto, así que no hay gate de `pnpm audit` ni `minimum-release-age`. |
+| GAP-SEC-08 | **ABIERTA — bloqueante, ampliada** | `queue.ts` sin binding de workspace/sesión por ítem; `auth.tsx` `signOut` no vacía `pendingTransactions` ni el query cache de React Query (creado a nivel módulo en `App.tsx`) → segunda identidad en el mismo navegador drena transacciones ajenas y ve cache ajeno. |
+| GAP-SEC-09 | **CERRADA** | Login web real implementado: `supabase.ts` cliente PKCE, `auth.tsx` → `setAccessTokenProvider`, `api.ts` envía `Authorization: Bearer`; `VITE_AUTH_BYPASS` exige `import.meta.env.DEV && "true"` (fail-closed, T26); `AuthGate` muestra pantalla de misconfig. |
+| GAP-SEC-10 | ABIERTA (baja, sin cambio) | `GET /health` público `{status, service, timestamp}` — exposición mínima aceptable. |
+
+### Brechas nuevas
+
+| ID | OWASP | Severidad | Ubicación | Brecha |
+|---|---|---|---|---|
+| NEW-SEC-11 | A10/A02 | Media | `drizzle-notification.repository.ts` | `GET /api/v1/notifications` sin `LIMIT`/paginación — crece con cada evento de dominio; lecturas no acotadas por request (amplificado por GAP-05). |
+| NEW-SEC-12 | A09/A10 | Media | `middleware/errors.ts` | Excepciones desconocidas → 500 genérico **sin loguear `err`** — fallos silentes, sin rastro forense. |
+| NEW-SEC-13 | A02 | Baja | `hono/composition.ts`, `worker.ts` | `DATABASE_URL` con fallback silencioso a `postgresql://tfm:tfm-local-dev@localhost:5432/...` — despliegue mal configurado apunta a un default en vez de fallar rápido. |
+| NEW-SEC-14 | — | Info | `apps/api/package.json` script `qa` | Embebe project ref + JWKS URL de Supabase reales — metadata pública anon, no secreto; aceptable. |
+
+### Superficies nuevas verificadas limpias
+
+- `GET /api/v1/balance` y `GET /api/v1/notifications`: auth + workspace-scoped en consulta parametrizada.
+- Currencies CRUD: auth en las 5 rutas + scoping por workspace (hereda GAP-03/04 únicamente).
+- Worker pg-boss: `FOR UPDATE SKIP LOCKED`, at-least-once + `onConflictDoNothing` por `outboxEventId`.
+- Secretos: `apps/web` solo usa `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` (anon/publishable); ningún `service_role`/`DATABASE_URL` en web.
+
+### Veredicto de publicación
+
+**Bloqueantes que deben cerrarse antes de un deploy público** (en orden):
+1. **GAP-SEC-01** — auth fail-open descalifica: cualquier deploy sin `AUTH_MODE=oidc` regala el workspace `dev-user` a tráfico anónimo. Fail-closed en modo desconocido/ausente + sin subject por defecto.
+2. **GAP-SEC-02** — sin CORS allowlist (cualquier origen puede invocar la API con token filtrado) y sin límite de body (DoS de memoria trivial). Headers de seguridad en todas las respuestas.
+3. **GAP-SEC-05** — sin rate limiting en una API de escritura; con NEW-11 es el principal riesgo de disponibilidad.
+4. **GAP-SEC-08** — cola offline no ligada a identidad: en navegador compartido, una segunda sesión drena datos financieros ajenos. Vaciar `pendingTransactions` + query cache al `signOut`; ligar ítems al `workspaceId`.
+5. **NEW-SEC-12** — 500s invisibles: una línea junto a GAP-06.
+
+**Programables para MVP (no bloquean):** GAP-03, GAP-04 (barato, recomendado igual), GAP-06, GAP-07 (levantar CI básico + `pnpm audit`/`minimum-release-age` — la ausencia total de CI es en sí un flag pre-release), GAP-10, NEW-11 (cap de filas), NEW-13, NEW-14.
