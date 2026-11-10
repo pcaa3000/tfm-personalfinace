@@ -146,6 +146,7 @@ export function LedgerPage() {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ["transactions"] }),
       queryClient.invalidateQueries({ queryKey: PENDING_QUERY_KEY }),
+      queryClient.invalidateQueries({ queryKey: ["balance"] }),
     ]);
 
   const createMutation = useMutation({
@@ -180,6 +181,7 @@ export function LedgerPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      await queryClient.invalidateQueries({ queryKey: ["balance"] });
     },
   });
 
