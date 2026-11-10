@@ -58,3 +58,8 @@ Branch: `feature/deploy-mvp`
   `corepack` no existe en alpine → pnpm@12.15.0 pineado vía `npm i -g`.
   Rebuild OK; verificado en imagen: `whoami` = node, Node v26.13.0, guard
   AUTH_MODE=dev+prod dispara igual. Imagen ~577MB.
+- L6 (2026-11-10): RDD nativa del delta Dockerfile `review-5e0d0b25bcf1e538`
+  (lente risk, tier medium, 28 líneas). Resultado: **approved**, acknowledge
+  quemado. 2 advisories: tag mutable `node:lts-alpine` (considerar pin por
+  digest en hardening post-MVP) e install de pnpm sin verificación de
+  integridad (misma categoría — supply-chain follow-up).
