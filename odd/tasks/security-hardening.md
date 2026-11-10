@@ -73,3 +73,19 @@ Branch: `feature/security-hardening` (nueva, desde `main` post-merge PR #1)
   typecheck + lint + depcruise limpios.
   Slice boundary: código en 2 commits (api/web); delivery single PR
   `feature/security-hardening → main` (misma estrategia que PR #1).
+- L5 (2026-11-10): RDD nativa del candidato completo `review-af48a4536987a0e8`
+  (risk/resilience/reliability, tier high, 38 files / 1.089 líneas). El refuter
+  confirmó **5 CRITICAL** reales: (1) filas Dexie pre-upgrade (owner null) se
+  destruían bajo sesión real — fix: retener ítems no verificables (ni enviar ni
+  dropear); solo los comprobablemente ajenos se dropean; (2) `RATE_LIMIT_*` sin
+  validar — NaN deshabilita el limiter o congela ventanas → `parsePositiveInt`
+  fail-fast; (3) scripts `qa`/`worker` sin `DATABASE_URL` — regresión, ahora la
+  pasan; (4) map del limiter sin cap real bajo rotación de XFF — sweep expirados
+  + evict más viejo; (5) sin XFF todos caían al bucket "unknown" — fallback a
+  `getConnInfo` remote address. Corrección commiteada `98a98da` (RED observado
+  restaurando impl previa: api 2 + web 1 fallos → GREEN 503 api + 217 web).
+  Validador targeted aprobó → **approved**, 8 advisories no bloqueantes
+  (R1-* / R3-* / R4-003: password dev en scripts, raw-token en memoria,
+  XFF spoofable residual, partial-wipe de signOut). Autoridad quemada.
+  El resilience run inicial fue rechazado en admisión (binding_mismatch)
+  y re-ejecutado una vez — admitido.
