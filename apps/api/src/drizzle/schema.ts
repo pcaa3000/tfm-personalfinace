@@ -176,3 +176,46 @@ export const ledgerTransactionRevisions = pgTable(
     }).onDelete("cascade").onUpdate("cascade"),
   ],
 );
+
+/**
+ * Transactional outbox (worker-pgboss-outbox S1): domain events are
+ * inserted in the SAME transaction as the business write; a separate
+ * worker drains pending rows (`processedAt IS NULL`) into pg-boss.
+ */
+export const outboxEvents = pgTable(
+  "jobs_outbox_events",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspaceId").notNull(),
+    type: text("type").notNull(),
+    payload: jsonb("payload").notNull(),
+    occurredAt: timestamp("occurredAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+    processedAt: timestamp("processedAt", { mode: "date", precision: 3 }),
+  },
+  (table) => [
+    index("jobs_outbox_events_workspaceId_idx").on(table.workspaceId),
+    index("jobs_outbox_events_pending_idx").on(table.processedAt),
+  ],
+);
+
+/** Consumer output of the ledger-events queue (S2/S3). */
+export const notifications = pgTable(
+  "notifications_notifications",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspaceId").notNull(),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("notifications_notifications_workspaceId_idx").on(
+      table.workspaceId,
+    ),
+  ],
+);

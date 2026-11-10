@@ -6,7 +6,10 @@ import {
   WorkspaceId,
   type Result,
 } from "../../shared-kernel/index.js";
-import type { AccountRepositoryPort } from "../application/ports/account-repository.port.js";
+import type {
+  AccountListOptions,
+  AccountRepositoryPort,
+} from "../application/ports/account-repository.port.js";
 import { Account, type AccountKind } from "../domain/account.js";
 import { accounts } from "../../../drizzle/schema.js";
 import type { DrizzleDb } from "../../../drizzle/db.js";
@@ -68,14 +71,17 @@ export class DrizzleAccountRepository implements AccountRepositoryPort {
       });
   }
 
-  async list(workspaceId: WorkspaceId): Promise<Account[]> {
+  async list(
+    workspaceId: WorkspaceId,
+    options?: AccountListOptions,
+  ): Promise<Account[]> {
     const rows = await this.db
       .select()
       .from(accounts)
       .where(
         and(
           eq(accounts.workspaceId, workspaceId.value),
-          isNull(accounts.archivedAt),
+          options?.includeArchived ? undefined : isNull(accounts.archivedAt),
         ),
       )
       .orderBy(asc(accounts.createdAt));
@@ -103,6 +109,7 @@ export class DrizzleAccountRepository implements AccountRepositoryPort {
   async findById(
     workspaceId: WorkspaceId,
     accountId: string,
+    options?: AccountListOptions,
   ): Promise<Account | null> {
     const rows = await this.db
       .select()
@@ -111,7 +118,7 @@ export class DrizzleAccountRepository implements AccountRepositoryPort {
         and(
           eq(accounts.id, accountId),
           eq(accounts.workspaceId, workspaceId.value),
-          isNull(accounts.archivedAt),
+          options?.includeArchived ? undefined : isNull(accounts.archivedAt),
         ),
       )
       .limit(1);

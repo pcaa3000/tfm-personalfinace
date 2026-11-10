@@ -168,3 +168,62 @@ describe("AccountsDialog (S12-1, S12-2)", () => {
     expect(onArchive).toHaveBeenCalledWith("acc-1");
   });
 });
+
+describe("archived accounts (T25)", () => {
+  const archivedAccount: AccountView = {
+    id: "acc-old",
+    workspaceId: "ws-1",
+    name: "Cuenta vieja",
+    currency: "PEN",
+    kind: "bank",
+    initialBalance: "10.00",
+    archivedAt: "2026-10-01T00:00:00.000Z",
+  };
+
+  it("shows archived accounts in their own section without edit/archive actions", () => {
+    renderDialog();
+
+    render(
+      <AccountsDialog
+        open
+        accounts={[archivedAccount]}
+        currencies={["PEN"]}
+        submitting={false}
+        error={null}
+        onClose={vi.fn()}
+        onCreate={vi.fn()}
+        onRevise={vi.fn()}
+        onArchive={vi.fn()}
+        onUnarchive={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Archivadas")).toBeTruthy();
+    expect(screen.getByText("Cuenta vieja")).toBeTruthy();
+    const section = screen.getByText("Cuenta vieja").closest("li")!;
+    expect(within(section).queryByText("Archivar")).toBeNull();
+    expect(within(section).getByText("Restaurar")).toBeTruthy();
+  });
+
+  it("restore button calls onUnarchive with the account id", () => {
+    const onUnarchive = vi.fn();
+    render(
+      <AccountsDialog
+        open
+        accounts={[archivedAccount]}
+        currencies={["PEN"]}
+        submitting={false}
+        error={null}
+        onClose={vi.fn()}
+        onCreate={vi.fn()}
+        onRevise={vi.fn()}
+        onArchive={vi.fn()}
+        onUnarchive={onUnarchive}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Restaurar"));
+
+    expect(onUnarchive).toHaveBeenCalledWith("acc-old");
+  });
+});

@@ -38,6 +38,7 @@ import {
   ledgerTransactions,
 } from "../../../../drizzle/schema.js";
 import type { DrizzleDb } from "../../../../drizzle/db.js";
+import { insertOutboxEvent } from "../../../../drizzle/outbox.js";
 
 type TransactionRow = typeof ledgerTransactions.$inferSelect;
 type RevisionRow = typeof ledgerTransactionRevisions.$inferSelect;
@@ -218,6 +219,25 @@ export class DrizzleTransactionRepository implements TransactionRepositoryPort {
           })
           .onConflictDoNothing();
       }
+      // Transactional outbox (worker-pgboss T2/S1): the event commits or
+      // rolls back with the business write — the worker drains it later.
+      await insertOutboxEvent(tx, {
+        workspaceId: transaction.workspaceId.value,
+        type:
+          transaction.status === "voided"
+            ? "transaction.voided"
+            : transaction.revisions.length > 0
+              ? "transaction.revised"
+              : "transaction.confirmed",
+        payload: {
+          transactionId: transaction.id,
+          type: transaction.type,
+          concept: transaction.concept,
+          amount: transaction.amount.toDecimalString(),
+          currency: transaction.amount.currency.code,
+          businessDate: transaction.businessDate.isoDate,
+        },
+      });
     });
   }
 

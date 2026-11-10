@@ -1,5 +1,6 @@
 import type {
   AccountView,
+  BalanceItemView,
   CategoryView,
   CreateAccountInput,
   CreateCategoryInput,
@@ -30,9 +31,28 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Injectable bearer-token provider (T6-web). The auth module wires it to
+ * the current Supabase session; dev mode (no provider) sends no header.
+ */
+export type AccessTokenProvider = () => Promise<string | null>;
+
+let accessTokenProvider: AccessTokenProvider | null = null;
+
+export function setAccessTokenProvider(
+  provider: AccessTokenProvider | null,
+): void {
+  accessTokenProvider = provider;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = accessTokenProvider ? await accessTokenProvider() : null;
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (token) headers.authorization = `Bearer ${token}`;
   const response = await fetch(`${BASE}${path}`, {
-    headers: { "content-type": "application/json" },
+    headers,
     ...init,
   });
   const payload = (await response.json().catch(() => null)) as
@@ -50,6 +70,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(code, message, response.status);
   }
   return payload as T;
+}
+
+/** `GET /api/v1/balance` — per-currency aggregates for the strip (T24). */
+export function fetchBalance(): Promise<BalanceItemView[]> {
+  return request<BalanceItemView[]>("/balance");
 }
 
 export function createTransaction(input: CreateTransactionInput): Promise<TransactionView> {
@@ -81,8 +106,11 @@ export function listTransactions(
   return request<TransactionView[]>(`/transactions${qs ? `?${qs}` : ""}`);
 }
 
-export function listAccounts(): Promise<AccountView[]> {
-  return request<AccountView[]>("/accounts");
+export function listAccounts(options?: {
+  includeArchived?: boolean;
+}): Promise<AccountView[]> {
+  const qs = options?.includeArchived ? "?includeArchived=true" : "";
+  return request<AccountView[]>(`/accounts${qs}`);
 }
 export function createAccount(input: CreateAccountInput): Promise<AccountView> {
   return request<AccountView>("/accounts", {
@@ -102,6 +130,13 @@ export function reviseAccount(
 export function archiveAccount(id: string): Promise<AccountView> {
   return request<AccountView>(`/accounts/${id}/archive`, {
     method: "POST",
+  });
+}
+/** Restores an archived account — PATCH {archived:false} (T25). */
+export function unarchiveAccount(id: string): Promise<AccountView> {
+  return request<AccountView>(`/accounts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ archived: false }),
   });
 }
 export function listCurrencies(): Promise<CurrencyView[]> {

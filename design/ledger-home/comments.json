@@ -113,6 +113,73 @@
       "status": "resolved",
       "sentAt": "2026-11-04T03:55:09.543Z",
       "resolvedAt": "2026-11-04T03:56:02.415Z"
+    },
+    {
+      "id": "buvqk584",
+      "file": "04-hybrid.html",
+      "selector": "#main > section > div:nth-of-type(1) > button:nth-of-type(1)",
+      "excerpt": "Ingreso",
+      "comment": "Para modo de PC, esto no es funcional y ocupa espacio, retiralo",
+      "createdAt": "2026-11-04T04:11:37.704Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T04:19:32.886Z",
+      "resolvedAt": "2026-11-04T04:20:37.569Z"
+    },
+    {
+      "id": "5g02p66c",
+      "file": "04-hybrid.html",
+      "selector": "#main > div > div:nth-of-type(4) > article:nth-of-type(1)",
+      "excerpt": "PEN BCP Soles · Efectivo INGRESOS S/ ••• GASTOS S/ ••• SALDO ACTUAL S/ ••• inicial S/ •••",
+      "comment": "El degradado esta ok, solo le puedes agregar que empice un poco mas ocuro y aplicar esto a baners y headers, como la imagen de referencia.",
+      "createdAt": "2026-11-04T04:19:16.950Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T04:19:32.886Z",
+      "resolvedAt": "2026-11-04T04:20:37.569Z",
+      "screenshot": ".screenshots/5g02p66c.png"
+    },
+    {
+      "id": "802wo17f",
+      "file": "04-hybrid.html",
+      "selector": "#main > div > div:nth-of-type(4) > article:nth-of-type(2)",
+      "excerpt": "USD Interbank Dólares INGRESOS $ ••• GASTOS $ ••• SALDO ACTUAL $ ••• inicial $ •••",
+      "comment": "Esta card también deberia tener un degradado similar a la otra card, obviavemente respetando su color",
+      "createdAt": "2026-11-04T04:25:17.577Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T04:25:17.589Z",
+      "resolvedAt": "2026-11-04T04:25:47.589Z"
+    },
+    {
+      "id": "87mrh4zs",
+      "file": "04-hybrid.html",
+      "selector": "#main > section > div:nth-of-type(1)",
+      "excerpt": "Ingreso Gasto Transferencia Ver todo",
+      "comment": "Retira esto ya que tiene la misma funcionalidad que boton de abajo para agregar una nueva transacción.",
+      "createdAt": "2026-11-04T04:40:41.473Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T04:40:41.482Z",
+      "resolvedAt": "2026-11-04T04:41:15.764Z"
+    },
+    {
+      "id": "17rcp1fi",
+      "file": "04-hybrid.html",
+      "selector": "#main > div > form",
+      "excerpt": "Noviembre 2026 Rango Tipo: Todos Moneda: Todas ⌕ Buscar",
+      "comment": "Los filtros debería verse completos en la pantalla sin necesidad de scrollear a los costados. ajusta esto.",
+      "createdAt": "2026-11-04T04:46:42.717Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T04:46:42.729Z",
+      "resolvedAt": "2026-11-04T04:47:13.371Z"
+    },
+    {
+      "id": "kant6nal",
+      "file": "04-hybrid.html",
+      "selector": "#main > div > div:nth-of-type(4)",
+      "excerpt": "PEN BCP Soles · Efectivo INGRESOS S/ ••• GASTOS S/ ••• SALDO ACTUAL S/ ••• inicial S/ ••• USD Interbank Dólares INGRESOS $ ••• GASTOS $ ••• SALDO ACTUAL $ ••• inicial $ •••",
+      "comment": "Estas cards deberian estar en carusel y centrada y mantenerse en una linea, desde PC, tablet, mobile, etc.",
+      "createdAt": "2026-11-04T05:10:28.300Z",
+      "status": "resolved",
+      "sentAt": "2026-11-04T05:10:28.311Z",
+      "resolvedAt": "2026-11-04T05:12:15.511Z"
     }
   ]
 }

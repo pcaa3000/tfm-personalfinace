@@ -5,7 +5,7 @@ La propuesta utiliza TypeScript en web y API, PostgreSQL como fuente de verdad y
 ## Decisión
 
 - **Frontend:** React y Vite como PWA estática desplegable de forma independiente, con cola local offline sobre IndexedDB.
-- **Backend:** Hono sobre Node.js LTS; API REST y worker comparten **un solo proceso** en el MVP (módulos separados, mismo despliegue). Decisión revisada tras un spike con evidencia (ver "Cambio de stack" más abajo): la composición explícita reemplaza al contenedor DI de NestJS.
+- **Backend:** Hono sobre Node.js LTS; la API REST corre en `src/main.ts` y el worker de jobs en `src/worker.ts` como **procesos separados** sobre la misma DB (ver "Jobs asíncronos"). Decisión revisada tras un spike con evidencia (ver "Cambio de stack" más abajo): la composición explícita reemplaza al contenedor DI de NestJS.
 - **Arquitectura:** monolito modular con Clean Architecture y principios SOLID; dominio y casos de uso libres de frameworks.
 - **Persistencia:** PostgreSQL gestionado por Supabase; Drizzle ORM solo dentro de adaptadores.
 - **Asincronía:** pg-boss sobre el mismo PostgreSQL — el job se encola en la misma transacción del caso de uso (outbox sin relay ni Redis).
@@ -124,6 +124,10 @@ Hono aporta routing, middleware por path, validación con `zValidator`/zod y str
 | Cualquier import de `hono` | Prohibido en dominio y aplicación |
 
 Los casos de uso reciben dependencias por constructor mediante puertos propios. La raíz de composición (`buildApp(env)`) los conecta con adaptadores concretos mediante una función explícita — no hay contenedor DI: el único lugar donde vive la elección de implementación es la composición. Desviaciones conocidas frente a NestJS (aceptadas): la autenticación por middleware precede a la validación del body (401 antes que 400 en requests inválidos sin auth), el JSON malformado devuelve el sobre `INVALID_BODY`, el trailing slash es estricto y los query params duplicados colapsan a un valor.
+
+### Jobs asíncronos
+
+Eventos de dominio persistidos en `jobs_outbox_events` **dentro de la misma transacción** del write (`insertOutboxEvent` en `src/drizzle/outbox.ts`; hoy emite `DrizzleTransactionRepository.save` con `transaction.confirmed|revised|voided`). `src/worker.ts` drena las filas pendientes (`FOR UPDATE SKIP LOCKED`, marca `processedAt`) hacia la cola pg-boss `ledger-events` y el consumidor escribe `notifications_notifications`. Semántica at-least-once: los consumidores deben ser idempotentes.
 
 ### Contrato HTTP
 

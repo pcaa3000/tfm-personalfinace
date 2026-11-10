@@ -53,7 +53,9 @@ export function minorToDecimalString(minor: bigint, exponent: number): string {
   const digits = (negative ? -minor : minor)
     .toString()
     .padStart(exponent + 1, "0");
-  const intPart = digits.slice(0, -exponent) || "0";
+  // slice(0, -0) equals slice(0, 0) — with exponent 0 every digit is
+  // the integer part, otherwise we'd render "0" for JPY/KRW amounts.
+  const intPart = exponent === 0 ? digits : digits.slice(0, -exponent) || "0";
   const fracPart = exponent === 0 ? "" : `.${digits.slice(-exponent)}`;
   return `${negative ? "-" : ""}${intPart}${fracPart}`;
 }

@@ -214,6 +214,12 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     updatePreferences: {
       execute: vi.fn(async () => ok(WORKSPACE)),
     },
+    listNotifications: {
+      execute: vi.fn(async () => []),
+    },
+    getBalance: {
+      execute: vi.fn(async () => []),
+    },
   };
 }
 
@@ -263,7 +269,9 @@ describe("GET /api/v1/accounts", () => {
     const res = await app.request("/api/v1/accounts");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([view]);
-    expect(deps.listAccounts.execute).toHaveBeenCalledWith(WS);
+    expect(deps.listAccounts.execute).toHaveBeenCalledWith(WS, {
+      includeArchived: false,
+    });
   });
 });
 
@@ -397,5 +405,73 @@ describe("POST /api/v1/accounts/:id/archive", () => {
       workspaceId: WS,
       accountId: "acc-1",
     });
+  });
+});
+
+describe("T25 includeArchived + archived flag", () => {
+  it("GET /accounts?includeArchived=true passes the option to the use case", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+
+    const res = await app.request("/api/v1/accounts?includeArchived=true", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(deps.listAccounts.execute).toHaveBeenCalledWith(WS, {
+      includeArchived: true,
+    });
+  });
+
+  it("GET /accounts defaults to active-only", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+
+    const res = await app.request("/api/v1/accounts", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(deps.listAccounts.execute).toHaveBeenCalledWith(WS, {
+      includeArchived: false,
+    });
+  });
+
+  it("PATCH /accounts/:id with {archived:false} restores the account", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+    const view = accountView({ archivedAt: null });
+    deps.reviseAccount.execute.mockResolvedValue(ok(view));
+
+    const res = await app.request("/api/v1/accounts/acc-1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-dev-user": "t" },
+      body: JSON.stringify({ archived: false }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(deps.reviseAccount.execute).toHaveBeenCalledWith({
+      workspaceId: WS,
+      accountId: "acc-1",
+      archived: false,
+    });
+  });
+
+  it("PATCH /accounts/:id with only archived maps the flag", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+    deps.reviseAccount.execute.mockResolvedValue(
+      err(new DomainError("ACCOUNT_NOT_ARCHIVED", "The account is not archived")),
+    );
+
+    const res = await app.request("/api/v1/accounts/acc-1", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", "x-dev-user": "t" },
+      body: JSON.stringify({ archived: false }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("ACCOUNT_NOT_ARCHIVED");
   });
 });

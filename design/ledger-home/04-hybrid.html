@@ -41,7 +41,12 @@
   --radius-sm: 12px;
   /* Gradiente violeta sutil (card activa / acciones / marca).
      #6f2df4 → #9333ea: texto blanco ≥4.5:1 en ambos extremos. */
-  --grad: linear-gradient(135deg, #6f2df4 0%, #9333ea 100%);
+  /* Gradiente violeta con inicio más oscuro (referencia E-Wallet):
+     se aplica a brand-mark, CTA, FAB, card PEN, nav activo y chips. */
+  --grad: linear-gradient(135deg, #4c1d95 0%, #7c3aed 55%, #9333ea 100%);
+  /* Par menta del gradiente: mismo gesto oscuro→claro pero el rango
+     queda más corto para que la tinta oscura (--mint-ink) mantenga AA. */
+  --grad-mint: linear-gradient(135deg, #0f9c72 0%, #2cc795 55%, #3dd68c 100%);
   --mint: #3dd68c;
   --mint-ink: #053220; /* tinta oscura sobre menta (~7.5:1) */
   --tabbar-bg: #171221;
@@ -105,7 +110,7 @@ button { font-family: inherit; font-size: inherit; }
 a { color: var(--accent); }
 
 @media (prefers-reduced-motion: no-preference) {
-  body, .card, .cur-card, .tx-card, .tx-row { transition: background-color .18s ease, color .18s ease, border-color .18s ease; }
+  body, .cur-card, .tx-card, .tx-row { transition: background-color .18s ease, color .18s ease, border-color .18s ease; }
   .shell { transition: grid-template-columns .24s ease; }
   .rail-toggle svg { transition: transform .2s ease; }
   .fab, .btn-primary { transition: filter .18s ease, transform .18s ease; }
@@ -254,9 +259,13 @@ a { color: var(--accent); }
 .section-head h2 { margin: 0; font-size: 13px; font-weight: 750; }
 .section-head .hint { margin: 0; font-size: 11.5px; color: var(--muted); }
 
-/* Carrusel de balance: snap por card, scrollbar oculta, dots debajo */
+/* Carrusel de balance EN TODOS los breakpoints: snap por card,
+   scrollbar oculta, dots debajo. `safe center` centra las cards
+   cuando caben en una línea (desktop) y cae a start cuando
+   desbordan (mobile con peek). */
 .balance-strip {
   display: flex; gap: 10px;
+  justify-content: safe center;
   overflow-x: auto; padding-bottom: 2px;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
@@ -289,42 +298,41 @@ a { color: var(--accent); }
 /* Color de marca por moneda:
    · PEN (moneda por defecto / card activa): gradiente violeta sutil,
      texto blanco (≥4.5:1 sobre ambos extremos del degradado).
-   · USD: verde-menta sólido, tinta oscura (--mint-ink, ~7.5:1). */
-.cur-card.pen, .card.pen {
+   · USD: gradiente menta (espejo del violeta), tinta oscura
+     (--mint-ink, ≥4:1 sobre el extremo más oscuro). */
+.cur-card.pen {
   background: var(--grad); border-color: transparent;
   color: var(--on-grad);
 }
-.card.pen .currency-tag, .cur-card.pen .currency-tag {
+.cur-card.pen .currency-tag {
   background: rgba(255 255 255 / .22); color: #fff;
 }
-.card.pen .accounts, .cur-card.pen .accounts,
-.card.pen .lbl, .card.pen .sub,
+.cur-card.pen .accounts,
 .cur-card.pen .cur-total-lbl, .cur-card.pen .io span { color: var(--on-grad-soft); }
-.card.pen .bcell .val, .cur-card.pen .cur-total,
+.cur-card.pen .cur-total,
 .cur-card.pen .io b { color: #fff; }
-.card.pen .bcell.total, .cur-card.pen .cur-io { border-color: rgba(255 255 255 / .35); }
-.card.pen .eye-btn, .cur-card.pen .eye-btn {
+.cur-card.pen .cur-io { border-color: rgba(255 255 255 / .35); }
+.cur-card.pen .eye-btn {
   background: rgba(255 255 255 / .18); border-color: transparent; color: #fff;
 }
-.card.pen .eye-btn:hover, .cur-card.pen .eye-btn:hover { background: rgba(255 255 255 / .3); }
+.cur-card.pen .eye-btn:hover { background: rgba(255 255 255 / .3); }
 
-.cur-card.usd, .card.usd {
-  background: var(--mint); border-color: transparent;
+.cur-card.usd {
+  background: var(--grad-mint); border-color: transparent;
   color: var(--mint-ink);
 }
-.card.usd .currency-tag, .cur-card.usd .currency-tag {
+.cur-card.usd .currency-tag {
   background: rgba(5 50 32 / .14); color: var(--mint-ink);
 }
-.card.usd .accounts, .cur-card.usd .accounts,
-.card.usd .lbl, .card.usd .sub,
+.cur-card.usd .accounts,
 .cur-card.usd .cur-total-lbl, .cur-card.usd .io span { color: var(--on-mint-soft); }
-.card.usd .bcell .val, .cur-card.usd .cur-total,
+.cur-card.usd .cur-total,
 .cur-card.usd .io b { color: var(--mint-ink); }
-.card.usd .bcell.total, .cur-card.usd .cur-io { border-color: rgba(5 50 32 / .3); }
-.card.usd .eye-btn, .cur-card.usd .eye-btn {
+.cur-card.usd .cur-io { border-color: rgba(5 50 32 / .3); }
+.cur-card.usd .eye-btn {
   background: rgba(5 50 32 / .1); border-color: transparent; color: var(--mint-ink);
 }
-.card.usd .eye-btn:hover, .cur-card.usd .eye-btn:hover { background: rgba(5 50 32 / .2); }
+.cur-card.usd .eye-btn:hover { background: rgba(5 50 32 / .2); }
 
 .strip-dots { display: flex; justify-content: center; gap: 6px; margin-top: 6px; }
 .strip-dots .dot {
@@ -343,12 +351,12 @@ a { color: var(--accent); }
 .eye-btn svg { width: 14px; height: 14px; }
 .amt-masked { letter-spacing: .06em; }
 
-/* Balance en grid: solo desktop */
-.balance-grid { display: none; }
-
 /* ---------- Filtros ---------- */
 .filters {
+  /* Wrap para que TODOS los filtros se vean sin scroll lateral
+     (feedback del canvas); el overflow queda como salvaguarda. */
   display: flex; align-items: center; gap: 6px; margin-top: 10px;
+  flex-wrap: wrap;
   overflow-x: auto; padding-bottom: 2px;
   scrollbar-width: none;
 }
@@ -379,32 +387,6 @@ a { color: var(--accent); }
 .list-head { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: baseline; gap: 10px; }
 .list-head h2 { font-size: 13px; margin: 0; font-weight: 750; }
 .list-head span { font-size: 12px; color: var(--muted); }
-
-/* ---------- Quick actions (ref. E-Wallet) ----------
-   Fila de accesos circulares bajo el balance: icono en círculo
-   con tinte suave + label chico. Atajos al diálogo de movimiento
-   con el tipo pre-seleccionado. */
-.quick-actions {
-  display: flex; gap: 8px; align-items: stretch;
-  margin: 2px 0 18px;
-}
-.qa {
-  flex: 1; display: flex; flex-direction: column; align-items: center;
-  gap: 7px; padding: 8px 4px;
-  background: transparent; border: none; border-radius: 16px;
-  cursor: pointer;
-}
-.qa:hover { background: var(--surface-2); }
-.qa-ico {
-  width: 46px; height: 46px; border-radius: 50%;
-  display: grid; place-items: center;
-}
-.qa-ico svg { width: 19px; height: 19px; }
-.qa-ico.income { color: var(--income); background: color-mix(in srgb, var(--mint) 22%, transparent); }
-.qa-ico.expense { color: var(--expense); background: color-mix(in srgb, var(--expense) 12%, transparent); }
-.qa-ico.transfer { color: var(--accent); background: var(--accent-soft); }
-.qa-ico.all { color: var(--muted); background: var(--surface-2); }
-.qa-lbl { font-size: 11px; font-weight: 650; color: var(--ink); }
 
 /* ---------- Lista móvil: cards por día ---------- */
 .list { padding: 14px; padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 110px); }
@@ -492,6 +474,7 @@ dialog::backdrop { background: rgb(8 4 25 / .55); }
    DESKTOP ≥960px — dirección 01: sidebar + tabla densa
    ============================================================ */
 @media (min-width: 960px) {
+
   body { font-size: 14px; }
 
   .shell { display: grid; grid-template-columns: var(--rail-w) 1fr; height: 100vh; }
@@ -568,25 +551,12 @@ dialog::backdrop { background: rgb(8 4 25 / .55); }
   .section-head h2 { font-size: 14px; }
   .section-head .hint { font-size: 12px; }
 
-  /* Balance: grid de dos cards (oculta el carrusel) */
-  .balance-strip, .strip-dots { display: none; }
-  .balance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-  .card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 16px 18px;
-    box-shadow: var(--shadow-card);
-  }
-  .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-  .card-head .accounts { font-size: 12px; color: var(--muted); }
-  .card-head-side { margin-left: auto; display: flex; align-items: center; gap: 6px; }
-  .balance-cols { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 10px; }
-  .bcell .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
-  .bcell .val { font-size: 17px; font-weight: 750; font-variant-numeric: tabular-nums; }
-  .bcell.income .val { color: var(--income); }
-  .bcell.expense .val { color: var(--expense); }
-  .bcell.total .val { color: var(--ink); font-size: 21px; }
-  .bcell.total { border-left: 1px dashed var(--border); padding-left: 14px; }
-  .bcell .sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  /* Balance: el MISMO carrusel que en móvil, centrado y en una
+     línea; las cards crecen a ancho de lectura desktop. */
+  .cur-card { min-width: 340px; flex: 0 1 430px; padding: 16px 18px; }
+  .cur-total { font-size: 20px; }
+  .cur-head .accounts { font-size: 12px; }
+  .cur-io .io b { font-size: 13.5px; }
 
   /* Filtros: fila completa con selects, fechas, búsqueda y conteo */
   .filters { flex-wrap: wrap; gap: 10px; margin-top: 14px; overflow: visible; }
@@ -657,7 +627,6 @@ dialog::backdrop { background: rgb(8 4 25 / .55); }
   .brand-name, .brand-sub, .nav-label, .sidebar-foot { display: none; }
   .nav-item a { justify-content: center; padding: 10px; }
   .nav-item a span { display: none; }
-  .balance-grid { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -775,7 +744,8 @@ dialog::backdrop { background: rgb(8 4 25 / .55); }
           <p class="hint">Saldo actual = saldos iniciales + ingresos − gastos · nov. 2026</p>
         </div>
 
-        <!-- Carrusel compacto (móvil/tablet): color de marca por moneda -->
+        <!-- Carrusel de balance (todos los breakpoints): color de
+             marca por moneda, centrado y en una línea cuando cabe -->
         <div class="balance-strip" role="group" aria-labelledby="balance-title">
           <article class="cur-card pen" data-cur="PEN" aria-label="Balance en soles">
             <div class="cur-head">
@@ -805,52 +775,6 @@ dialog::backdrop { background: rgb(8 4 25 / .55); }
         <div class="strip-dots" aria-hidden="true">
           <button class="dot active" type="button" tabindex="-1"></button>
           <button class="dot" type="button" tabindex="-1"></button>
-        </div>
-
-        <!-- Grid de balance (desktop) -->
-        <div class="balance-grid" role="group" aria-labelledby="balance-title">
-          <article class="card pen" data-cur="PEN" aria-label="Balance en soles">
-            <div class="card-head">
-              <span class="currency-tag">PEN</span>
-              <div class="card-head-side"><span class="accounts">BCP Soles · Efectivo</span><button class="eye-btn" type="button" aria-pressed="true" aria-label="Mostrar montos de soles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg></button></div>
-            </div>
-            <div class="balance-cols">
-              <div class="bcell income">
-                <div class="lbl">Ingresos</div>
-                <div class="val amt">S/ 4,500<span class="dec">.00</span></div>
-              </div>
-              <div class="bcell expense">
-                <div class="lbl">Gastos</div>
-                <div class="val amt">S/ 565<span class="dec">.75</span></div>
-              </div>
-              <div class="bcell total">
-                <div class="lbl">Saldo actual</div>
-                <div class="val amt">S/ 9,134<span class="dec">.25</span></div>
-                <div class="sub amt">inicial S/ 5,200<span class="dec">.00</span></div>
-              </div>
-            </div>
-          </article>
-          <article class="card usd" data-cur="USD" aria-label="Balance en dólares">
-            <div class="card-head">
-              <span class="currency-tag">USD</span>
-              <div class="card-head-side"><span class="accounts">Interbank Dólares</span><button class="eye-btn" type="button" aria-pressed="true" aria-label="Mostrar montos de dólares"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg></button></div>
-            </div>
-            <div class="balance-cols">
-              <div class="bcell income">
-                <div class="lbl">Ingresos</div>
-                <div class="val amt">$ 850<span class="dec">.00</span></div>
-              </div>
-              <div class="bcell expense">
-                <div class="lbl">Gastos</div>
-                <div class="val amt">$ 65<span class="dec">.98</span></div>
-              </div>
-              <div class="bcell total">
-                <div class="lbl">Saldo actual</div>
-                <div class="val amt">$ 1,984<span class="dec">.02</span></div>
-                <div class="sub amt">inicial $ 1,200<span class="dec">.00</span></div>
-              </div>
-            </div>
-          </article>
         </div>
 
         <form class="filters" aria-label="Filtros de visualización" onsubmit="return false">
@@ -902,27 +826,6 @@ dialog::backdrop { background: rgb(8 4 25 / .55); }
       </div>
 
       <section class="list" aria-labelledby="list-title">
-        <!-- Quick actions: atajos circulares al diálogo de movimiento
-             (tipo pre-seleccionado) — bajo el balance en ambos breakpoints -->
-        <div class="quick-actions" role="group" aria-label="Acciones rápidas">
-          <button class="qa" type="button" data-mtype="income">
-            <span class="qa-ico income"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 19V5m-6 6l6-6 6 6"/></svg></span>
-            <span class="qa-lbl">Ingreso</span>
-          </button>
-          <button class="qa" type="button" data-mtype="expense">
-            <span class="qa-ico expense"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14m-6-6l6 6 6-6"/></svg></span>
-            <span class="qa-lbl">Gasto</span>
-          </button>
-          <button class="qa" type="button" data-mtype="transfer">
-            <span class="qa-ico transfer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg></span>
-            <span class="qa-lbl">Transferencia</span>
-          </button>
-          <button class="qa" type="button" data-mtype="all">
-            <span class="qa-ico all"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg></span>
-            <span class="qa-lbl">Ver todo</span>
-          </button>
-        </div>
-
         <!-- Cards por día (móvil/tablet) -->
         <div class="tx-groups">
           <section class="day-group" aria-labelledby="d-20">
@@ -1125,7 +1028,7 @@ dialog::backdrop { background: rgb(8 4 25 / .55); }
 
 <details class="dir-note">
   <summary>Dirección 04 · Híbrido 01+02</summary>
-  <p>Un solo codebase responsivo: <strong>&lt;960px</strong> el layout de la 02 (topbar delgada, carrusel de balance con snap+dots, cards por día, tabbar + FAB); <strong>≥960px</strong> el dashboard de la 01 (sidebar con nav completa, balance en grid, filtros completos y tabla densa con thead sticky); <strong>960–1179px</strong> el rail nace colapsado a iconos. Sistema visual (ref. Magnetiq Bank): fondo claro limpio, dúo violeta+menta — cada card de balance usa el color de su moneda (PEN violeta, USD menta), la tabbar móvil es una pill negra flotante con activo menta, iconos circulares con tinte (menta ingreso, rosa gasto/transferencia) y decimales atenuados. Tradeoff: máxima cobertura, pero dos sistemas de layout que mantener.</p>
+  <p>Un solo codebase responsivo: <strong>&lt;960px</strong> el layout de la 02 (topbar delgada, carrusel de balance con snap+dots, cards por día, tabbar + FAB); <strong>≥960px</strong> el dashboard de la 01 (sidebar con nav completa, balance en el mismo carrusel centrado, filtros completos y tabla densa con thead sticky); <strong>960–1179px</strong> el rail nace colapsado a iconos. Sistema visual (ref. Magnetiq Bank): fondo claro limpio, dúo violeta+menta — cada card de balance usa el color de su moneda (PEN violeta, USD menta), la tabbar móvil es una pill negra flotante con activo menta, iconos circulares con tinte (menta ingreso, rosa gasto/transferencia) y decimales atenuados. Tradeoff: máxima cobertura, pero dos sistemas de layout que mantener.</p>
 </details>
 
 <script>
@@ -1183,17 +1086,6 @@ dialog::backdrop { background: rgb(8 4 25 / .55); }
   }
   document.getElementById("open-movement").addEventListener("click", function () { openDlg(); });
   document.getElementById("open-movement-fab").addEventListener("click", function () { openDlg(); });
-  document.querySelectorAll(".qa").forEach(function (qa) {
-    qa.addEventListener("click", function () {
-      var t = qa.getAttribute("data-mtype");
-      if (t === "all") {
-        var lh = document.getElementById("list-title");
-        if (lh) lh.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
-      openDlg(t);
-    });
-  });
 
   /* Fila de rango (solo visible <960px vía chip "Rango") */
   var rangeBtn = document.getElementById("range-toggle");
@@ -1223,8 +1115,7 @@ dialog::backdrop { background: rgb(8 4 25 / .55); }
 
   /* Privacidad por card: montos ocultos por defecto
      (tfm-hide-amounts-cards, estado por moneda en el orden [PEN, USD]).
-     Cada moneda existe en dos representaciones (carrusel móvil + grid
-     desktop); ambas comparten índice vía data-cur y se repintan juntas.
+     Las cards comparten índice vía data-cur.
      Al enmascarar se guarda el innerHTML original para restaurar los
      <span class="dec"> al revelar. */
   var AMT_CARDS_KEY = "tfm-hide-amounts-cards";

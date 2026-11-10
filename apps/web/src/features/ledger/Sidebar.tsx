@@ -7,11 +7,8 @@ import {
 } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
-import {
-  BrandMark,
-  RailToggle,
-  type ManagementSection,
-} from "./TopBar";
+import { BrandMark } from "./BrandMark";
+import { RailToggle, type ManagementSection } from "./TopBar";
 import {
   ChartIcon,
   CoinIcon,

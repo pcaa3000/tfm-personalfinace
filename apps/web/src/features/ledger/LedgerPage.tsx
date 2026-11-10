@@ -25,7 +25,9 @@ import {
   listCategories,
   listCurrencies,
   listCurrencyCatalog,
+  fetchBalance,
   listTransactions,
+  unarchiveAccount,
   reviseAccount,
   reviseCategory,
   reviseCurrency,
@@ -53,7 +55,7 @@ import {
   Sidebar,
   storedRailCollapsed,
 } from "./Sidebar";
-import { summarizeByCurrency } from "./summarize";
+import { summariesFromBalanceItems } from "./summarize";
 import { TransactionDayCards } from "./TransactionDayCards";
 import { TransactionFilters } from "./TransactionFilters";
 import {
@@ -112,12 +114,11 @@ export function LedgerPage() {
         ? allPages.length * TRANSACTIONS_PAGE_SIZE
         : undefined,
   });
-  // All-time, unfiltered rows feed the general balance (S12-5):
-  // saldo actual = Σ initialBalance + income − expenses. A dedicated
-  // aggregate endpoint would avoid loading the whole ledger (API gap).
+  // Dedicated aggregate endpoint feeds the general balance (S12-5, T24):
+  // saldo actual = Σ initialBalance + income − expenses, computed in SQL.
   const balanceQuery = useQuery({
-    queryKey: ["transactions", "balance"],
-    queryFn: () => listTransactions(),
+    queryKey: ["balance"],
+    queryFn: fetchBalance,
   });
   const pendingQuery = useQuery({
     queryKey: PENDING_QUERY_KEY,
@@ -125,7 +126,7 @@ export function LedgerPage() {
   });
   const accountsQuery = useQuery({
     queryKey: ["accounts"],
-    queryFn: listAccounts,
+    queryFn: () => listAccounts({ includeArchived: true }),
   });
   const currenciesQuery = useQuery({
     queryKey: ["currencies"],
@@ -145,6 +146,7 @@ export function LedgerPage() {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: ["transactions"] }),
       queryClient.invalidateQueries({ queryKey: PENDING_QUERY_KEY }),
+      queryClient.invalidateQueries({ queryKey: ["balance"] }),
     ]);
 
   const createMutation = useMutation({
@@ -169,14 +171,17 @@ export function LedgerPage() {
       action:
         | { kind: "create"; input: CreateAccountInput }
         | { kind: "revise"; id: string; input: ReviseAccountInput }
-        | { kind: "archive"; id: string },
+        | { kind: "archive"; id: string }
+        | { kind: "unarchive"; id: string },
     ) => {
       if (action.kind === "create") return createAccount(action.input);
       if (action.kind === "revise") return reviseAccount(action.id, action.input);
+      if (action.kind === "unarchive") return unarchiveAccount(action.id);
       return archiveAccount(action.id);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      await queryClient.invalidateQueries({ queryKey: ["balance"] });
     },
   });
 
@@ -229,7 +234,10 @@ export function LedgerPage() {
   });
 
   const categories = categoriesQuery.data ?? [];
-  const accounts = accountsQuery.data ?? [];
+  // Active accounts feed every select/balance usage; the management
+  // dialog receives the full list and renders the archived section.
+  const allAccounts = accountsQuery.data ?? [];
+  const accounts = allAccounts.filter((a) => a.archivedAt === null);
   const currencies = currenciesQuery.data ?? [];
   const currencyCodes = currencies.map((c) => c.code);
   const workspace = workspaceQuery.data;
@@ -237,9 +245,8 @@ export function LedgerPage() {
   const pendingRows = (pendingQuery.data ?? []).map(toPendingView);
   const tableRows = [...pendingRows, ...transactions];
   const exponentOf = currencyExponentResolver(currencies);
-  const summaries = summarizeByCurrency(
+  const summaries = summariesFromBalanceItems(
     balanceQuery.data ?? [],
-    accounts,
     exponentOf,
   );
 
@@ -449,7 +456,7 @@ export function LedgerPage() {
       />
       <AccountsDialog
         open={management === "accounts"}
-        accounts={accounts}
+        accounts={allAccounts}
         currencies={
           currencyCodes.length
             ? currencyCodes
@@ -467,6 +474,9 @@ export function LedgerPage() {
           accountMutation.mutate({ kind: "revise", id, input })
         }
         onArchive={(id) => accountMutation.mutate({ kind: "archive", id })}
+        onUnarchive={(id) =>
+          accountMutation.mutate({ kind: "unarchive", id })
+        }
       />
       <CategoriesDialog
         open={management === "categories"}

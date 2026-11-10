@@ -12,8 +12,12 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import i18n from "../../i18n";
 import { ThemeModeProvider } from "../../theme-mode";
-import { listTransactions, updateWorkspace } from "./api";
+import { fetchBalance, listTransactions, updateWorkspace } from "./api";
 import { LedgerPage, TRANSACTIONS_PAGE_SIZE } from "./LedgerPage";
+import {
+  listPendingTransactions,
+  type PendingTransaction,
+} from "./offline/queue";
 import type { TransactionView } from "./types";
 
 vi.mock("./api", async (importOriginal) => {
@@ -21,6 +25,7 @@ vi.mock("./api", async (importOriginal) => {
   return {
     ...original,
     listTransactions: vi.fn(),
+    fetchBalance: vi.fn(async () => []),
     listAccounts: vi.fn(async () => []),
     listCategories: vi.fn(async () => []),
     listCurrencies: vi.fn(async () => [
@@ -81,10 +86,16 @@ vi.mock("./offline/use-pending-sync", () => ({
   usePendingSync: () => {},
 }));
 
-vi.mock("./offline/create-or-queue", () => ({
-  createTransactionOrQueue: vi.fn(),
-  toPendingView: (view: TransactionView) => view,
-}));
+vi.mock("./offline/create-or-queue", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("./offline/create-or-queue")>();
+  return {
+    createTransactionOrQueue: vi.fn(),
+    // Real converter: pending rows must render with pendingSync + id
+    // "pending:<key>" for the badge/chip assertions below.
+    toPendingView: original.toPendingView,
+  };
+});
 
 function mockMatchMedia(matches: boolean) {
   window.matchMedia = vi.fn().mockImplementation(
@@ -220,7 +231,7 @@ describe("LedgerPage default period (S12-5)", () => {
 });
 
 describe("LedgerPage balance block (S12-5)", () => {
-  it("shows saldo actual = initial balances + income − expenses, transfers net 0", async () => {
+  it("renders the aggregate from the dedicated balance endpoint (T24)", async () => {
     const { listAccounts } = await import("./api");
     vi.mocked(listAccounts).mockResolvedValue([
       {
@@ -233,21 +244,17 @@ describe("LedgerPage balance block (S12-5)", () => {
         archivedAt: null,
       },
     ]);
-    vi.mocked(listTransactions).mockImplementation(async (filters) => {
-      if (filters?.limit === undefined) {
-        // balance query: unfiltered, all-time
-        return [
-          makeTx("t-in", { type: "income", amount: "100.00" }),
-          makeTx("t-out", { type: "expense", amount: "25.00" }),
-          makeTx("t-tr", {
-            type: "transfer",
-            amount: "999.00",
-            destinationAccountId: "acc-2",
-          }),
-        ];
-      }
-      return [];
-    });
+    vi.mocked(fetchBalance).mockResolvedValue([
+      {
+        currency: "PEN",
+        initialBalance: "1000.00",
+        income: "100.00",
+        expenses: "25.00",
+        net: "75.00",
+        balance: "1075.00",
+      },
+    ]);
+    vi.mocked(listTransactions).mockResolvedValue([]);
 
     const { container } = renderPage();
 
@@ -256,6 +263,7 @@ describe("LedgerPage balance block (S12-5)", () => {
       expect(pen?.textContent).toContain("1,075.00");
       expect(pen?.textContent).toContain("Saldo actual");
     });
+    expect(fetchBalance).toHaveBeenCalled();
   });
 });
 
@@ -436,5 +444,108 @@ describe("LedgerPage responsive layout (S12-6)", () => {
     expect(
       screen.getByRole("navigation", { name: "Navegación principal" }),
     ).toBeTruthy();
+  });
+});
+
+describe("LedgerPage pending sync (T7)", () => {
+  const pendingItem: PendingTransaction = {
+    idempotencyKey: "pending-key-1",
+    input: {
+      type: "expense",
+      amount: "15.00",
+      currency: "PEN",
+      businessDate: "2026-10-05",
+      timezone: "UTC",
+      concept: "almuerzo pendiente",
+      accountId: "acc-1",
+      categoryId: null,
+      idempotencyKey: "pending-key-1",
+    },
+    enqueuedAt: "2026-10-05T10:00:00.000Z",
+    attempts: 0,
+    lastError: null,
+  };
+
+  it("shows the pending count badge and marks queued rows", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+    vi.mocked(listPendingTransactions).mockResolvedValue([pendingItem]);
+
+    renderPage();
+
+    expect(
+      await screen.findByText("1 pendiente(s) de sincronizar"),
+    ).toBeTruthy();
+    expect(await screen.findByText("almuerzo pendiente")).toBeTruthy();
+    expect(
+      screen.getAllByText("Pendiente de sincronización").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("hides the badge when the outbox is empty", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+    vi.mocked(listPendingTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    // Wait until both queries settled (empty-state row + pending fetch done).
+    expect(await screen.findByText("Todavía no hay movimientos.")).toBeTruthy();
+    await waitFor(() => {
+      expect(listPendingTransactions).toHaveBeenCalled();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.queryByText(/pendiente\(s\) de sincronizar/)).toBeNull();
+    expect(screen.queryByText("Pendiente de sincronización")).toBeNull();
+  });
+});
+
+describe("LedgerPage list error surface", () => {
+  it("shows the load error when transactions fail to fetch", async () => {
+    vi.mocked(listTransactions).mockRejectedValue(new Error("boom"));
+
+    renderPage();
+
+    expect(
+      await screen.findByText("No se pudieron cargar los movimientos."),
+    ).toBeTruthy();
+  });
+});
+
+describe("LedgerPage accounts management (T25)", () => {
+  it("passes archived accounts to the Cuentas dialog so they can be restored", async () => {
+    const { listAccounts } = await import("./api");
+    vi.mocked(listTransactions).mockResolvedValue([]);
+    vi.mocked(listAccounts).mockResolvedValue([
+      {
+        id: "acc-active",
+        workspaceId: "ws-1",
+        name: "BCP Soles",
+        currency: "PEN",
+        kind: "bank",
+        initialBalance: "0.00",
+        archivedAt: null,
+      },
+      {
+        id: "acc-archived",
+        workspaceId: "ws-1",
+        name: "Caja vieja",
+        currency: "PEN",
+        kind: "cash",
+        initialBalance: "0.00",
+        archivedAt: "2026-11-01T00:00:00.000Z",
+      },
+    ]);
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Gestión" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Cuentas" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Cuentas" });
+    await waitFor(() => {
+      expect(dialog.querySelector('[data-part="archived-accounts"]')).toBeTruthy();
+      expect(within(dialog).getByText("Caja vieja")).toBeTruthy();
+      expect(within(dialog).getByText("Archivadas")).toBeTruthy();
+    });
   });
 });

@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import { createDrizzleDb, type DrizzleDb } from "../../../../drizzle/db.js";
+import { outboxEvents } from "../../../../drizzle/schema.js";
 import {
   accounts,
   ledgerTransactionRevisions,
@@ -124,6 +125,9 @@ async function cleanupAll(db: DrizzleDb): Promise<void> {
     .delete(ledgerTransactions)
     .where(inArray(ledgerTransactions.workspaceId, WORKSPACES));
   await db.delete(accounts).where(inArray(accounts.workspaceId, WORKSPACES));
+  await db
+    .delete(outboxEvents)
+    .where(inArray(outboxEvents.workspaceId, WORKSPACES));
 }
 
 // Seed the FK targets directly through the drizzle schema: importing the
@@ -397,5 +401,79 @@ describe("DrizzleTransactionRepository (integration, real Postgres)", () => {
 
     const found = await repository.findById(trx.workspaceId, trx.id);
     expect(found!.revisions).toHaveLength(1);
+  });
+});
+
+describe("transactional outbox emission (worker-pgboss T2)", () => {
+  const { db, pool } = createDrizzleDb(DATABASE_URL);
+  const repository = new DrizzleTransactionRepository(db);
+
+  beforeAll(async () => {
+    await cleanupAll(db);
+    await seedAccounts(db);
+  });
+
+  afterAll(async () => {
+    await cleanupAll(db);
+    await pool.end();
+  });
+
+  async function outboxRows(ws: string, transactionId?: string) {
+    const rows = await db
+      .select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.workspaceId, ws));
+    return rows
+      .filter(
+        (r) =>
+          transactionId === undefined ||
+          (r.payload as Record<string, unknown>).transactionId ===
+            transactionId,
+      )
+      .sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+  }
+
+  it("emits transaction.confirmed in the same commit as the write", async () => {
+    const trx = makeTransaction({ id: "obx-confirm", concept: "Outbox alta" });
+    await repository.save(trx);
+
+    const rows = await outboxRows(WS_A);
+    expect(rows).toHaveLength(1);
+    const first = rows[0]!;
+    expect(first.type).toBe("transaction.confirmed");
+    const payload = first.payload as Record<string, unknown>;
+    expect(payload.transactionId).toBe("obx-confirm");
+    expect(payload.concept).toBe("Outbox alta");
+    expect(payload.amount).toBe("10.00");
+    expect(payload.currency).toBe("USD");
+    expect(first.processedAt).toBeNull();
+  });
+
+  it("emits transaction.revised on the next save and transaction.voided on void", async () => {
+    const trx = makeTransaction({ id: "obx-life", concept: "Vida" });
+    await repository.save(trx);
+
+    unwrap(
+      trx.revise({
+        concept: "Vida editada",
+        revisedAt: new Date("2026-11-02T09:00:00Z"),
+        revisedBy: "spec-user",
+      }),
+    );
+    await repository.save(trx);
+
+    const voided = trx.void({
+      voidedAt: new Date("2026-11-03T09:00:00Z"),
+      voidedBy: "spec-user",
+    });
+    unwrap(voided);
+    await repository.save(trx);
+
+    const types = (await outboxRows(WS_A, "obx-life")).map((r) => r.type);
+    expect(types).toEqual([
+      "transaction.confirmed",
+      "transaction.revised",
+      "transaction.voided",
+    ]);
   });
 });

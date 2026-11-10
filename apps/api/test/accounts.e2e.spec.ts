@@ -170,3 +170,43 @@ describe("POST /api/v1/accounts/:id/archive", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("unarchive + includeArchived (T25)", () => {
+  it("archived accounts are hidden by default, listed with includeArchived, and restored by PATCH", async () => {
+    const created = await createAccount(ALICE);
+    expect(created.status).toBe(201);
+    const id = created.body.id;
+
+    const archived = await api<AccountView>(`/api/v1/accounts/${id}/archive`, {
+      method: "POST",
+      headers: ALICE,
+    });
+    expect(archived.status).toBe(201);
+    expect(archived.body.archivedAt).not.toBeNull();
+
+    const active = await api<AccountView[]>("/api/v1/accounts", {
+      headers: ALICE,
+    });
+    expect(active.body.find((a) => a.id === id)).toBeUndefined();
+
+    const all = await api<AccountView[]>(
+      "/api/v1/accounts?includeArchived=true",
+      { headers: ALICE },
+    );
+    const row = all.body.find((a) => a.id === id);
+    expect(row?.archivedAt).not.toBeNull();
+
+    const restored = await api<AccountView>(`/api/v1/accounts/${id}`, {
+      method: "PATCH",
+      headers: ALICE,
+      body: { archived: false },
+    });
+    expect(restored.status).toBe(200);
+    expect(restored.body.archivedAt).toBeNull();
+
+    const back = await api<AccountView[]>("/api/v1/accounts", {
+      headers: ALICE,
+    });
+    expect(back.body.find((a) => a.id === id)?.archivedAt).toBeNull();
+  });
+});

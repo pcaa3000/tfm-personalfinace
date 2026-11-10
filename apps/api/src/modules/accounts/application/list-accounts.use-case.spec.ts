@@ -44,3 +44,24 @@ describe("ListAccountsUseCase", () => {
     ]);
   });
 });
+
+describe("ListAccountsUseCase includeArchived (T25)", () => {
+  it("passes includeArchived through to the repository", async () => {
+    const seen: Array<{ includeArchived?: boolean }> = [];
+    const repo: AccountRepositoryPort = {
+      save: async () => {},
+      list: async (_workspaceId, options) => {
+        seen.push(options ?? {});
+        return [];
+      },
+      accountCurrency: async () => null,
+      findById: async () => null,
+    };
+    const useCase = new ListAccountsUseCase(repo);
+
+    await useCase.execute(ws);
+    await useCase.execute(ws, { includeArchived: true });
+
+    expect(seen).toEqual([{}, { includeArchived: true }]);
+  });
+});

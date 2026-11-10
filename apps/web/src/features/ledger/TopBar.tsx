@@ -11,6 +11,9 @@ import {
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { BrandMark } from "./BrandMark";
+import { ChangePasswordDialog } from "../auth/ChangePasswordDialog";
+import { useAuth } from "../auth/auth";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import { useThemeMode } from "../../theme-mode";
 import {
@@ -18,10 +21,13 @@ import {
   ChevronLeftIcon,
   CoinIcon,
   GearIcon,
+  LockIcon,
+  LogoutIcon,
   MoonIcon,
   PlusIcon,
   SunIcon,
   TagIcon,
+  UserIcon,
   WalletIcon,
 } from "./icons";
 
@@ -40,32 +46,6 @@ interface Props {
   onOpenManagement: (section: ManagementSection) => void;
 }
 
-/** Brand mark: violet gradient chip shared by topbar and sidebar. */
-export function BrandMark() {
-  return (
-    <Box
-      aria-hidden
-      sx={{
-        width: 34,
-        height: 34,
-        borderRadius: "12px",
-        flex: "none",
-        background:
-          "linear-gradient(135deg, #4c1d95 0%, #7c3aed 55%, #9333ea 100%)",
-        color: "#fff",
-        display: "grid",
-        placeItems: "center",
-        fontWeight: 800,
-        fontSize: 12.5,
-        letterSpacing: "0.02em",
-        boxShadow: "0 8px 18px -8px rgb(111 45 244 / 0.6)",
-      }}
-    >
-      TF
-    </Box>
-  );
-}
-
 /**
  * Sticky top bar (S12-6): brand/crumb, "+ Nuevo movimiento" CTA, the
  * Gestión menu (Cuentas/Categorías/Monedas/Preferencias), the theme
@@ -78,8 +58,13 @@ export function TopBar({
   onOpenManagement,
 }: Props) {
   const { t } = useTranslation();
+  const { session, signOut } = useAuth();
   const { mode, toggleMode } = useThemeMode();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(
+    null,
+  );
+  const [passwordOpen, setPasswordOpen] = useState(false);
 
   const openManagement = (section: ManagementSection) => () => {
     setMenuAnchor(null);
@@ -200,6 +185,74 @@ export function TopBar({
             {t("management.preferences")}
           </MenuItem>
         </Menu>
+        {session ? (
+          <>
+            <IconButton
+              onClick={(event) => setUserMenuAnchor(event.currentTarget)}
+              aria-label={t("account.menuAria")}
+              aria-haspopup="menu"
+              aria-expanded={userMenuAnchor !== null}
+              sx={{ border: "1px solid", borderColor: "divider" }}
+            >
+              <UserIcon sx={{ fontSize: 19 }} />
+            </IconButton>
+            <Menu
+              anchorEl={userMenuAnchor}
+              open={userMenuAnchor !== null}
+              onClose={() => setUserMenuAnchor(null)}
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              transformOrigin={{ vertical: "top", horizontal: "right" }}
+            >
+              <Box
+                component="li"
+                sx={{
+                  listStyle: "none",
+                  px: 2,
+                  py: 1.25,
+                  maxWidth: 280,
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block" }}
+                >
+                  {t("account.signedInAs")}
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{ fontWeight: 600 }}
+                  noWrap
+                >
+                  {session.user.email}
+                </Typography>
+              </Box>
+              <Divider />
+              <MenuItem
+                onClick={() => {
+                  setUserMenuAnchor(null);
+                  setPasswordOpen(true);
+                }}
+              >
+                <LockIcon fontSize="small" sx={{ mr: 1.25 }} />
+                {t("account.changePassword")}
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setUserMenuAnchor(null);
+                  void signOut();
+                }}
+              >
+                <LogoutIcon fontSize="small" sx={{ mr: 1.25 }} />
+                {t("topbar.logout")}
+              </MenuItem>
+            </Menu>
+            <ChangePasswordDialog
+              open={passwordOpen}
+              onClose={() => setPasswordOpen(false)}
+            />
+          </>
+        ) : null}
         <IconButton
           onClick={toggleMode}
           aria-pressed={mode === "dark"}
