@@ -31,9 +31,9 @@ Branch: `feature/security-prelaunch` (desde `main` post-merge PR #2)
 
 | ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
 |----|-------|----|------|--------|--------------------|
-| T1 | API — guard prod AUTH_MODE=dev + rate limit en lecturas (`hono/composition.ts`, `hono/app.ts`, `middleware/rate-limit.ts`, specs) | S1, S2 | worker | done | sin commit (worker no commitea); RED→GREEN: 8 fallos → 38/38 verdes en composition/app/rate-limit specs |
-| T2 | Web — CSP meta + `_headers` + docs/07 update | S3, S4 | worker | done | sin commit; verificación estructural (sin superficie de test para HTML/`_headers`); suite web verde |
-| T3 | Web — CSP inyectada solo en build (plugin `tfm-csp-meta`) + fix unhandled rejection en `auth.spec.tsx` + fix flake Gestión menu en `LedgerPage.spec.tsx` | S3, proceso | worker | done | sin commit; RED exit 1 → GREEN exit 0 en auth.spec.tsx; `vite build` confirma CSP en dist/index.html; flake resuelto en L5: focused 3× exit 0, suite completa 2× exit 0 (217/217) |
+| T1 | API — guard prod AUTH_MODE=dev + rate limit en lecturas (`hono/composition.ts`, `hono/app.ts`, `middleware/rate-limit.ts`, specs) | S1, S2 | worker | done | `5ef4a3b`; RED→GREEN: 8 fallos → 38/38 verdes en composition/app/rate-limit specs |
+| T2 | Web — CSP meta + `_headers` + docs/07 update | S3, S4 | worker | done | `e07dff2`; verificación estructural (sin superficie de test para HTML/`_headers`); suite web verde |
+| T3 | Web — CSP inyectada solo en build (plugin `tfm-csp-meta`) + fix unhandled rejection en `auth.spec.tsx` + fix flake Gestión menu en `LedgerPage.spec.tsx` | S3, proceso | worker | done | `e07dff2`; RED exit 1 → GREEN exit 0 en auth.spec.tsx; `vite build` confirma CSP en dist/index.html; flake resuelto en L5: focused 3× exit 0, suite completa 2× exit 0 (217/217) |
 
 ## Log
 
@@ -82,3 +82,7 @@ Branch: `feature/security-prelaunch` (desde `main` post-merge PR #2)
   `waitForElementToBeRemoved(cuentasDialog, {timeout: 3000})` con
   headroom para el unmount. Evidencia: focused spec 3× exit 0 (16/16),
   suite completa apps/web 2× exit 0 (217/217, 0 unhandled errors).
+- L6 (2026-11-10): cierre y commits. Slice boundary: 462 líneas
+  authored en 2 commits (`5ef4a3b` api, `e07dff2` web+docs) — justo por
+  encima del umbral ~400; estrategia de delivery del proyecto: single PR
+  `feature/security-prelaunch -> main` (igual que PR #1 y #2).
