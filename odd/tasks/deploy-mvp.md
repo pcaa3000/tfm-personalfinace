@@ -45,3 +45,10 @@ Branch: `feature/deploy-mvp`
   producción disparan correctamente. Worker queda como `node
   dist/src/worker.js` en la misma imagen (Render cobra workers: docs/08
   recomienda Koyeb/Fly free o diferirlo — el outbox no pierde eventos).
+- L4 (2026-11-10): RDD nativa del candidato `review-1d45e2efa5d2ad61`
+  (lentes risk/readability, tier medium, 5 files / 254 líneas). Resultado:
+  **approved** sin bloqueantes; acknowledge quemado. 3 advisories: el
+  contenedor corre como root (agregar `USER node` en runner — follow-up
+  barato), el placeholder `API_HOST` de netlify.toml (ya documentado), y
+  `plan: starter` del worker vs el comentario free-tier (ambos señalados
+  en docs/08).
