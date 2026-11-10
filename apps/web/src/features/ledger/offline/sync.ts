@@ -30,11 +30,13 @@ export async function syncPendingTransactions(): Promise<SyncResult> {
   let synced = 0;
   let dropped = 0;
   for (const item of pending) {
-    if ((item.ownerSubject ?? null) !== subject) {
-      if (subject === null) {
-        // Identity unverifiable (no token provider / transient failure):
-        // retain the item — never send it anonymously and never destroy
-        // data that may belong to the current identity.
+    const owner = item.ownerSubject ?? null;
+    if (owner !== subject) {
+      if (subject === null || owner === null) {
+        // Ownership unverifiable: no current subject (transient) or a
+        // legacy/bypass-era row. "Orphan" is indistinguishable from
+        // "same user's pre-upgrade item" — retain: never send it under
+        // this identity's token and never destroy owned data.
         continue;
       }
       await removePendingTransaction(item.idempotencyKey);

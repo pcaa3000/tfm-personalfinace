@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "AUTH_MODE=dev DATABASE_URL=postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance tsx watch src/main.ts",
-    "qa": "AUTH_MODE=oidc OIDC_ISSUER=https://vdpwwgrqtryjwknckewa.supabase.co/auth/v1 OIDC_AUDIENCE=authenticated OIDC_JWKS_URI=https://vdpwwgrqtryjwknckewa.supabase.co/auth/v1/.well-known/jwks.json tsx src/main.ts",
+    "qa": "DATABASE_URL=postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance AUTH_MODE=oidc OIDC_ISSUER=https://vdpwwgrqtryjwknckewa.supabase.co/auth/v1 OIDC_AUDIENCE=authenticated OIDC_JWKS_URI=https://vdpwwgrqtryjwknckewa.supabase.co/auth/v1/.well-known/jwks.json tsx src/main.ts",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run --passWithNoTests",
     "test:arch": "depcruise src --config .dependency-cruiser.cjs",
@@ -15,7 +15,7 @@
     "db:seed": "tsx src/drizzle/seed.ts",
     "typecheck": "tsc --noEmit",
     "dev:worker": "DATABASE_URL=postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance tsx watch src/worker.ts",
-    "worker": "tsx src/worker.ts"
+    "worker": "DATABASE_URL=postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance tsx src/worker.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",

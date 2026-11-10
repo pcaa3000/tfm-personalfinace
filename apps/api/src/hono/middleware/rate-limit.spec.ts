@@ -13,6 +13,7 @@ function buildApp(options: {
   max: number;
   windowMs: number;
   now?: () => number;
+  clientKey?: () => string;
 }) {
   const app = new Hono();
   app.use("/api/v1/*", rateLimitMiddleware(options));
@@ -24,6 +25,44 @@ function buildApp(options: {
 const IP = { "x-forwarded-for": "203.0.113.10" };
 
 describe("rateLimitMiddleware (S5)", () => {
+  it("stays functional and bounded when the map exceeds MAX_TRACKED_CLIENTS (R4-001)", async () => {
+    // A client rotating x-forwarded-for must not grow the map without
+    // bound: expired entries are swept; if none are expired the oldest
+    // entry is evicted so the map stays capped.
+    const app = buildApp({ max: 60, windowMs: 60_000 });
+    for (let i = 0; i < 10_001; i += 1) {
+      const res = await app.request("/api/v1/things", {
+        method: "POST",
+        headers: { "x-forwarded-for": `198.51.100.${i % 256}.${i >> 8}` },
+        body: "{}",
+      });
+      expect(res.status).not.toBe(429);
+    }
+    const res = await app.request("/api/v1/things", {
+      method: "POST",
+      headers: IP,
+      body: "{}",
+    });
+    expect(res.status).toBe(201);
+  }, 30_000);
+
+  it("keys windows per resolved client address, not one shared bucket (R4-002)", async () => {
+    // Without x-forwarded-for the limiter must fall back to the
+    // connection remote address — otherwise every user shares the
+    // literal "unknown" bucket and global traffic 429s everyone.
+    let address = "10.0.0.9";
+    const app = buildApp({
+      max: 1,
+      windowMs: 60_000,
+      clientKey: () => address,
+    });
+    const post = () =>
+      app.request("/api/v1/things", { method: "POST", body: "{}" });
+    expect((await post()).status).toBe(201);
+    address = "10.0.0.10";
+    expect((await post()).status).toBe(201);
+  });
+
   it("allows up to max writes then rejects with 429 RATE_LIMITED", async () => {
     const app = buildApp({ max: 2, windowMs: 60_000 });
     const post = () =>

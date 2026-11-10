@@ -91,17 +91,20 @@ describe("syncPendingTransactions", () => {
     expect(await listPendingTransactions()).toHaveLength(0);
   });
 
-  it("drops bypass-era items once a real identity signs in", async () => {
-    // Enqueued under dev bypass (no provider → null subject), then a
-    // real session appears: the item belongs to no current identity.
+  it("retains unverifiable items under a real session (pre-upgrade rows)", async () => {
+    // Rows written before ownerSubject existed — or under dev bypass —
+    // carry null owner. Under an authenticated session we cannot tell
+    // "orphan" from "same user's pre-upgrade item": never send them
+    // (identity leak) and never destroy them (same-identity data loss).
     await enqueueTransaction(inputFixture({ idempotencyKey: "bypass-era" }));
     setAccessTokenProvider(async () => jwtFixture("user-b"));
     fetchMock.mockResolvedValue(okResponse());
 
     const result = await syncPendingTransactions();
 
-    expect(result).toEqual({ synced: 0, dropped: 1, remaining: 0 });
+    expect(result).toEqual({ synced: 0, dropped: 0, remaining: 1 });
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(await listPendingTransactions()).toHaveLength(1);
   });
 
   it("drains own items while dropping foreign ones", async () => {

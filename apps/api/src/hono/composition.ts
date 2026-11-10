@@ -154,15 +154,36 @@ function securityFromProcess(): HttpSecurityConfig {
         : DEFAULT_HTTP_SECURITY.corsOrigins,
     bodyLimitBytes: DEFAULT_HTTP_SECURITY.bodyLimitBytes,
     rateLimit: {
-      max: Number(
-        process.env.RATE_LIMIT_MAX ?? DEFAULT_HTTP_SECURITY.rateLimit.max,
+      max: parsePositiveInt(
+        "RATE_LIMIT_MAX",
+        process.env.RATE_LIMIT_MAX,
+        DEFAULT_HTTP_SECURITY.rateLimit.max,
       ),
-      windowMs: Number(
-        process.env.RATE_LIMIT_WINDOW_MS ??
-          DEFAULT_HTTP_SECURITY.rateLimit.windowMs,
+      windowMs: parsePositiveInt(
+        "RATE_LIMIT_WINDOW_MS",
+        process.env.RATE_LIMIT_WINDOW_MS,
+        DEFAULT_HTTP_SECURITY.rateLimit.windowMs,
       ),
     },
   };
+}
+
+/**
+ * Positive-int env parse (R3-rate-limit-env-unvalidated): an explicit
+ * misconfiguration must fail fast at boot — NaN or non-positive values
+ * would silently disable the limiter or make windows never expire.
+ */
+function parsePositiveInt(
+  name: string,
+  raw: string | undefined,
+  fallback: number,
+): number {
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer, got ${JSON.stringify(raw)}`);
+  }
+  return value;
 }
 
 /**

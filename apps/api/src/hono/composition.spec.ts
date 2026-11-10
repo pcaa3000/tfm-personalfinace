@@ -116,6 +116,18 @@ describe("envFromProcess — HTTP security config (S4/S5)", () => {
     });
   });
 
+  it("rejects non-numeric RATE_LIMIT_MAX instead of silently disabling the limiter", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.RATE_LIMIT_MAX = "soon";
+    expect(() => envFromProcess()).toThrow(/RATE_LIMIT_MAX/);
+  });
+
+  it("rejects non-positive RATE_LIMIT_WINDOW_MS instead of never expiring", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.RATE_LIMIT_WINDOW_MS = "0";
+    expect(() => envFromProcess()).toThrow(/RATE_LIMIT_WINDOW_MS/);
+  });
+
   it("reads RATE_LIMIT_MAX and RATE_LIMIT_WINDOW_MS", () => {
     process.env.DATABASE_URL = DATABASE_URL;
     process.env.AUTH_MODE = "dev";
