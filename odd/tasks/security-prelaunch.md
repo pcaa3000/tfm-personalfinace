@@ -86,3 +86,14 @@ Branch: `feature/security-prelaunch` (desde `main` post-merge PR #2)
   authored en 2 commits (`5ef4a3b` api, `e07dff2` web+docs) — justo por
   encima del umbral ~400; estrategia de delivery del proyecto: single PR
   `feature/security-prelaunch -> main` (igual que PR #1 y #2).
+- L7 (2026-11-10): RDD nativa del candidato completo `review-0d9366387930c12c`
+  (lentes risk/readability/reliability, tier high, 13 files / 466 líneas).
+  Resultado: **approved** sin findings bloqueantes; acknowledge quemado
+  (`native-approved-acknowledgement-completed`, rev `713fe3f7`). 9
+  advisories informativos: CSP de `_headers` incluye `http://localhost:3000`
+  en connect-src (quitar si el host nunca sirve dev), posible interacción
+  CSP↔PWA `autoUpdate` (verificar SW registrado en deploy), headers no
+  aplicables a hosts que ignoran `_headers`, mapa de ventanas del limiter
+  (growth bajo flood ya acotado por MAX_TRACKED_CLIENTS), línea stale en
+  docs/07 sobre ubicación de la CSP, y notas menores de legibilidad en
+  app.ts/vite.config.ts. Todos follow-ups, ninguno reabre el candidato.
