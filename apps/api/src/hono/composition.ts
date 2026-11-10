@@ -165,6 +165,20 @@ function securityFromProcess(): HttpSecurityConfig {
         DEFAULT_HTTP_SECURITY.rateLimit.windowMs,
       ),
     },
+    // S2 (second OWASP pass): reads get their own limit — same fail-fast
+    // parsing so a bad value can never silently disable the limiter.
+    rateLimitRead: {
+      max: parsePositiveInt(
+        "RATE_LIMIT_READ_MAX",
+        process.env.RATE_LIMIT_READ_MAX,
+        DEFAULT_HTTP_SECURITY.rateLimitRead.max,
+      ),
+      windowMs: parsePositiveInt(
+        "RATE_LIMIT_READ_WINDOW_MS",
+        process.env.RATE_LIMIT_READ_WINDOW_MS,
+        DEFAULT_HTTP_SECURITY.rateLimitRead.windowMs,
+      ),
+    },
   };
 }
 
@@ -190,7 +204,9 @@ function parsePositiveInt(
  * Convenience env builder for main.ts; e2e helpers pass explicit values.
  * GAP-SEC-01 (S3): AUTH_MODE fails closed — anything other than the
  * explicit "dev" or "oidc" throws at boot. NEW-SEC-13 (S8): DATABASE_URL
- * is required, no localhost fallback.
+ * is required, no localhost fallback. S1 (second OWASP pass): the dev
+ * auth mode is dev-only — under NODE_ENV=production it refuses to boot,
+ * so a misconfigured deploy can never serve the implicit dev identity.
  */
 export function envFromProcess(): AppEnv {
   const databaseUrl = requiredEnv("DATABASE_URL");
@@ -216,6 +232,11 @@ export function envFromProcess(): AppEnv {
     };
   }
   if (authMode === "dev") {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "AUTH_MODE=dev is forbidden when NODE_ENV=production",
+      );
+    }
     return { databaseUrl, authMode: "dev", security };
   }
   throw new Error(

@@ -2,11 +2,17 @@ import type { Context, MiddlewareHandler } from "hono";
 import { getConnInfo } from "@hono/node-server/conninfo";
 
 /**
- * GAP-SEC-05 (S5): small in-memory fixed-window limiter for the write API.
- * Keyed by client IP (x-forwarded-for, first hop); a `max` over the window
- * returns the 429 `{code:"RATE_LIMITED"}` envelope. `now` is injectable so
- * specs can travel through windows deterministically. Single-process only —
- * a multi-replica deploy would need a shared store (documented in docs/07).
+ * GAP-SEC-05 (S5 + second pass S2): small in-memory fixed-window limiter
+ * for `/api/v1/*`. Keyed by client IP (x-forwarded-for, first hop); a `max`
+ * over the window returns the 429 `{code:"RATE_LIMITED"}` envelope. `now`
+ * is injectable so specs can travel through windows deterministically.
+ * Single-process only — a multi-replica deploy would need a shared store
+ * (documented in docs/07).
+ *
+ * Second OWASP pass (S2): `createApp` mounts two instances so every method
+ * is covered — writes (WRITE_METHODS) at the write limit and every other
+ * method at the read limit, each with its own window map so one class
+ * never consumes the other's budget.
  */
 
 const WRITE_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
@@ -18,6 +24,12 @@ export interface RateLimitOptions {
   readonly now?: () => number;
   /** Test hook: override how the client key is resolved. */
   readonly clientKey?: (c: Context) => string;
+  /**
+   * Which methods consume this bucket (S2). Default: write methods only.
+   * The read instance passes the complement so every method is limited
+   * by exactly one bucket.
+   */
+  readonly shouldLimit?: (method: string) => boolean;
 }
 
 /**
@@ -40,9 +52,11 @@ export function rateLimitMiddleware(
   options: RateLimitOptions,
 ): MiddlewareHandler {
   const now = options.now ?? (() => Date.now());
+  const shouldLimit =
+    options.shouldLimit ?? ((method: string) => WRITE_METHODS.has(method));
   const windows = new Map<string, { count: number; resetAt: number }>();
   return async (c, next) => {
-    if (!WRITE_METHODS.has(c.req.method)) {
+    if (!shouldLimit(c.req.method)) {
       return next();
     }
     const key = (options.clientKey ?? defaultClientKey)(c);

@@ -14,6 +14,7 @@ function buildApp(options: {
   windowMs: number;
   now?: () => number;
   clientKey?: () => string;
+  shouldLimit?: (method: string) => boolean;
 }) {
   const app = new Hono();
   app.use("/api/v1/*", rateLimitMiddleware(options));
@@ -120,5 +121,34 @@ describe("rateLimitMiddleware (S5)", () => {
     expect((await post()).status).toBe(429);
     now += 60_001;
     expect((await post()).status).toBe(201);
+  });
+
+  it("applies a custom shouldLimit predicate — the read bucket (S2)", async () => {
+    // S2 wires a second instance whose predicate covers every non-write
+    // method: GETs are capped by it while writes pass through untouched.
+    const app = buildApp({
+      max: 1,
+      windowMs: 60_000,
+      shouldLimit: (method) => method !== "POST",
+    });
+    const get = () => app.request("/api/v1/things", { headers: IP });
+
+    expect((await get()).status).toBe(200);
+    const res = await get();
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({
+      code: "RATE_LIMITED",
+      message: "Too many requests",
+    });
+    // The predicate does not match writes, so POSTs stay free.
+    expect(
+      (
+        await app.request("/api/v1/things", {
+          method: "POST",
+          headers: { ...IP, "content-type": "application/json" },
+          body: "{}",
+        })
+      ).status,
+    ).toBe(201);
   });
 });

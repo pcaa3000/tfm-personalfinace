@@ -348,29 +348,59 @@ describe("AuthProvider", () => {
   it("signOut keeps the offline queue and cache when the auth call returns an error (S6)", async () => {
     // supabase-js signOut resolves {error} on server 5xx — it does not
     // throw. The session is still valid, so queued financial data and
-    // the cache must NOT be destroyed.
+    // the cache must NOT be destroyed. signOut() rethrows the auth error
+    // to the caller, so the probe must catch it — a bare `void signOut()`
+    // would leave an unhandled rejection and fail the suite run.
     isAuthConfigured.mockReturnValue(true);
     const session = {
       access_token: "tok-err",
       user: { id: "u-err", email: "e@example.com" },
     };
+    const failure = new Error("server error");
     const client = makeClient({
       getSession: vi.fn(async () => ({ data: { session }, error: null })),
-      signOut: vi.fn(async () => ({ error: new Error("server error") })),
+      signOut: vi.fn(async () => ({ error: failure })),
     });
     getSupabaseClient.mockReturnValue(client);
     setAccessTokenProvider(null);
     await enqueueTransaction(inputFixture({ idempotencyKey: "keep-me" }));
     queryClient.setQueryData(["transactions"], [{ id: "cached" }]);
 
-    renderProvider();
+    let caught: unknown = null;
+    function FailProbe() {
+      const { signOut } = useAuth();
+      return (
+        <button
+          onClick={async () => {
+            try {
+              await signOut();
+            } catch (error) {
+              caught = error;
+            }
+          }}
+        >
+          logout-error
+        </button>
+      );
+    }
+    render(
+      <AuthProvider>
+        <Probe />
+        <FailProbe />
+      </AuthProvider>,
+    );
     await waitFor(() => {
       expect(screen.getByTestId("email").textContent).toBe("e@example.com");
     });
-    fireEvent.click(screen.getByRole("button", { name: "logout" }));
+    fireEvent.click(screen.getByRole("button", { name: "logout-error" }));
 
     await waitFor(() => {
       expect(client.auth.signOut).toHaveBeenCalledTimes(1);
+    });
+    // The error still propagates to the caller (L4 fix) — it just must
+    // not destroy anything owned by the still-valid session.
+    await waitFor(() => {
+      expect(caught).toBe(failure);
     });
     expect(await listPendingTransactions()).toHaveLength(1);
     expect(queryClient.getQueryData(["transactions"])).toBeDefined();

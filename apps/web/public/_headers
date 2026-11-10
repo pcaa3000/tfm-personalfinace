@@ -1,0 +1,23 @@
+# S3 (second OWASP pass, GAP web-headers): security headers for the
+# statically hosted PWA. Netlify / Cloudflare Pages `_headers` format —
+# these hosts pick this file up from the publish root and apply the
+# headers to every response.
+#
+# NOTE: hosts that do not honor `_headers` (nginx, S3+CloudFront, a plain
+# static server, …) MUST replicate these headers in their own config;
+# the <meta http-equiv> CSP in index.html only covers the policy below,
+# not the other headers.
+#
+# CSP rationale: the app loads only same-origin assets, calls the API on
+# the same origin (/api/v1 — the Vite dev server proxies it, and any
+# deployment should front it the same way), talks to Supabase over
+# https/wss, and injects styles at runtime via Emotion (hence
+# 'unsafe-inline' on style-src only). connect-src also allows a direct
+# local API on :3000 for dev.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co http://localhost:3000
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  X-Frame-Options: DENY

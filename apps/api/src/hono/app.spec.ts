@@ -213,7 +213,9 @@ describe("rate limiting on writes (S5 — GAP-SEC-05)", () => {
     });
   });
 
-  it("does not rate-limit read requests", async () => {
+  it("keeps reads on their own budget, not the write max", async () => {
+    // S2: reads are limited too, but by the (higher) read budget — a
+    // write max of 1 must not throttle GETs.
     const app = createApp(makeDeps(), {
       rateLimit: { max: 1, windowMs: 60_000 },
     });
@@ -221,6 +223,54 @@ describe("rate limiting on writes (S5 — GAP-SEC-05)", () => {
       const res = await app.request("/api/v1/balance");
       expect(res.status).toBe(200);
     }
+  });
+});
+
+describe("rate limiting on reads (S2)", () => {
+  const IP = { "x-forwarded-for": "203.0.113.42" };
+  const get = (app: ReturnType<typeof createApp>) =>
+    app.request("/api/v1/balance", { headers: IP });
+  const post = (app: ReturnType<typeof createApp>) =>
+    app.request("/api/v1/transactions", {
+      method: "POST",
+      headers: { ...IP, "content-type": "application/json" },
+      body: "{}",
+    });
+
+  it("returns 429 RATE_LIMITED once the read max is exceeded", async () => {
+    const app = createApp(makeDeps(), {
+      rateLimitRead: { max: 2, windowMs: 60_000 },
+    });
+    expect((await get(app)).status).toBe(200);
+    expect((await get(app)).status).toBe(200);
+    const res = await get(app);
+    expect(res.status).toBe(429);
+    expect(await res.json()).toEqual({
+      code: "RATE_LIMITED",
+      message: "Too many requests",
+    });
+  });
+
+  it("keeps the write budget untouched by reads and vice versa", async () => {
+    const app = createApp(makeDeps(), {
+      rateLimit: { max: 1, windowMs: 60_000 },
+      rateLimitRead: { max: 2, windowMs: 60_000 },
+    });
+    // Exhaust the read bucket…
+    expect((await get(app)).status).toBe(200);
+    expect((await get(app)).status).toBe(200);
+    expect((await get(app)).status).toBe(429);
+    // …the write budget is untouched: the first POST reaches the
+    // route (400 INVALID_BODY proves it passed the limiter), the
+    // second trips the write cap.
+    expect((await post(app)).status).toBe(400);
+    expect((await post(app)).status).toBe(429);
+    // A write never consumed the read bucket: another IP can still
+    // read — same client stays 429 until the window resets.
+    const other = await app.request("/api/v1/balance", {
+      headers: { "x-forwarded-for": "198.51.100.7" },
+    });
+    expect(other.status).toBe(200);
   });
 });
 

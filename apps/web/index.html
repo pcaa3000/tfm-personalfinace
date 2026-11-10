@@ -2,6 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      S3 (second OWASP pass, GAP web-headers): the CSP meta fallback is
+      injected by the `tfm-csp-meta` plugin in vite.config.ts — build
+      output only, never dev (it would block the react-refresh preamble).
+      Authoritative headers live in `public/_headers`; keep all three in
+      sync.
+    -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#1976d2" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
