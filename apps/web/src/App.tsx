@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Box, CssBaseline, ThemeProvider, Typography } from "@mui/material";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -7,9 +7,8 @@ import { AuthProvider, useAuth } from "./features/auth/auth";
 import { LoginPage } from "./features/auth/LoginPage";
 import { LedgerPage } from "./features/ledger/LedgerPage";
 import { buildAppTheme } from "./theme";
+import { queryClient } from "./query-client";
 import { ThemeModeProvider, useThemeMode } from "./theme-mode";
-
-const queryClient = new QueryClient();
 
 function ThemedApp() {
   const { mode } = useThemeMode();

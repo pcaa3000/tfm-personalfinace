@@ -17,6 +17,19 @@ export function inputFixture(
   };
 }
 
+/**
+ * Unsigned JWT carrying `sub` so specs can fake distinct caller subjects
+ * through the access-token provider without touching Supabase.
+ */
+export function jwtFixture(sub: string): string {
+  const encode = (value: object) =>
+    btoa(JSON.stringify(value))
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replaceAll("=", "");
+  return `${encode({ alg: "none", typ: "JWT" })}.${encode({ sub })}.sig`;
+}
+
 export function viewFixture(
   overrides: Partial<TransactionView> = {},
 ): TransactionView {

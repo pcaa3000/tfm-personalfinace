@@ -45,6 +45,34 @@ export function setAccessTokenProvider(
   accessTokenProvider = provider;
 }
 
+/** Decodes the `sub` claim of a JWT payload; null when not a JWT. */
+function jwtSubject(token: string): string | null {
+  const payload = token.split(".")[1];
+  if (!payload) return null;
+  try {
+    const decoded = JSON.parse(
+      atob(payload.replaceAll("-", "+").replaceAll("_", "/")),
+    ) as { sub?: unknown };
+    return typeof decoded.sub === "string" ? decoded.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Current authenticated subject (GAP-SEC-08): the `sub` claim of the
+ * bearer token, resolved through the same provider the API client uses.
+ * The offline queue binds each item to this value so a different session
+ * can never drain it. Non-JWT tokens degrade to raw-token equality,
+ * which fails closed (orphaned items are dropped, never sent).
+ * Returns null when no provider is wired (dev bypass / signed out).
+ */
+export async function currentCallerSubject(): Promise<string | null> {
+  const token = accessTokenProvider ? await accessTokenProvider() : null;
+  if (!token) return null;
+  return jwtSubject(token) ?? token;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = accessTokenProvider ? await accessTokenProvider() : null;
   const headers: Record<string, string> = {

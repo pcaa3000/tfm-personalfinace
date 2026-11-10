@@ -17,7 +17,7 @@ export function usePendingSync(): void {
     if (result.synced > 0) {
       await queryClient.invalidateQueries({ queryKey: ["transactions"] });
     }
-    if (result.synced > 0 || result.remaining > 0) {
+    if (result.synced > 0 || result.dropped > 0 || result.remaining > 0) {
       await queryClient.invalidateQueries({ queryKey: PENDING_QUERY_KEY });
     }
   }, [queryClient]);
