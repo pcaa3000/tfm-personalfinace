@@ -42,7 +42,7 @@ Branch: `feature/security-hardening` (nueva, desde `main` post-merge PR #1)
 |----|-------|----|------|--------|--------------------|
 | T1 | API — auth fail-closed + DATABASE_URL fail-fast (`hono/composition.ts`, `dev-caller.ts`, `worker.ts`, specs) | S3, S8 | worker | pending | — |
 | T2 | API — hardening HTTP: secureHeaders + CORS allowlist + bodyLimit + rate limiting + sanitize zod details + log 500s (`hono/app.ts`, `middleware/errors.ts`, routes/*) | S4, S5, S7 | worker | pending | — |
-| T3 | Web — logout limpia cola + query cache; ítems ligados a workspace (`auth.tsx`, `offline/queue.ts`, `sync.ts`, `App.tsx`, specs) | S6 | worker | pending | — |
+| T3 | Web — logout limpia cola + query cache; ítems ligados a identidad del creador (`auth.tsx`, `offline/queue.ts`, `sync.ts`, `query-client.ts`, `client-caches.ts`, specs) | S6 | worker | done | worker report: RED 11 fallando → GREEN 36/36 focales, 215/215 suite web; binding por `sub` del JWT |
 | T4 | docs/07 actualizado a post-remediación + verify + cierre | S1, S2 | inline | pending | — |
 
 ## Log
@@ -54,3 +54,22 @@ Branch: `feature/security-hardening` (nueva, desde `main` post-merge PR #1)
 - L2 (2026-11-10): "yo decidi por la opcion 1" — cierre de los 5
   bloqueantes + GAP-04 y NEW-13. Se abren T1–T4 en branch
   `feature/security-hardening`.
+- L3 (2026-11-10): T3 done (worker). Diseño elegido: binding por `sub` del
+  JWT del caller (`currentCallerSubject()` decodifica el bearer token; sin
+  JWT → igualdad por token crudo, fail-closed: ítems huérfanos se dropean,
+  nunca se envían). `signOut` llama `clearClientCaches()`
+  (`queryClient.clear()` + `clearPendingTransactions()`) tras el signOut
+  exitoso. Ítems de identidad ajena: DROPPED (no retenidos).
+- L4 (2026-11-10): T1/T2 done (worker `0b39bdf`), T3 cerrada (`2c2cb06`).
+  Verify independiente `gentle-ai-verify`: PASS en S3/S4/S5/S7/S8 pero
+  FAIL en S6 — `supabase.auth.signOut()` resuelve `{error}` sin lanzar en
+  5xx: la sesión seguía válida y aun así se borraba la cola+cache. Fix
+  inline RED→GREEN (2 specs nuevas): `signOut` propaga el error antes de
+  limpiar; además `sync` retiene (no envía ni dropea) ítems cuando el
+  subject actual es `null` no verificable — nunca destruir datos propios.
+  Advisory restante: el rate limiter es in-memory single-process y
+  `x-forwarded-for` es spoofable — edge-level limiting recomendado para
+  producción multi-réplica. Suite final: 499/499 api + 217/217 web,
+  typecheck + lint + depcruise limpios.
+  Slice boundary: código en 2 commits (api/web); delivery single PR
+  `feature/security-hardening → main` (misma estrategia que PR #1).

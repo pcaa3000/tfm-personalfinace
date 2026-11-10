@@ -123,3 +123,19 @@ Re-verificación estática sobre `main` post-merge del PR #1 (login web real, `V
 5. **NEW-SEC-12** — 500s invisibles: una línea junto a GAP-06.
 
 **Programables para MVP (no bloquean):** GAP-03, GAP-04 (barato, recomendado igual), GAP-06, GAP-07 (levantar CI básico + `pnpm audit`/`minimum-release-age` — la ausencia total de CI es en sí un flag pre-release), GAP-10, NEW-11 (cap de filas), NEW-13, NEW-14.
+
+## Remediación 2026-11-10 (feature `security-hardening`)
+
+Cerradas en la rama `feature/security-hardening` (commits `0b39bdf`, `2c2cb06`):
+
+- **GAP-SEC-01 CERRADA**: `AUTH_MODE` debe ser explícito `dev`/`oidc` — cualquier otro valor o ausencia falla cerrado en el arranque; el resolver dev ya no tiene subject por defecto (header `x-dev-user` ausente/vacío/oversized → 401).
+- **GAP-SEC-02 CERRADA**: `secureHeaders()` en todas las respuestas, CORS con allowlist `CORS_ORIGINS` (default `http://localhost:5173`), `bodyLimit` 1 MiB en writes → 413 `PAYLOAD_TOO_LARGE`.
+- **GAP-SEC-05 CERRADA (con caveat)**: rate limiter fijo-window por IP en writes `/api/v1` → 429 `RATE_LIMITED`, configurable por `RATE_LIMIT_MAX`/`RATE_LIMIT_WINDOW_MS`. **Caveat producción**: es in-memory single-process y `x-forwarded-for` es spoofable — en despliegues multi-réplica agregar limitación en la capa de edge (proxy/CDN).
+- **GAP-SEC-08 CERRADA**: ítems de la cola offline ligados al `sub` del JWT creador; sync dropea (nunca envía) ítems de identidad ajena y retiene ítems si el subject no es verificable; `signOut` exitoso vacía `pendingTransactions` + query cache (si `signOut` devuelve error — 5xx sin throw — no se borra nada).
+- **NEW-SEC-12 CERRADA**: excepciones desconocidas se loguean (`console.error`) antes del 500 genérico.
+- **GAP-SEC-04 CERRADA**: `details` de 400 sanitizado a `{path, code, message}` vía `sanitizeZodIssues()` en las 5 rutas.
+- **NEW-SEC-13 CERRADA**: `DATABASE_URL` obligatoria vía `requiredEnv()` — sin fallback a localhost (los scripts `dev`/`dev:worker` la pasan explícitamente).
+
+**Siguen programables**: GAP-03 (zod strict), GAP-06 (logging estructurado + eventos de seguridad), GAP-07 (sin CI — pre-release recomendado: workflow mínimo + `pnpm audit`/`minimum-release-age`), GAP-10, NEW-11 (`/notifications` sin `LIMIT`), NEW-14.
+
+**Publicable**: con los bloqueantes cerrados, la app cumple la postura mínima del doc. Antes de exponer a internet se recomienda además: CI con tests+audit, limitación de rate a nivel edge, y NEW-11 (cap de notificaciones).
