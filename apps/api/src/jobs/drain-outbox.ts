@@ -36,6 +36,10 @@ interface PendingRow {
  * workers never double-dispatch a row; a crash before commit rolls the
  * marks back and the rows get redispatched (at-least-once — consumers
  * stay idempotent).
+ *
+ * A row whose send throws is skipped — left unprocessed so a later drain
+ * retries it — without aborting the rest of the batch, so one bad event
+ * cannot stall the whole pipeline (R3-drain-send-inside-tx).
  */
 export async function drainOutboxOnce(
   db: DrizzleDb,
@@ -52,18 +56,27 @@ export async function drainOutboxOnce(
       FOR UPDATE SKIP LOCKED
     `);
     const pending = result.rows as unknown as PendingRow[];
+    let sent = 0;
     for (const row of pending) {
-      await dispatcher.send(LEDGER_EVENTS_QUEUE, {
-        eventType: row.type,
-        workspaceId: row.workspaceId,
-        outboxEventId: row.id,
-        payload: row.payload,
-      });
+      try {
+        await dispatcher.send(LEDGER_EVENTS_QUEUE, {
+          eventType: row.type,
+          workspaceId: row.workspaceId,
+          outboxEventId: row.id,
+          payload: row.payload,
+        });
+      } catch {
+        // Leave the row pending: a later drain retries it. Skipping keeps
+        // the rest of the batch moving instead of stalling on the oldest
+        // permanently-failing event.
+        continue;
+      }
       await tx
         .update(outboxEvents)
         .set({ processedAt: new Date() })
         .where(eq(outboxEvents.id, row.id));
+      sent += 1;
     }
-    return pending.length;
+    return sent;
   });
 }

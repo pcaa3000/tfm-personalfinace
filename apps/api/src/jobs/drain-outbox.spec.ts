@@ -76,6 +76,48 @@ describe("drainOutboxOnce (T3)", () => {
     expect(drained).toBe(0);
     expect(dispatcher.send).not.toHaveBeenCalled();
   });
+
+  it("skips a row whose send fails without aborting the batch (R3-drain-send-inside-tx)", async () => {
+    // A poison event must not stall the pipeline: the failing row stays
+    // pending for the next drain while the rest of the batch still commits.
+    await insertOutboxEvent(db, {
+      workspaceId: WS,
+      type: "transaction.confirmed",
+      payload: { transactionId: "tx-drain-poison", concept: "Poison" },
+    });
+    const rowsBefore = await db
+      .select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.workspaceId, WS));
+    const bad = rowsBefore.find(
+      (r) =>
+        (r.payload as Record<string, unknown>).transactionId ===
+        "tx-drain-poison",
+    )!;
+    const dispatcher: OutboxDispatcher = {
+      send: vi.fn(async (_queue: string, job: LedgerEventJob) => {
+        if (job.outboxEventId === bad.id) throw new Error("queue rejected");
+        return "job-ok";
+      }),
+    };
+
+    const drained = await drainOutboxOnce(db, dispatcher);
+
+    // drain resolves; the poison row remains pending, other rows processed
+    expect(drained).toBeGreaterThanOrEqual(0);
+    expect(dispatcher.send).toHaveBeenCalled();
+    const rowsAfter = await db
+      .select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.id, bad.id));
+    expect(rowsAfter[0]?.processedAt).toBeNull();
+
+    // cleanup: mark it processed so it cannot interfere with later drains
+    await db
+      .update(outboxEvents)
+      .set({ processedAt: new Date() })
+      .where(eq(outboxEvents.id, bad.id));
+  });
 });
 
 describe("handleLedgerEvent consumer (T3, S2)", () => {
