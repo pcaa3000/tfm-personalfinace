@@ -37,7 +37,7 @@ Arquitectura de publicación decidida (L1/L2 de `odd/tasks/deploy-mvp.md`):
 | `OIDC_ISSUER` | `https://<project>.supabase.co/auth/v1` | |
 | `OIDC_AUDIENCE` | `authenticated` | |
 | `OIDC_JWKS_URI` | `https://<project>.supabase.co/auth/v1/.well-known/jwks.json` | |
-| `DATABASE_URL` | pooler **session mode** + `sslmode=require` | ver abajo |
+| `DATABASE_URL` | pooler **session mode** + `sslmode=no-verify` | ver abajo |
 | `CORS_ORIGINS` | — | innecesaria mientras Netlify proxee `/api`; si el SPA llamara directo, poner el dominio Netlify exacto |
 | `RATE_LIMIT_*` | defaults o ajustados | el limiter confía en XFF: Render/Koyeb/Netlify lo sobrescriben correctamente |
 | `PORT` | inyectado por la plataforma | el código ya respeta `process.env.PORT` |
@@ -54,8 +54,20 @@ Arquitectura de publicación decidida (L1/L2 de `odd/tasks/deploy-mvp.md`):
 `pg` Pool y `pg-boss` **no funcionan sobre el pooler en transaction mode**
 (puerto 6543, prepared statements/session features rotos). Usar:
 
-- **Session pooler**: `postgresql://postgres.<ref>:<pass>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require` — pooler host, puerto **5432**, o
-- conexión directa `db.<ref>.supabase.co:5432` si el plan lo permite.
+- **Session pooler**: `postgresql://postgres.<ref>:<pass>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=no-verify` — pooler host, puerto **5432**.
+- La conexión **directa** `db.<ref>.supabase.co:5432` solo tiene registro
+  IPv6 en el free tier — inalcanzable desde la mayoría de ISPs/plataformas;
+  el síntoma es un hang infinito en connect/migrate, no un error claro.
+
+**Gotcha SSL (verificado 2026-11-10)**: el pooler presenta un certificado
+cuya CA no está en el bundle de Node, y `pg` v8 trata
+`sslmode=require` como `verify-full` → `SELF_SIGNED_CERT_IN_CHAIN`. Las
+opciones:
+
+- `sslmode=no-verify` — TLS cifrado sin verificación de CA. **Es el valor
+  a usar en MVP** para migraciones, API y worker.
+- `sslmode=verify-full` + `sslrootcert` con el CA cert descargado de
+  Supabase — hardening post-MVP.
 
 Aplica a API **y** worker.
 
@@ -76,7 +88,7 @@ DATABASE_URL="<session-pooler-prod>" pnpm --filter @tfm/api db:migrate
 - [ ] `NODE_ENV=production` y `AUTH_MODE=oidc` en el servicio API (el
       guard nuevo lo exige; de hecho si NODE_ENV=production y AUTH_MODE=dev
       la API **no arranca** — ese es el comportamiento deseado).
-- [ ] `DATABASE_URL` con `sslmode=require`, session-mode pooler.
+- [ ] `DATABASE_URL` con `sslmode=no-verify`, session-mode pooler.
 - [ ] Migraciones corridas contra la DB de prod.
 - [ ] `docker-compose.yml` **solo local** — jamás en el host público.
 - [ ] Headers verificados en prod: `curl -sI https://<sitio>.netlify.app | grep -i "content-security\|x-frame"`.

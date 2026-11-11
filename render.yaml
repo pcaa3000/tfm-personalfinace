@@ -23,7 +23,7 @@ services:
       - key: OIDC_JWKS_URI
         sync: false          # https://<project>.supabase.co/auth/v1/.well-known/jwks.json
       - key: DATABASE_URL
-        sync: false          # Supabase SESSION-mode pooler (port 5432) + sslmode=require — see docs/08
+        sync: false          # Supabase SESSION-mode pooler (port 5432) + sslmode=no-verify — see docs/08
       - key: CORS_ORIGINS
         sync: false          # not needed while Netlify proxies /api; set to the Netlify domain if the SPA ever calls the API cross-origin
       - key: RATE_LIMIT_MAX

@@ -11,7 +11,7 @@
 # NOT expand env vars in redirects; the host must be literal here.
 [[redirects]]
   from = "/api/*"
-  to = "https://API_HOST/api/:splat"
+  to = "https://tfm-personalfinace-api.onrender.com/api/:splat"
   status = 200
   force = true
   headers = { X-From = "Netlify" }
