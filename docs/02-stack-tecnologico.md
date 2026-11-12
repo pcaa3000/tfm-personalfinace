@@ -15,7 +15,7 @@ La propuesta utiliza TypeScript en web y API, PostgreSQL como fuente de verdad y
 - **Demo:** misma API/casos de uso con semilla y adaptadores mock; medios reales permanecen en el navegador; los cambios no persisten al terminar la sesión.
 - **OCR y voz:** Azure AI Document Intelligence y Azure AI Speech en capa gratuita F0, detrás de puertos propios.
 - **Analítica:** consultas y agregados en PostgreSQL, con políticas deterministas.
-- **Despliegue inicial:** web en hosting estático gratuito (Vercel), API+worker en un servicio contenerizado gratuito (Render o Koyeb), datos en Supabase. Sin Redis, Keycloak, MinIO ni Kubernetes en esta etapa.
+- **Despliegue inicial:** web en hosting estático gratuito (**Netlify** — desplegado 2026-11; honra `public/_headers` y proxy `/api` same-origin), API en un servicio contenerizado gratuito (**Render**), worker diferido o en instancia gratuita (Koyeb/Fly), datos en Supabase. Sin Redis, Keycloak, MinIO ni Kubernetes en esta etapa.
 
 ## Criterios de selección
 
@@ -321,15 +321,16 @@ No se despliega plataforma de observabilidad ni se instrumenta OpenTelemetry en 
 
 | Capa | Servicio gratuito | Límite relevante |
 |---|---|---|
-| Web y PWA | **Vercel** (Hobby) | Uso personal/no comercial; assets estáticos y CDN incluidos |
-| API + worker | **Render** o **Koyeb** (un solo proceso contenerizado) | Render free duerme a los 15 min sin tráfico y demora ~1 min en despertar; aceptable para el piloto, con ping de health-check si molesta en demos |
+| Web y PWA | **Netlify** (free) — *desplegado* | Assets estáticos + CDN; honra `public/_headers`; proxy `/api/*` → Render mantiene same-origin (sin CORS, CSP `connect-src 'self'` válida) |
+| API | **Render** (free web service, Docker) — *desplegado* | Duerme a los 15 min sin tráfico (~1 min cold start); aceptable para el piloto, con ping de health-check si molesta en demos |
+| Worker | **diferido en MVP** — Koyeb/Fly free o Render starter | Render cobra background workers; el outbox acumula eventos sin pérdida hasta que el worker corra |
 | Base de datos | **Supabase** Postgres | 500 MB, pausa tras 7 días de inactividad, sin backups automáticos (se documenta `pg_dump` programado) |
 | Cola | **pg-boss** en el mismo Postgres | Sin servicio adicional |
 | Archivos | **Supabase Storage** | 1 GB, buckets privados, ciclo de vida ≤30 días |
 | Identidad | **Supabase Auth** | 50k MAU; Google, Facebook y passkeys |
 | OCR / voz | **Azure AI** capa F0 | ~500 páginas/mes de Document Intelligence y ~5 h/mes de Speech; mocks por defecto |
 
-La web no convive con la API en Vercel porque sus functions son invocaciones efímeras (300 s máx. en Hobby) sin proceso persistente: el worker de la cola necesita un proceso continuo que pollee PostgreSQL, y los Daemons de Vercel solo conceden ~10 vCPU-horas/mes en el plan gratuito — suficiente para probar, no para operar. Un host de contenedores con proceso persistente resuelve ambas necesidades en el free tier.
+La web no convive con la API en Vercel/Cloudflare porque sus functions/Workers son invocaciones efímeras sin proceso persistente ni soporte para `pg`/`pg-boss`: el worker de la cola necesita un proceso continuo que pollee PostgreSQL. Un host de contenedores con proceso persistente resuelve ambas necesidades en el free tier. **Vercel fue evaluado y descartado por esta razón (2026-11)** — exigía reempaquetar la API a serverless + cron. Los pasos reales del despliegue están en `docs/08`.
 
 ### Etapa 2 — producción y escalado (AWS)
 
