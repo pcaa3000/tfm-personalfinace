@@ -31,3 +31,7 @@ Branch: `feature/offline-pending-visible`
   `pendingQuery` (`LedgerPage.tsx`). Spec de regresión: render online →
   `navigator.onLine=false` + evento `offline` → invalidar
   `pending-transactions` → la fila pendiente aparece igual.
+- L2 (2026-11-11): RDD nativa `review-8061a80c5431b1a1` (lente
+  reliability, tier medium, 159 líneas). Resultado: **approved**,
+  acknowledge quemado. 1 advisory (SUGGESTION) sobre el spec: la limpieza
+  de `navigator.onLine` podría ir a afterEach — menor, no aplica.
