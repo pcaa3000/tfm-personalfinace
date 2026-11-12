@@ -76,7 +76,7 @@ Estado: **producción en vivo y verificada end-to-end**.
 | `OIDC_ISSUER` | `https://<project>.supabase.co/auth/v1` | |
 | `OIDC_AUDIENCE` | `authenticated` | |
 | `OIDC_JWKS_URI` | `https://<project>.supabase.co/auth/v1/.well-known/jwks.json` | |
-| `DATABASE_URL` | pooler **session mode** + `sslmode=no-verify` | ver abajo |
+| `DATABASE_URL` | pooler **session mode** + `sslmode=verify-full&sslrootcert=/etc/secrets/supabase-ca.crt` | **en producción** — ver abajo |
 | `CORS_ORIGINS` | — | innecesaria mientras Netlify proxee `/api`; si el SPA llamara directo, poner el dominio Netlify exacto |
 | `RATE_LIMIT_*` | defaults o ajustados | el limiter confía en XFF: Render/Koyeb/Netlify lo sobrescriben correctamente |
 | `PORT` | inyectado por la plataforma | el código ya respeta `process.env.PORT` |
@@ -100,13 +100,25 @@ Estado: **producción en vivo y verificada end-to-end**.
 
 **Gotcha SSL (verificado 2026-11-10)**: el pooler presenta un certificado
 cuya CA no está en el bundle de Node, y `pg` v8 trata
-`sslmode=require` como `verify-full` → `SELF_SIGNED_CERT_IN_CHAIN`. Las
-opciones:
+`sslmode=require` como `verify-full` → `SELF_SIGNED_CERT_IN_CHAIN`.
 
-- `sslmode=no-verify` — TLS cifrado sin verificación de CA. **Es el valor
-  a usar en MVP** para migraciones, API y worker.
-- `sslmode=verify-full` + `sslrootcert` con el CA cert descargado de
-  Supabase — hardening post-MVP.
+**Configuración elegida en producción (2026-11-11)**: la CA de Supabase
+(descargada de Dashboard → Settings → Database → SSL server certificate)
+está subida como **Secret File** en Render (Settings → Secret Files →
+`supabase-ca.crt`, montada en `/etc/secrets/supabase-ca.crt`), y la
+`DATABASE_URL` del servicio es:
+
+```
+postgresql://postgres.<ref>:<pass>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=verify-full&sslrootcert=/etc/secrets/supabase-ca.crt
+```
+
+- `sslmode=verify-full&sslrootcert=<path>` — TLS cifrado **con**
+  verificación de CA (protección MITM real). Es la URL de producción.
+- `sslmode=no-verify` — TLS cifrado sin verificación de CA; solo se usó
+  para la **migración inicial local** (el `.crt` no estaba aún en el
+  filesystem). No queda en ningún servicio.
+- El worker (cuando se levante) usa la **misma** URL `verify-full` y el
+  mismo Secret File.
 
 Aplica a API **y** worker.
 
@@ -127,7 +139,8 @@ DATABASE_URL="<session-pooler-prod>" pnpm --filter @tfm/api db:migrate
 - [ ] `NODE_ENV=production` y `AUTH_MODE=oidc` en el servicio API (el
       guard nuevo lo exige; de hecho si NODE_ENV=production y AUTH_MODE=dev
       la API **no arranca** — ese es el comportamiento deseado).
-- [ ] `DATABASE_URL` con `sslmode=no-verify`, session-mode pooler.
+- [x] `DATABASE_URL` session-mode pooler + `sslmode=verify-full` con
+      `sslrootcert` (CA de Supabase como Secret File en Render).
 - [ ] Migraciones corridas contra la DB de prod.
 - [ ] `docker-compose.yml` **solo local** — jamás en el host público.
 - [ ] Headers verificados en prod: `curl -sI https://<sitio>.netlify.app | grep -i "content-security\|x-frame"`.
