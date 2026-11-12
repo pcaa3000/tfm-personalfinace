@@ -488,6 +488,50 @@ describe("LedgerPage pending sync (T7)", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("surfaces a newly queued row while offline (S-offline-visible)", async () => {
+    // Real-world flow: user loads the ledger online, loses signal, then
+    // enqueues a transaction. The pending query reads IndexedDB — it must
+    // still refetch while React Query is offline (networkMode fix).
+    vi.mocked(listTransactions).mockResolvedValue([]);
+    vi.mocked(listPendingTransactions).mockResolvedValue([]);
+
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <ThemeModeProvider>
+          <LedgerPage />
+        </ThemeModeProvider>
+      </QueryClientProvider>,
+    );
+    expect(
+      await screen.findByText("Todavía no hay movimientos."),
+    ).toBeTruthy();
+
+    // Go offline (React Query pauses networkMode:"online" fetches).
+    Object.defineProperty(navigator, "onLine", {
+      value: false,
+      configurable: true,
+    });
+    window.dispatchEvent(new Event("offline"));
+
+    // A transaction gets queued and the pending query is invalidated.
+    vi.mocked(listPendingTransactions).mockResolvedValue([pendingItem]);
+    await client.invalidateQueries({ queryKey: ["pending-transactions"] });
+
+    expect(await screen.findByText("almuerzo pendiente")).toBeTruthy();
+    expect(
+      await screen.findByText("1 pendiente(s) de sincronizar"),
+    ).toBeTruthy();
+
+    Object.defineProperty(navigator, "onLine", {
+      value: true,
+      configurable: true,
+    });
+    window.dispatchEvent(new Event("online"));
+  });
+
   it("hides the badge when the outbox is empty", async () => {
     vi.mocked(listTransactions).mockResolvedValue([]);
     vi.mocked(listPendingTransactions).mockResolvedValue([]);
