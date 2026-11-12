@@ -123,6 +123,11 @@ export function LedgerPage() {
   const pendingQuery = useQuery({
     queryKey: PENDING_QUERY_KEY,
     queryFn: listPendingTransactions,
+    // Reads the local IndexedDB outbox — not the network. Without
+    // "always", React Query pauses the refetch while offline and a
+    // freshly queued transaction stays invisible until reconnect
+    // (user might re-enter it → duplicates).
+    networkMode: "always",
   });
   const accountsQuery = useQuery({
     queryKey: ["accounts"],
