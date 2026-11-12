@@ -24,6 +24,12 @@ export interface AuthContextValue {
   loading: boolean;
   session: Session | null;
   signIn: (email: string, password: string) => Promise<void>;
+  /**
+   * Starts the OAuth PKCE redirect flow for a social provider (T30).
+   * On success the browser navigates away to the provider, so no
+   * session is set locally — the returning redirect establishes it.
+   */
+  signInWithOAuth: (provider: "google" | "facebook") => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   /** Updates the signed-in user's password via Supabase Auth (T29). */
@@ -37,6 +43,9 @@ const defaultValue: AuthContextValue = {
   loading: false,
   session: null,
   signIn: async () => {
+    throw new Error("Auth is not configured");
+  },
+  signInWithOAuth: async () => {
     throw new Error("Auth is not configured");
   },
   signUp: async () => {
@@ -100,6 +109,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(data.session);
   }, []);
 
+  // T30 (S13): the PKCE redirect flow navigates the browser away to
+  // the provider, so on success no session is set locally — the
+  // session only materializes when Supabase redirects back to the app.
+  const signInWithOAuth = useCallback(
+    async (provider: "google" | "facebook") => {
+      const { error } = await getSupabaseClient().auth.signInWithOAuth({
+        provider,
+      });
+      if (error) throw error;
+    },
+    [],
+  );
+
   const signUp = useCallback(async (email: string, password: string) => {
     const { error } = await getSupabaseClient().auth.signUp({
       email,
@@ -135,6 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       session,
       signIn,
+      signInWithOAuth,
       signUp,
       signOut,
       updatePassword,
@@ -146,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       session,
       signIn,
+      signInWithOAuth,
       signUp,
       signOut,
       updatePassword,

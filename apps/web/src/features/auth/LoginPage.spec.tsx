@@ -4,8 +4,9 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const signIn = vi.hoisted(() => vi.fn());
 const signUp = vi.hoisted(() => vi.fn());
+const signInWithOAuth = vi.hoisted(() => vi.fn());
 vi.mock("../auth/auth", () => ({
-  useAuth: () => ({ configured: true, loading: false, session: null, signIn, signUp, signOut: vi.fn() }),
+  useAuth: () => ({ configured: true, loading: false, session: null, signIn, signUp, signInWithOAuth, signOut: vi.fn() }),
 }));
 
 import i18n from "../../i18n";
@@ -15,6 +16,7 @@ afterEach(() => {
   cleanup();
   signIn.mockReset();
   signUp.mockReset();
+  signInWithOAuth.mockReset();
 });
 
 beforeAll(async () => {
@@ -48,6 +50,48 @@ describe("LoginPage", () => {
 
     fillCredentials();
     fireEvent.click(screen.getByRole("button", { name: "Iniciar sesión" }));
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toBe(
+      "No se pudo iniciar sesión. Revisá los datos e intentá de nuevo.",
+    );
+  });
+
+  // T30 (S13): social login buttons delegate to signInWithOAuth.
+  it("continues with Google via OAuth", async () => {
+    signInWithOAuth.mockResolvedValue(undefined);
+    render(<LoginPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continuar con Google" }),
+    );
+
+    await waitFor(() => {
+      expect(signInWithOAuth).toHaveBeenCalledWith("google");
+    });
+    expect(signIn).not.toHaveBeenCalled();
+  });
+
+  it("continues with Facebook via OAuth", async () => {
+    signInWithOAuth.mockResolvedValue(undefined);
+    render(<LoginPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continuar con Facebook" }),
+    );
+
+    await waitFor(() => {
+      expect(signInWithOAuth).toHaveBeenCalledWith("facebook");
+    });
+  });
+
+  it("surfaces a localized error when OAuth sign-in fails", async () => {
+    signInWithOAuth.mockRejectedValue(new Error("Provider is not enabled"));
+    render(<LoginPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continuar con Google" }),
+    );
 
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toBe(

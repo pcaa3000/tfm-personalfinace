@@ -38,6 +38,7 @@ function makeClient(overrides: Record<string, unknown> = {}) {
         data: { subscription: { unsubscribe } },
       })),
       signInWithPassword: vi.fn(async () => ({ data: {}, error: null })),
+      signInWithOAuth: vi.fn(async () => ({ data: {}, error: null })),
       signUp: vi.fn(async () => ({ data: {}, error: null })),
       signOut: vi.fn(async () => ({ error: null })),
       updateUser: vi.fn(async () => ({ data: {}, error: null })),
@@ -197,6 +198,111 @@ describe("AuthProvider", () => {
           onClick={async () => {
             try {
               await signIn("x@example.com", "bad");
+            } catch (error) {
+              caught = error;
+            }
+          }}
+        >
+          go
+        </button>
+      );
+    }
+    render(
+      <AuthProvider>
+        <FailProbe />
+      </AuthProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "go" }));
+
+    await waitFor(() => {
+      expect(caught).toBe(failure);
+    });
+  });
+
+  // T30 (S13): social login via supabase.auth.signInWithOAuth. The
+  // PKCE redirect navigates the browser away, so no session is set
+  // locally on success — the local session must stay untouched.
+  it("signInWithOAuth delegates to supabase signInWithOAuth and leaves the local session unset", async () => {
+    isAuthConfigured.mockReturnValue(true);
+    const client = makeClient();
+    getSupabaseClient.mockReturnValue(client);
+
+    let done = false;
+    function OAuthProbe() {
+      const { signInWithOAuth } = useAuth();
+      return (
+        <button
+          onClick={async () => {
+            await signInWithOAuth("google");
+            done = true;
+          }}
+        >
+          go
+        </button>
+      );
+    }
+    render(
+      <AuthProvider>
+        <OAuthProbe />
+        <Probe />
+      </AuthProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "go" }));
+
+    await waitFor(() => {
+      expect(done).toBe(true);
+    });
+    expect(client.auth.signInWithOAuth).toHaveBeenCalledWith({
+      provider: "google",
+    });
+    // The redirect flow owns the session — nothing is stored locally.
+    expect(screen.getByTestId("email").textContent).toBe("none");
+  });
+
+  it("signInWithOAuth delegates the facebook provider", async () => {
+    isAuthConfigured.mockReturnValue(true);
+    const client = makeClient();
+    getSupabaseClient.mockReturnValue(client);
+
+    function OAuthProbe() {
+      const { signInWithOAuth } = useAuth();
+      return (
+        <button onClick={() => void signInWithOAuth("facebook")}>go</button>
+      );
+    }
+    render(
+      <AuthProvider>
+        <OAuthProbe />
+      </AuthProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "go" }));
+
+    await waitFor(() => {
+      expect(client.auth.signInWithOAuth).toHaveBeenCalledWith({
+        provider: "facebook",
+      });
+    });
+  });
+
+  it("signInWithOAuth rethrows the auth error", async () => {
+    isAuthConfigured.mockReturnValue(true);
+    const failure = new Error("Provider is not enabled");
+    const client = makeClient({
+      signInWithOAuth: vi.fn(async () => ({ data: {}, error: failure })),
+    });
+    getSupabaseClient.mockReturnValue(client);
+
+    let caught: unknown = null;
+    function FailProbe() {
+      const { signInWithOAuth } = useAuth();
+      return (
+        <button
+          onClick={async () => {
+            try {
+              await signInWithOAuth("google");
             } catch (error) {
               caught = error;
             }

@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   CardContent,
+  Divider,
   Stack,
   TextField,
   Typography,
@@ -23,7 +24,7 @@ type Mode = "signin" | "signup";
  */
 export function LoginPage() {
   const { t } = useTranslation();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signInWithOAuth, signUp } = useAuth();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,6 +36,18 @@ export function LoginPage() {
   const toggleMode = () => {
     setMode((current) => (current === "signin" ? "signup" : "signin"));
     setError(false);
+  };
+
+  // T30 (S13): social login delegates to the OAuth PKCE redirect; the
+  // browser navigates away on success, so a rejection is the only path
+  // that needs the local error Alert.
+  const continueWithOAuth = async (provider: "google" | "facebook") => {
+    setError(false);
+    try {
+      await signInWithOAuth(provider);
+    } catch {
+      setError(true);
+    }
   };
 
   const submit = async (event: React.FormEvent) => {
@@ -91,6 +104,27 @@ export function LoginPage() {
                 {t(signup ? "login.signUpError" : "login.error")}
               </Alert>
             ) : null}
+
+            <Stack spacing={1.25} sx={{ width: "100%" }}>
+              <Button
+                variant="outlined"
+                fullWidth
+                onClick={() => void continueWithOAuth("google")}
+                sx={{ textTransform: "none" }}
+              >
+                {t("login.continueWithGoogle")}
+              </Button>
+              <Button
+                variant="outlined"
+                fullWidth
+                onClick={() => void continueWithOAuth("facebook")}
+                sx={{ textTransform: "none" }}
+              >
+                {t("login.continueWithFacebook")}
+              </Button>
+            </Stack>
+
+            <Divider sx={{ width: "100%" }}>{t("login.or")}</Divider>
 
             <Box
               component="form"
