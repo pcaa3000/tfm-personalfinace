@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eliminación de datos de usuario — TFM Personal Finance</title>
+  <style>
+    :root {
+      --violet: #7c3aed;
+      --violet-dark: #4c1d95;
+      --mint: #3dd68c;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --surface: #ffffff;
+      --bg: #f6f4fa;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    .page {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 48px 20px 64px;
+    }
+    .card {
+      background: var(--surface);
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 24px 60px -24px rgb(76 29 149 / 0.35);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+      font-weight: 700;
+      color: var(--violet-dark);
+    }
+    .brand-dot {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--violet-dark), var(--violet), var(--mint));
+    }
+    h1 { font-size: 1.6rem; margin: 16px 0 8px; }
+    .subtitle { color: var(--muted); margin-top: 0; }
+    h2 { font-size: 1.1rem; margin-top: 28px; color: var(--violet-dark); }
+    ol, ul { padding-left: 22px; }
+    li { margin-bottom: 8px; }
+    code {
+      background: #efe9fb;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 0.9em;
+    }
+    .note {
+      background: #f0fdf6;
+      border-left: 4px solid var(--mint);
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-top: 24px;
+      font-size: 0.95rem;
+    }
+    .contact {
+      background: #efe9fb;
+      border-left: 4px solid var(--violet);
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-top: 16px;
+    }
+    footer {
+      margin-top: 32px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      text-align: center;
+    }
+    a { color: var(--violet); }
+    @media (max-width: 480px) {
+      .card { padding: 24px; }
+      h1 { font-size: 1.3rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <main class="card">
+      <div class="brand"><span class="brand-dot"></span> TFM Personal Finance</div>
+      <h1>Eliminación de datos de usuario</h1>
+      <p class="subtitle">
+        Cómo solicitar la eliminación de tu cuenta y de los datos asociados,
+        conforme a los requisitos de Meta (Facebook Login).
+      </p>
+
+      <h2>Qué datos guardamos</h2>
+      <p>Cuando iniciás sesión (con email, Google o Facebook) almacenamos:</p>
+      <ul>
+        <li>Tu identidad de autenticación (correo y/o identificador del proveedor social) en Supabase Auth.</li>
+        <li>Tu espacio de trabajo financiero: cuentas, monedas, categorías, transacciones y preferencias.</li>
+        <li>Datos locales del navegador (cola offline de la PWA) que podés borrar limpiando el almacenamiento del sitio.</li>
+      </ul>
+
+      <h2>Cómo solicitar la eliminación</h2>
+      <ol>
+        <li>
+          Enviá un correo a
+          <a href="mailto:REEMPLAZAR-EMAIL-SOPORTE"><code>REEMPLAZAR-EMAIL-SOPORTE</code></a>
+          desde la dirección asociada a tu cuenta (o indicando el correo/identificador
+          con el que iniciás sesión en Facebook/Google) con el asunto
+          <strong>"Eliminación de datos"</strong>.
+        </li>
+        <li>
+          Verificaremos que la solicitud corresponde al titular de la cuenta.
+        </li>
+        <li>
+          Eliminaremos tu usuario de autenticación y tu espacio de trabajo
+          completo (cuentas, transacciones, categorías, monedas y preferencias)
+          en un plazo máximo de <strong>30 días</strong>.
+        </li>
+      </ol>
+
+      <div class="contact">
+        <strong>Desde la app:</strong> también podés escribirnos desde el menú de
+        cuenta indicando tu pedido de baja. El proceso es el mismo: verificación
+        de titularidad y borrado completo.
+      </div>
+
+      <div class="note">
+        <strong>Importante:</strong> la eliminación es irreversible. Una vez
+        borrado tu espacio de trabajo, no es posible recuperar transacciones,
+        cuentas ni configuraciones. El revocar el acceso a la app desde tu
+        configuración de Facebook <em>no</em> elimina los datos ya almacenados —
+        para eso usá el procedimiento de esta página.
+      </div>
+
+      <h2>Alcance</h2>
+      <p>
+        Esta página cumple el requerimiento de Meta para apps con Facebook Login
+        (<a href="https://developers.facebook.com/docs/development/create-an-app/app-dashboard/data-deletion-callback" rel="noopener">data deletion instructions</a>).
+        Aplica igualmente a las cuentas creadas con email o Google.
+      </p>
+
+      <footer>
+        TFM Personal Finance — Última actualización: noviembre 2026
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
