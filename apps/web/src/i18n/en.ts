@@ -252,6 +252,9 @@ export const en: TranslationShape = {
     hasAccount: "Already have an account? Sign in",
     error: "Could not sign in. Check your credentials and try again.",
     signUpError: "Could not create the account. Check your data and try again.",
+    continueWithGoogle: "Continue with Google",
+    continueWithFacebook: "Continue with Facebook",
+    or: "or",
     loading: "Loading…",
     misconfigTitle: "Authentication is not configured",
     misconfigBody:

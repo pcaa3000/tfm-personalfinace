@@ -248,6 +248,9 @@ export const es = {
     hasAccount: "¿Ya tenés cuenta? Iniciar sesión",
     error: "No se pudo iniciar sesión. Revisá los datos e intentá de nuevo.",
     signUpError: "No se pudo crear la cuenta. Revisá los datos e intentá de nuevo.",
+    continueWithGoogle: "Continuar con Google",
+    continueWithFacebook: "Continuar con Facebook",
+    or: "o",
     loading: "Cargando…",
     misconfigTitle: "Autenticación mal configurada",
     misconfigBody:
