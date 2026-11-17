@@ -14,8 +14,8 @@ de `businessDate` se calcula en UTC.
 
 | ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
 |----|-------|----|------|--------|--------------------|
-| T1 | TransactionForm: prop `timezone`, default de fecha en esa zona, submit con esa zona | S1, S2 | worker | done | b4dd021; RED→GREEN 1fail/13pass → 14/14 (spec file); suite apps/web 227/227; tsc + eslint limpios. Nota: spec "submits workspace timezone" pasó por coincidencia en RED (ICU del host = America/Lima); válida pero débil en hosts en esa zona. |
-| T2 | Propagar `workspace.timezone` desde LedgerPage a ambos dialogs | S3 | worker | done | b4dd021; mismo commit que T1 (unidad única); GREEN 227/227, tsc + eslint limpios. |
+| T1 | TransactionForm: prop `timezone`, default de fecha en esa zona, submit con esa zona | S1, S2 | worker | done | e285ab3; RED→GREEN 1fail/13pass → 14/14 (spec file); suite apps/web 227/227; tsc + eslint limpios. Nota: spec "submits workspace timezone" pasó por coincidencia en RED (ICU del host = America/Lima); válida pero débil en hosts en esa zona. |
+| T2 | Propagar `workspace.timezone` desde LedgerPage a ambos dialogs | S3 | worker | done | e285ab3; mismo commit que T1 (unidad única); GREEN 227/227, tsc + eslint limpios. |
 
 ## Log
 
