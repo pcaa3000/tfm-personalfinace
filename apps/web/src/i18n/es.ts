@@ -124,6 +124,8 @@ export const es = {
     previous: "Moneda anterior",
     next: "Moneda siguiente",
     dotLabel: "Ver balance en {{currency}}",
+    showAmounts: "Mostrar montos de {{currency}}",
+    hideAmounts: "Ocultar montos de {{currency}}",
   },
   summary: {
     title: "Resumen por moneda",

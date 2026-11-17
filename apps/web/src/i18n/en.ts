@@ -128,6 +128,8 @@ export const en: TranslationShape = {
     previous: "Previous currency",
     next: "Next currency",
     dotLabel: "Show balance in {{currency}}",
+    showAmounts: "Show {{currency}} amounts",
+    hideAmounts: "Hide {{currency}} amounts",
   },
   summary: {
     title: "Summary by currency",
