@@ -28,6 +28,8 @@ interface Props {
   accounts: AccountView[];
   defaultCurrency: string;
   currencies: string[];
+  /** Workspace IANA zone used for the businessDate default and submit. */
+  timezone?: string | undefined;
   submitting: boolean;
   error: string | null;
   onClose: () => void;
@@ -45,6 +47,7 @@ export function NewMovementDialog({
   accounts,
   defaultCurrency,
   currencies,
+  timezone,
   submitting,
   error,
   onClose,
@@ -139,6 +142,7 @@ export function NewMovementDialog({
             submitting={submitting}
             error={error}
             initialValues={{ type: pickedType }}
+            timezone={timezone}
             onSubmit={onSubmit}
           />
         )}

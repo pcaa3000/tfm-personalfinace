@@ -11,6 +11,8 @@ interface Props {
   defaultCurrency: string;
   /** Workspace currency codes for the currency selector. */
   currencies?: string[];
+  /** Workspace IANA zone sent on submit. */
+  timezone?: string | undefined;
   submitting: boolean;
   error: string | null;
   onClose: () => void;
@@ -23,6 +25,7 @@ export function EditTransactionDialog({
   accounts,
   defaultCurrency,
   currencies,
+  timezone,
   submitting,
   error,
   onClose,
@@ -39,6 +42,7 @@ export function EditTransactionDialog({
             accounts={accounts}
             defaultCurrency={defaultCurrency}
             currencies={currencies}
+            timezone={timezone}
             submitting={submitting}
             error={error}
             submitLabel={t("form.saveChanges")}

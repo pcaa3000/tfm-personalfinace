@@ -1,6 +1,11 @@
 import { defaultCurrencyExponent } from "./summarize";
 import type { CurrencyView } from "./types";
 
+/** Today's business date (YYYY-MM-DD) in the given IANA time zone. */
+export function todayInTimeZone(timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());
+}
+
 /** YYYY-MM-DD business date rendered in the active locale (UTC-safe). */
 export function formatBusinessDate(isoDate: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, { timeZone: "UTC" }).format(

@@ -452,6 +452,7 @@ export function LedgerPage() {
         accounts={accounts}
         defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
         currencies={currencyCodes}
+        timezone={workspace?.timezone}
         submitting={createMutation.isPending}
         error={
           createMutation.error ? errorMessage(createMutation.error, t) : null
@@ -547,6 +548,7 @@ export function LedgerPage() {
         accounts={accounts}
         defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
         currencies={currencyCodes}
+        timezone={workspace?.timezone}
         submitting={reviseMutation.isPending}
         error={
           reviseMutation.error ? errorMessage(reviseMutation.error, t) : null

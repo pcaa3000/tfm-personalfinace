@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { z } from "zod";
 
+import { todayInTimeZone } from "./format";
 import type { AccountView, CategoryView, TransactionType } from "./types";
 
 type FormValues = {
@@ -52,6 +53,8 @@ interface Props {
   error: string | null;
   initialValues?: Partial<FormValues>;
   submitLabel?: string;
+  /** Workspace IANA zone; falls back to the browser zone, then "UTC". */
+  timezone?: string | undefined;
   onSubmit: (values: TransactionFormValues) => void;
 }
 
@@ -64,9 +67,14 @@ export function TransactionForm({
   error,
   initialValues,
   submitLabel,
+  timezone,
   onSubmit,
 }: Props) {
   const { t } = useTranslation();
+  const effectiveTimezone =
+    timezone ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone ||
+    "UTC";
   const currencyOptions = currencies ?? FALLBACK_CURRENCIES;
 
   const schema = useMemo(
@@ -124,7 +132,7 @@ export function TransactionForm({
       currency: defaultCurrency,
       accountId: "",
       destinationAccountId: "",
-      businessDate: new Date().toISOString().slice(0, 10),
+      businessDate: todayInTimeZone(effectiveTimezone),
       concept: "",
       categoryId: null,
       ...initialValues,
@@ -166,7 +174,7 @@ export function TransactionForm({
       destinationAccountId:
         values.type === "transfer" ? values.destinationAccountId : null,
       categoryId: values.type === "transfer" ? null : values.categoryId,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      timezone: effectiveTimezone,
     });
     if (!initialValues) {
       reset({
@@ -175,7 +183,7 @@ export function TransactionForm({
         currency: defaultCurrency,
         accountId: "",
         destinationAccountId: "",
-        businessDate: new Date().toISOString().slice(0, 10),
+        businessDate: todayInTimeZone(effectiveTimezone),
         concept: "",
         categoryId: null,
       });

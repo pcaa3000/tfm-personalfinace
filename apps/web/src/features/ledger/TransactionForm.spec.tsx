@@ -261,3 +261,64 @@ describe("TransactionForm (transfers, S12-3)", () => {
     });
   });
 });
+
+function submitValidExpense(onSubmit: ReturnType<typeof vi.fn>) {
+  void onSubmit;
+  fireEvent.change(screen.getByLabelText("Importe"), {
+    target: { value: "50.00" },
+  });
+  fireEvent.change(screen.getByLabelText("Concepto"), {
+    target: { value: "Almuerzo" },
+  });
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: "Cuenta" }));
+  fireEvent.click(
+    within(screen.getByRole("listbox")).getByRole("option", {
+      name: "BCP soles",
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Guardar movimiento" }));
+}
+
+describe("TransactionForm (workspace timezone, S1-S2)", () => {
+  it("submits the workspace timezone received by prop", async () => {
+    const { onSubmit } = renderForm({ timezone: "America/Lima" });
+
+    submitValidExpense(onSubmit);
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ timezone: "America/Lima" }),
+      );
+    });
+  });
+
+  it("defaults businessDate to today in the effective zone", () => {
+    vi.useFakeTimers();
+    try {
+      // 2026-10-01T04:00:00Z is still 2026-09-30 in America/Lima (UTC-5).
+      vi.setSystemTime(new Date("2026-10-01T04:00:00Z"));
+      renderForm({ timezone: "America/Lima" });
+      const input = document.querySelector<HTMLInputElement>(
+        'input[name="businessDate"]',
+      );
+      expect(input?.value).toBe("2026-09-30");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to the browser timezone when no prop is given", async () => {
+    const { onSubmit } = renderForm();
+
+    submitValidExpense(onSubmit);
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          timezone:
+            Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+        }),
+      );
+    });
+  });
+});
