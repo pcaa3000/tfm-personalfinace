@@ -14,8 +14,9 @@ privacidad por card de moneda que enmascara los montos; no fue implementado.
 
 | ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
 |----|-------|----|------|--------|--------------------|
-| T1 | Eye toggle por card + máscara ••• + persistencia localStorage + i18n | S1-S4 | worker | pending | |
+| T1 | Eye toggle por card + máscara ••• + persistencia localStorage + i18n | S1-S4 | worker | done | c6dfd7a; RED→GREEN 7fail/6pass → 13/13 (spec file); suite apps/web 232/232 tras fix de LedgerPage.spec T24; tsc + eslint limpios. Riesgo: none. |
 
 ## Log
 
 - L1: «en los diseños se habia planteado la opcion de ocultar los saldos, pero esto se ha aplicado.» — el usuario reporta que la opción de ocultar saldos del diseño no se aplicó. Verificado: `design/ledger-home/04-hybrid.html` (artboard elegido, handoff implemented) define ojo por card, oculto por defecto, persistido en `tfm-hide-amounts-cards`; `apps/web` no tiene nada equivalente. Se interpreta como pedido de implementarlo.
+- L2: T1 implementada por gentle-ai-worker. Decisión de proceso: la spec existente `LedgerPage.spec.tsx` T24 afirmaba el monto visible; con S2 (oculto por defecto) se actualizó con reveal mínimo (localStorage `{"PEN":false}`) — superficie expandida con aprobación del padre.
