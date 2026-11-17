@@ -31,7 +31,7 @@ El usuario autorizó implementar de la más alta a la más baja prioridad.
 | ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
 |----|-------|----|------|--------|--------------------|
 | T1 | Unidad A: estados vacío/loading/error/balance | S1-S3 | worker | done | 1d48f53; RED→GREEN 8fail → 29/29 (3 specs); suite 232/232; tsc+eslint limpios. Riesgo: none. |
-| T2 | Unidad B: filtros mobile + atajos + período + placeholder | S4-S7 | worker | pending | |
+| T2 | Unidad B: filtros mobile + atajos + período + placeholder | S4-S7 | worker | done | caa94af; RED→GREEN 10fail/31pass → 41/41; suite 242/242; tsc+eslint limpios. Riesgo: none. |
 | T3 | Unidad C: tabla min-width + color transfer + auto-mini rail | S8-S10 | worker | pending | |
 | T4 | Unidad D: target del ojo + focus-visible + dots | S11-S13 | worker | pending | |
 
