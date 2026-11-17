@@ -12,6 +12,7 @@ import type { Session } from "@supabase/supabase-js";
 import { setAccessTokenProvider } from "../ledger/api";
 import { clearClientCaches } from "./client-caches";
 import { getSupabaseClient, isAuthBypassed, isAuthConfigured } from "./supabase";
+import { useInactivityLogout } from "./use-inactivity-logout";
 
 export interface AuthContextValue {
   /** True when VITE_AUTH_BYPASS=true in a dev build (T26). */
@@ -148,6 +149,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (error) throw error;
   }, []);
+
+  // T1 (S1–S4): auto signOut after 10 idle minutes; the hook is inert
+  // without a session, so bypass/misconfigured states stay unaffected.
+  useInactivityLogout(session, signOut);
 
   const value = useMemo<AuthContextValue>(
     () => ({
