@@ -54,6 +54,7 @@ import { currentMonthRange } from "./period";
 import { PreferencesDialog } from "./PreferencesDialog";
 import {
   persistRailCollapsed,
+  railCollapsedPreference,
   Sidebar,
   storedRailCollapsed,
 } from "./Sidebar";
@@ -81,16 +82,25 @@ export const TRANSACTIONS_PAGE_SIZE = 25;
 /** Desktop breakpoint of the hybrid artboard (S12-6). */
 const DESKTOP_QUERY = "(min-width:960px)";
 
+/** Auto-mini band of the hybrid artboard (S10): 960–1179px. */
+const AUTO_MINI_QUERY = "(min-width:960px) and (max-width:1179.98px)";
+
 export function LedgerPage() {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const desktop = useMediaQuery(DESKTOP_QUERY);
+  const autoMiniRail = useMediaQuery(AUTO_MINI_QUERY);
   const [editing, setEditing] = useState<TransactionView | null>(null);
   const [voiding, setVoiding] = useState<TransactionView | null>(null);
   const [historyFor, setHistoryFor] = useState<TransactionView | null>(null);
   const [management, setManagement] = useState<ManagementSection | null>(null);
   const [movementOpen, setMovementOpen] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(storedRailCollapsed);
+  // S10: a saved tfm-rail-collapsed preference always wins; inside
+  // the 960–1179px band the rail starts collapsed (auto-mini) when
+  // the user never expressed a preference.
+  const effectiveRailCollapsed =
+    railCollapsedPreference() === null ? autoMiniRail : railCollapsed;
   const [filters, setFilters] = useState<TransactionListFilters>(() =>
     currentMonthRange(),
   );
@@ -283,10 +293,11 @@ export function LedgerPage() {
   };
 
   const toggleRail = () => {
-    setRailCollapsed((current) => {
-      persistRailCollapsed(!current);
-      return !current;
-    });
+    // Toggling inside the auto-mini band must flip the *effective*
+    // state and persist it, so the explicit choice wins from then on.
+    const next = !effectiveRailCollapsed;
+    persistRailCollapsed(next);
+    setRailCollapsed(next);
   };
 
   const scrollToList = () =>
@@ -388,7 +399,7 @@ export function LedgerPage() {
     <Box sx={{ display: "flex", minHeight: "100vh", alignItems: "stretch" }}>
       {desktop ? (
         <Sidebar
-          collapsed={railCollapsed}
+          collapsed={effectiveRailCollapsed}
           onToggleCollapsed={toggleRail}
           onOpenManagement={setManagement}
           onNavigateList={scrollToList}

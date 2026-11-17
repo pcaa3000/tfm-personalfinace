@@ -116,6 +116,30 @@ function mockMatchMedia(matches: boolean) {
   );
 }
 
+/** Simulate a real viewport width against min/max-width media queries. */
+function mockViewportWidth(width: number) {
+  window.matchMedia = vi.fn().mockImplementation(
+    (query: string): MediaQueryList => {
+      const min = /\(min-width:\s*(\d+(?:\.\d+)?)px\)/.exec(query);
+      const max = /\(max-width:\s*(\d+(?:\.\d+)?)px\)/.exec(query);
+      const matches =
+        query.includes("width") &&
+        (min === null || width >= Number(min[1])) &&
+        (max === null || width <= Number(max[1]));
+      return {
+        matches,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      };
+    },
+  );
+}
+
 function makeTx(id: string, partial: Partial<TransactionView> = {}): TransactionView {
   return {
     id,
@@ -514,6 +538,84 @@ describe("LedgerPage responsive layout (S12-6)", () => {
     ).toBeGreaterThanOrEqual(2);
     expect(
       screen.getByRole("navigation", { name: "Navegación principal" }),
+    ).toBeTruthy();
+  });
+});
+
+describe("LedgerPage auto-mini rail (T3, S10)", () => {
+  it("collapses the rail in the 960–1179px band with no saved preference", async () => {
+    mockViewportWidth(1000);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Expandir menú lateral",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("keeps the rail expanded in the band when the user saved it expanded", async () => {
+    localStorage.setItem("tfm-rail-collapsed", "0");
+    mockViewportWidth(1000);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Colapsar menú lateral",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("keeps the rail collapsed in the band when the user saved it collapsed", async () => {
+    localStorage.setItem("tfm-rail-collapsed", "1");
+    mockViewportWidth(1000);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Expandir menú lateral",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("keeps the rail expanded at ≥1180px with no saved preference", async () => {
+    mockViewportWidth(1400);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Colapsar menú lateral",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("an explicit toggle inside the band persists and wins over auto-mini", async () => {
+    mockViewportWidth(1000);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Expandir menú lateral",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(localStorage.getItem("tfm-rail-collapsed")).toBe("0");
+    });
+    expect(
+      await screen.findByRole("button", {
+        name: "Colapsar menú lateral",
+      }),
     ).toBeTruthy();
   });
 });

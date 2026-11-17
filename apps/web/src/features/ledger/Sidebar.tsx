@@ -21,13 +21,23 @@ import {
 
 const RAIL_STORAGE_KEY = "tfm-rail-collapsed";
 
-export function storedRailCollapsed(): boolean {
-  if (typeof localStorage === "undefined") return false;
+/**
+ * The explicit user preference, or null when none was saved — the
+ * distinction matters for the auto-mini band (S10), where an absent
+ * preference lets the viewport decide while a saved one always wins.
+ */
+export function railCollapsedPreference(): boolean | null {
+  if (typeof localStorage === "undefined") return null;
   try {
-    return localStorage.getItem(RAIL_STORAGE_KEY) === "1";
+    const raw = localStorage.getItem(RAIL_STORAGE_KEY);
+    return raw === null ? null : raw === "1";
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function storedRailCollapsed(): boolean {
+  return railCollapsedPreference() ?? false;
 }
 
 export function persistRailCollapsed(collapsed: boolean): void {

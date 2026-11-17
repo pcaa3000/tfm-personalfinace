@@ -15,7 +15,12 @@ import { useTranslation } from "react-i18next";
 
 import { formatBusinessDate } from "./format";
 import { categoryLabel } from "./TransactionForm";
-import type { AccountView, CategoryView, LedgerRow } from "./types";
+import type {
+  AccountView,
+  CategoryView,
+  LedgerRow,
+  TransactionType,
+} from "./types";
 
 interface Props {
   transactions: LedgerRow[];
@@ -26,6 +31,17 @@ interface Props {
   onHistory: (transaction: LedgerRow) => void;
   onNewMovement?: () => void;
 }
+
+// S9: the transfer token keeps one identity across table and
+// day-cards (the artboard's --transfer violet-grey).
+const TYPE_COLOR: Record<
+  TransactionType,
+  "success" | "error" | "transfer"
+> = {
+  income: "success",
+  expense: "error",
+  transfer: "transfer",
+};
 
 /**
  * Dense desktop table (S12-6). The header sticks below the top
@@ -94,7 +110,13 @@ export function TransactionTable({
   return (
     <TableContainer
       sx={(theme) => ({
+        // S8: horizontal scroll + a 720px floor (artboard table
+        // min-width) so the 8 columns never compress at 960–1100px.
+        // Only in the narrow band: overflow-x:auto makes this container
+        // the sticky header's scrollport and would break its vertical
+        // stick on wide screens (worker finding, T3).
         overflowX: "clip",
+        "@media (max-width: 1179.98px)": { overflowX: "auto" },
         border: "1px solid",
         borderColor: "divider",
         borderRadius: "20px",
@@ -102,7 +124,11 @@ export function TransactionTable({
         boxShadow: theme.shadows[1],
       })}
     >
-      <Table size="small" aria-label={t("transactions.title")}>
+      <Table
+        size="small"
+        sx={{ minWidth: 720 }}
+        aria-label={t("transactions.title")}
+      >
         <TableHead>
           <TableRow
             sx={{
@@ -142,13 +168,7 @@ export function TransactionTable({
                   <Chip
                     size="small"
                     variant="outlined"
-                    color={
-                      trx.type === "income"
-                        ? "success"
-                        : trx.type === "expense"
-                          ? "error"
-                          : "default"
-                    }
+                    color={TYPE_COLOR[trx.type]}
                     label={t(`form.${trx.type}`)}
                   />
                 </TableCell>
@@ -177,7 +197,10 @@ export function TransactionTable({
                     </>
                   )}
                 </TableCell>
-                <TableCell align="right">
+                <TableCell
+                  align="right"
+                  sx={{ color: `${TYPE_COLOR[trx.type]}.main` }}
+                >
                   {trx.type === "income" ? "+" : trx.type === "expense" ? "−" : ""}
                   {trx.amount} {trx.currency}
                 </TableCell>

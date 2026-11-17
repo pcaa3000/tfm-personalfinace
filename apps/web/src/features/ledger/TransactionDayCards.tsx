@@ -41,10 +41,15 @@ interface Props {
   onNewMovement?: () => void;
 }
 
-const TYPE_COLOR: Record<TransactionType, "success" | "error" | "secondary"> = {
+// S9: transfers use the dedicated palette token — the same
+// violet-grey the desktop table uses (artboard --transfer).
+const TYPE_COLOR: Record<
+  TransactionType,
+  "success" | "error" | "transfer"
+> = {
   income: "success",
   expense: "error",
-  transfer: "secondary",
+  transfer: "transfer",
 };
 
 function TypeIcon({ type }: { type: TransactionType }) {
