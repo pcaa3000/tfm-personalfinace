@@ -79,6 +79,11 @@ describe("inactivity logout (session-inactivity-logout)", () => {
   it("S1: does not sign out before 10 minutes", async () => {
     const signOut = await renderSignedIn();
     vi.useFakeTimers();
+    // R3: re-arm under the fake clock — otherwise this spec is vacuous
+    // (the render-time timeout used real timers and could never fire).
+    act(() => {
+      window.dispatchEvent(new Event("mousemove"));
+    });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(TEN_MINUTES_MS - 1);
     });
@@ -106,6 +111,31 @@ describe("inactivity logout (session-inactivity-logout)", () => {
       expect(signOut).toHaveBeenCalledTimes(1);
     },
   );
+
+  it("R1-001 (S2): a storage event for the shared key resets the timer", async () => {
+    const signOut = await renderSignedIn();
+    vi.useFakeTimers();
+    act(() => {
+      window.dispatchEvent(new Event("mousemove"));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TEN_MINUTES_MS - 1);
+    });
+    // Activity in another tab arrives here as a `storage` event.
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: "pf-inactivity-last-activity" }),
+      );
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TEN_MINUTES_MS - 1);
+    });
+    expect(signOut).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
 
   it("S3: no timer runs without a session", async () => {
     const client = {
