@@ -33,9 +33,10 @@ El usuario autorizó implementar de la más alta a la más baja prioridad.
 | T1 | Unidad A: estados vacío/loading/error/balance | S1-S3 | worker | done | 1d48f53; RED→GREEN 8fail → 29/29 (3 specs); suite 232/232; tsc+eslint limpios. Riesgo: none. |
 | T2 | Unidad B: filtros mobile + atajos + período + placeholder | S4-S7 | worker | done | caa94af; RED→GREEN 10fail/31pass → 41/41; suite 242/242; tsc+eslint limpios. Riesgo: none. |
 | T3 | Unidad C: tabla min-width + color transfer + auto-mini rail | S8-S10 | worker | done | cc43724; RED→GREEN 8fail/37pass → 45/45; suite 255/255; tsc+eslint limpios. Ajuste del padre: overflowX:auto solo <1180px para preservar sticky header. Riesgo: none. |
-| T4 | Unidad D: target del ojo + focus-visible + dots | S11-S13 | worker | pending | |
+| T4 | Unidad D: target del ojo + focus-visible + dots | S11-S13 | worker | done | e46f39b (S12-S13); S11 aplicado en feat/hide-balance-amounts como fix propio (el ojo vive en esa rama, aún sin mergear). RED→GREEN 3fail/8pass → 11/11; suite 258/258; tsc+eslint limpios. Riesgo: none. |
 
 ## Log
 
 - L1: «puedes revisar la UI/UX y decirme que puedo mejorar» — revisión read-only con skill gentle-ui-design (refs composition-and-feedback + adaptive-interfaces) + exploración de la UI por subagente. Se reportaron 12 hallazgos priorizados.
 - L2: «si proceder de la mas alta a la mas baja» — autoriza implementar las mejoras en orden de prioridad.
+- L3: T4: el worker detectó que S11 no existía en esta rama (el ojo está en feat/hide-balance-amounts); se aplicó ahí como fix. S12/S13 en e46f39b. Estrategia de entrega: cada unidad T# es un commit/PR propio; la rama supera las ~400 líneas por ser 4 unidades.
