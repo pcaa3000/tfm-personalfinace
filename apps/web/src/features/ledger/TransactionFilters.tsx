@@ -1,11 +1,31 @@
-import { MenuItem, Stack, TextField } from "@mui/material";
+import {
+  Box,
+  Button,
+  Chip,
+  Collapse,
+  MenuItem,
+  Stack,
+  TextField,
+  useMediaQuery,
+} from "@mui/material";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { TransactionListFilters } from "./api";
+import {
+  currentMonthRange,
+  last30DaysRange,
+  type DateRange,
+} from "./period";
 import { categoryLabel } from "./TransactionForm";
 import type { CategoryView } from "./types";
 
 const FALLBACK_CURRENCIES = ["PEN", "USD", "EUR", "ARS", "JPY", "BHD"];
+
+/** Desktop breakpoint of the hybrid artboard (same as LedgerPage, S12-6). */
+const DESKTOP_QUERY = "(min-width:960px)";
+
+const SECONDARY_PANEL_ID = "transaction-filters-secondary";
 
 interface Props {
   categories: CategoryView[];
@@ -22,18 +42,43 @@ export function TransactionFilters({
   onChange,
 }: Props) {
   const { t } = useTranslation();
+  const desktop = useMediaQuery(DESKTOP_QUERY);
+  const [expanded, setExpanded] = useState(false);
   const currencyOptions = currencies ?? FALLBACK_CURRENCIES;
   const update = (patch: Partial<TransactionListFilters>) =>
     onChange({ ...value, ...patch });
 
-  return (
-    <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", mb: 1 }}>
-      <TextField
-        size="small"
-        label={t("filters.search")}
-        value={value.q ?? ""}
-        onChange={(e) => update({ q: e.target.value || undefined })}
-      />
+  // S5: quick-period chips mirror the artboard group; the active range
+  // (matching from/to) renders pressed.
+  const shortcuts: { label: string; range: DateRange }[] = [
+    { label: t("filters.currentMonth"), range: currentMonthRange() },
+    { label: t("filters.last30Days"), range: last30DaysRange() },
+  ];
+  const isActive = (range: DateRange) =>
+    value.from === range.from && value.to === range.to;
+  const shortcutChips = shortcuts.map(({ label, range }) => (
+    <Chip
+      key={label}
+      size="small"
+      label={label}
+      color={isActive(range) ? "primary" : "default"}
+      aria-pressed={isActive(range)}
+      onClick={() => update(range)}
+    />
+  ));
+
+  const searchField = (
+    <TextField
+      size="small"
+      label={t("filters.search")}
+      placeholder={t("filters.searchPlaceholder")}
+      value={value.q ?? ""}
+      onChange={(e) => update({ q: e.target.value || undefined })}
+    />
+  );
+
+  const secondaryFields = (
+    <>
       <TextField
         size="small"
         type="date"
@@ -102,6 +147,50 @@ export function TransactionFilters({
           </MenuItem>
         ))}
       </TextField>
-    </Stack>
+    </>
+  );
+
+  // S4: below 960px only search stays visible; the rest folds behind a
+  // "Filtros" toggle (artboard chip row + collapsible .range pattern).
+  return (
+    <Box sx={{ mb: 1 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{ flexWrap: "wrap", alignItems: "center" }}
+      >
+        {searchField}
+        {desktop ? (
+          <>
+            {shortcutChips}
+            {secondaryFields}
+          </>
+        ) : (
+          <Button
+            size="small"
+            variant="outlined"
+            aria-expanded={expanded}
+            aria-controls={SECONDARY_PANEL_ID}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            {t("filters.toggle")}
+          </Button>
+        )}
+      </Stack>
+      {desktop ? null : (
+        <Collapse id={SECONDARY_PANEL_ID} in={expanded} unmountOnExit>
+          <Stack
+            direction="row"
+            spacing={1}
+            useFlexGap
+            sx={{ flexWrap: "wrap", alignItems: "center", pt: 1 }}
+          >
+            {shortcutChips}
+            {secondaryFields}
+          </Stack>
+        </Collapse>
+      )}
+    </Box>
   );
 }

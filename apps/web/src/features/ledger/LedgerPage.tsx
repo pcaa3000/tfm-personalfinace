@@ -5,8 +5,10 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  Alert,
   Box,
   Button,
+  Skeleton,
   Typography,
   useMediaQuery,
 } from "@mui/material";
@@ -42,7 +44,7 @@ import { CategoriesDialog } from "./CategoriesDialog";
 import { CurrenciesDialog } from "./CurrenciesDialog";
 import { EditTransactionDialog } from "./EditTransactionDialog";
 import { errorMessage } from "./errors";
-import { currencyExponentResolver } from "./format";
+import { currencyExponentResolver, formatBusinessDate } from "./format";
 import { MobileNav } from "./MobileNav";
 import { NewMovementDialog } from "./NewMovementDialog";
 import { createTransactionOrQueue, toPendingView } from "./offline/create-or-queue";
@@ -52,6 +54,7 @@ import { currentMonthRange } from "./period";
 import { PreferencesDialog } from "./PreferencesDialog";
 import {
   persistRailCollapsed,
+  railCollapsedPreference,
   Sidebar,
   storedRailCollapsed,
 } from "./Sidebar";
@@ -79,16 +82,25 @@ export const TRANSACTIONS_PAGE_SIZE = 25;
 /** Desktop breakpoint of the hybrid artboard (S12-6). */
 const DESKTOP_QUERY = "(min-width:960px)";
 
+/** Auto-mini band of the hybrid artboard (S10): 960–1179px. */
+const AUTO_MINI_QUERY = "(min-width:960px) and (max-width:1179.98px)";
+
 export function LedgerPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const desktop = useMediaQuery(DESKTOP_QUERY);
+  const autoMiniRail = useMediaQuery(AUTO_MINI_QUERY);
   const [editing, setEditing] = useState<TransactionView | null>(null);
   const [voiding, setVoiding] = useState<TransactionView | null>(null);
   const [historyFor, setHistoryFor] = useState<TransactionView | null>(null);
   const [management, setManagement] = useState<ManagementSection | null>(null);
   const [movementOpen, setMovementOpen] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(storedRailCollapsed);
+  // S10: a saved tfm-rail-collapsed preference always wins; inside
+  // the 960–1179px band the rail starts collapsed (auto-mini) when
+  // the user never expressed a preference.
+  const effectiveRailCollapsed =
+    railCollapsedPreference() === null ? autoMiniRail : railCollapsed;
   const [filters, setFilters] = useState<TransactionListFilters>(() =>
     currentMonthRange(),
   );
@@ -281,14 +293,31 @@ export function LedgerPage() {
   };
 
   const toggleRail = () => {
-    setRailCollapsed((current) => {
-      persistRailCollapsed(!current);
-      return !current;
-    });
+    // Toggling inside the auto-mini band must flip the *effective*
+    // state and persist it, so the explicit choice wins from then on.
+    const next = !effectiveRailCollapsed;
+    persistRailCollapsed(next);
+    setRailCollapsed(next);
   };
 
   const scrollToList = () =>
     listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  // S6: surface the active period next to the section title, not just
+  // deducible via the row count (artboard "Movimientos · Noviembre 2026").
+  const activePeriodLabel = (() => {
+    const { from, to } = filters;
+    if (from && to) {
+      return `${formatBusinessDate(from, i18n.language)} – ${formatBusinessDate(to, i18n.language)}`;
+    }
+    if (from) {
+      return `${t("filters.from")}: ${formatBusinessDate(from, i18n.language)}`;
+    }
+    if (to) {
+      return `${t("filters.to")}: ${formatBusinessDate(to, i18n.language)}`;
+    }
+    return null;
+  })();
 
   const listSection = (
     <Box
@@ -302,9 +331,33 @@ export function LedgerPage() {
       }}
     >
       {transactionsQuery.isLoading ? (
-        <Typography>{t("transactions.loading")}</Typography>
+        // S2: skeleton rows instead of plain loading text.
+        <Box
+          data-part="transactions-skeleton"
+          aria-label={t("transactions.loading")}
+          sx={{ display: "grid", gap: 1 }}
+        >
+          <Skeleton variant="rounded" height={36} />
+          <Skeleton variant="rounded" height={52} />
+          <Skeleton variant="rounded" height={52} />
+          <Skeleton variant="rounded" height={52} />
+        </Box>
       ) : transactionsQuery.isError ? (
-        <Typography color="error">{t("transactions.loadError")}</Typography>
+        // S2: error offers a retry that refetches the list.
+        <Alert
+          severity="error"
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => void transactionsQuery.refetch()}
+            >
+              {t("transactions.retry")}
+            </Button>
+          }
+        >
+          {t("transactions.loadError")}
+        </Alert>
       ) : desktop ? (
         <TransactionTable
           transactions={tableRows}
@@ -313,6 +366,7 @@ export function LedgerPage() {
           onEdit={setEditing}
           onVoid={setVoiding}
           onHistory={setHistoryFor}
+          onNewMovement={() => setMovementOpen(true)}
         />
       ) : (
         <TransactionDayCards
@@ -323,6 +377,7 @@ export function LedgerPage() {
           onEdit={setEditing}
           onVoid={setVoiding}
           onHistory={setHistoryFor}
+          onNewMovement={() => setMovementOpen(true)}
         />
       )}
       {transactionsQuery.hasNextPage ? (
@@ -344,7 +399,7 @@ export function LedgerPage() {
     <Box sx={{ display: "flex", minHeight: "100vh", alignItems: "stretch" }}>
       {desktop ? (
         <Sidebar
-          collapsed={railCollapsed}
+          collapsed={effectiveRailCollapsed}
           onToggleCollapsed={toggleRail}
           onOpenManagement={setManagement}
           onNavigateList={scrollToList}
@@ -399,12 +454,32 @@ export function LedgerPage() {
               {t("balance.hint")}
             </Typography>
           </Box>
-          <BalanceStrip
-            summaries={summaries}
-            accounts={accounts}
-            defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
-            exponentOf={exponentOf}
-          />
+          {balanceQuery.isError ? (
+            // S3: balance failures surface a retry instead of empty space.
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Typography variant="body2" color="error">
+                {t("balance.loadError")}
+              </Typography>
+              <Button
+                size="small"
+                onClick={() => void balanceQuery.refetch()}
+              >
+                {t("balance.retry")}
+              </Button>
+            </Box>
+          ) : balanceQuery.isSuccess && summaries.length === 0 ? (
+            // S3: an empty successful balance shows a visible hint.
+            <Typography variant="caption" color="text.secondary">
+              {t("balance.noAccounts")}
+            </Typography>
+          ) : (
+            <BalanceStrip
+              summaries={summaries}
+              accounts={accounts}
+              defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
+              exponentOf={exponentOf}
+            />
+          )}
           <Box sx={{ mt: { xs: 1.25, md: 1.75 } }}>
             <TransactionFilters
               categories={categories}
@@ -433,6 +508,15 @@ export function LedgerPage() {
             <Typography variant="caption" color="text.secondary">
               {t("transactions.inPeriod", { count: tableRows.length })}
             </Typography>
+            {activePeriodLabel ? (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                data-part="active-period"
+              >
+                {`· ${activePeriodLabel}`}
+              </Typography>
+            ) : null}
           </Box>
         </Box>
 

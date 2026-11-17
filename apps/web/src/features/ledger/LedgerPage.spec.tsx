@@ -14,6 +14,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import i18n from "../../i18n";
 import { ThemeModeProvider } from "../../theme-mode";
 import { fetchBalance, listTransactions, updateWorkspace } from "./api";
+import { formatBusinessDate } from "./format";
 import { LedgerPage, TRANSACTIONS_PAGE_SIZE } from "./LedgerPage";
 import {
   listPendingTransactions,
@@ -112,6 +113,30 @@ function mockMatchMedia(matches: boolean) {
       removeListener: () => {},
       dispatchEvent: () => false,
     }),
+  );
+}
+
+/** Simulate a real viewport width against min/max-width media queries. */
+function mockViewportWidth(width: number) {
+  window.matchMedia = vi.fn().mockImplementation(
+    (query: string): MediaQueryList => {
+      const min = /\(min-width:\s*(\d+(?:\.\d+)?)px\)/.exec(query);
+      const max = /\(max-width:\s*(\d+(?:\.\d+)?)px\)/.exec(query);
+      const matches =
+        query.includes("width") &&
+        (min === null || width >= Number(min[1])) &&
+        (max === null || width <= Number(max[1]));
+      return {
+        matches,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      };
+    },
   );
 }
 
@@ -231,6 +256,70 @@ describe("LedgerPage default period (S12-5)", () => {
   });
 });
 
+describe("LedgerPage filters compactness and period (T2, S4-S6)", () => {
+  it("collapses the secondary filters behind a toggle on mobile (S4)", async () => {
+    mockMatchMedia(false);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    const toggle = await screen.findByRole("button", { name: "Filtros" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByLabelText("Desde")).toBeNull();
+    expect(screen.getByLabelText("Buscar concepto")).toBeTruthy();
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      expect(screen.getByLabelText("Desde")).toBeTruthy();
+    });
+  });
+
+  it("applies the last-30-days shortcut to the transactions query (S5)", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Últimos 30 días" }),
+    );
+
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const to = new Date();
+    const from = new Date(to);
+    from.setDate(from.getDate() - 29);
+    const iso = (d: Date) =>
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    await waitFor(() => {
+      expect(listTransactions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ from: iso(from), to: iso(to) }),
+      );
+    });
+  });
+
+  it("shows the active period next to the Movimientos heading (S6)", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    const { container } = renderPage();
+
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const y = now.getFullYear();
+    const m = pad(now.getMonth() + 1);
+    const lastDay = pad(new Date(y, now.getMonth() + 1, 0).getDate());
+    const from = formatBusinessDate(`${y}-${m}-01`, i18n.language);
+    const to = formatBusinessDate(`${y}-${m}-${lastDay}`, i18n.language);
+
+    await waitFor(() => {
+      const badge = container.querySelector('[data-part="active-period"]');
+      expect(badge?.textContent).toContain(from);
+      expect(badge?.textContent).toContain(to);
+    });
+  });
+});
+
 describe("LedgerPage balance block (S12-5)", () => {
   it("renders the aggregate from the dedicated balance endpoint (T24)", async () => {
     const { listAccounts } = await import("./api");
@@ -256,6 +345,11 @@ describe("LedgerPage balance block (S12-5)", () => {
       },
     ]);
     vi.mocked(listTransactions).mockResolvedValue([]);
+    // Amounts are hidden by default (hide-balance-amounts S2); reveal PEN.
+    localStorage.setItem(
+      "tfm-hide-amounts-cards",
+      JSON.stringify({ PEN: false }),
+    );
 
     const { container } = renderPage();
 
@@ -453,6 +547,84 @@ describe("LedgerPage responsive layout (S12-6)", () => {
   });
 });
 
+describe("LedgerPage auto-mini rail (T3, S10)", () => {
+  it("collapses the rail in the 960–1179px band with no saved preference", async () => {
+    mockViewportWidth(1000);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Expandir menú lateral",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("keeps the rail expanded in the band when the user saved it expanded", async () => {
+    localStorage.setItem("tfm-rail-collapsed", "0");
+    mockViewportWidth(1000);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Colapsar menú lateral",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("keeps the rail collapsed in the band when the user saved it collapsed", async () => {
+    localStorage.setItem("tfm-rail-collapsed", "1");
+    mockViewportWidth(1000);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Expandir menú lateral",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("keeps the rail expanded at ≥1180px with no saved preference", async () => {
+    mockViewportWidth(1400);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Colapsar menú lateral",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("an explicit toggle inside the band persists and wins over auto-mini", async () => {
+    mockViewportWidth(1000);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Expandir menú lateral",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(localStorage.getItem("tfm-rail-collapsed")).toBe("0");
+    });
+    expect(
+      await screen.findByRole("button", {
+        name: "Colapsar menú lateral",
+      }),
+    ).toBeTruthy();
+  });
+});
+
 describe("LedgerPage pending sync (T7)", () => {
   const pendingItem: PendingTransaction = {
     idempotencyKey: "pending-key-1",
@@ -598,5 +770,91 @@ describe("LedgerPage accounts management (T25)", () => {
       expect(within(dialog).getByText("Caja vieja")).toBeTruthy();
       expect(within(dialog).getByText("Archivadas")).toBeTruthy();
     });
+  });
+});
+
+describe("LedgerPage list states (T1, S1-S3)", () => {
+  it("empty list offers a CTA that opens the new-movement dialog on desktop", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Registrá tu primer movimiento",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: "Nuevo movimiento" }),
+    ).toBeTruthy();
+  });
+
+  it("empty day cards offer the same CTA on mobile", async () => {
+    mockMatchMedia(false);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Registrá tu primer movimiento",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: "Nuevo movimiento" }),
+    ).toBeTruthy();
+  });
+
+  it("shows skeleton rows while the first page loads", async () => {
+    vi.mocked(listTransactions).mockReturnValue(new Promise(() => {}));
+
+    const { container } = renderPage();
+
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll(".MuiSkeleton-root").length,
+      ).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  it("shows a retry button on error that refetches the list", async () => {
+    vi.mocked(listTransactions).mockRejectedValue(new Error("boom"));
+
+    renderPage();
+
+    const retry = await screen.findByRole("button", { name: "Reintentar" });
+    vi.mocked(listTransactions).mockClear();
+    fireEvent.click(retry);
+
+    await waitFor(() => {
+      expect(listTransactions).toHaveBeenCalled();
+    });
+  });
+
+  it("shows a retry in the balance area when the balance query fails", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+    vi.mocked(fetchBalance).mockRejectedValue(new Error("boom"));
+
+    renderPage();
+
+    const retry = await screen.findByRole("button", { name: "Reintentar" });
+    vi.mocked(fetchBalance).mockClear();
+    vi.mocked(fetchBalance).mockResolvedValue([]);
+    fireEvent.click(retry);
+
+    await waitFor(() => {
+      expect(fetchBalance).toHaveBeenCalled();
+    });
+  });
+
+  it("shows a 'no accounts yet' hint when the balance succeeds empty", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+    vi.mocked(fetchBalance).mockResolvedValue([]);
+
+    renderPage();
+
+    expect(await screen.findByText(/Todavía no hay cuentas/)).toBeTruthy();
   });
 });

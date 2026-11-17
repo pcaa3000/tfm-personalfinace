@@ -3,7 +3,12 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AmountText } from "./AmountText";
-import { ChevronLeftIcon, ChevronRightIcon } from "./icons";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  EyeIcon,
+  EyeOffIcon,
+} from "./icons";
 import { minorToDecimalString } from "./format";
 import type { CurrencySummary } from "./summarize";
 import type { AccountView } from "./types";
@@ -13,6 +18,26 @@ interface Props {
   accounts: AccountView[];
   defaultCurrency: string;
   exponentOf?: (code: string) => number;
+}
+
+/**
+ * Per-currency privacy flags (hide-balance-amounts S3): JSON object
+ * keyed by currency code, e.g. {"PEN": true, "USD": false}. Absent or
+ * non-false values mean hidden — amounts start masked (S2).
+ */
+const HIDE_AMOUNTS_KEY = "tfm-hide-amounts-cards";
+
+function readHiddenCards(): Record<string, boolean> {
+  try {
+    const parsed: unknown = JSON.parse(
+      localStorage.getItem(HIDE_AMOUNTS_KEY) ?? "null",
+    );
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, boolean>)
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -30,6 +55,22 @@ export function BalanceStrip({
   const { t } = useTranslation();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [hiddenByCurrency, setHiddenByCurrency] =
+    useState<Record<string, boolean>>(readHiddenCards);
+
+  const isHidden = (currency: string) => hiddenByCurrency[currency] !== false;
+
+  const toggleHidden = (currency: string) => {
+    setHiddenByCurrency((prev) => {
+      const next = { ...prev, [currency]: prev[currency] === false };
+      try {
+        localStorage.setItem(HIDE_AMOUNTS_KEY, JSON.stringify(next));
+      } catch {
+        // Storage unavailable (private mode, quota): keep the in-memory toggle.
+      }
+      return next;
+    });
+  };
 
   const accountNames = (currency: string) =>
     accounts
@@ -101,6 +142,7 @@ export function BalanceStrip({
         {summaries.map((summary, index) => {
           const variant = variantOf(summary.currency, index);
           const branded = variant !== "neutral";
+          const masked = isHidden(summary.currency);
           return (
             <Box
               key={summary.currency}
@@ -157,9 +199,43 @@ export function BalanceStrip({
                     color: "inherit",
                   })}
                 />
-                <Typography className="muted" variant="caption" noWrap>
-                  {accountNames(summary.currency)}
-                </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.5,
+                    minWidth: 0,
+                  }}
+                >
+                  <Typography className="muted" variant="caption" noWrap>
+                    {accountNames(summary.currency)}
+                  </Typography>
+                  <IconButton
+                    size="small"
+                    aria-pressed={masked}
+                    aria-label={t(
+                      masked ? "balance.showAmounts" : "balance.hideAmounts",
+                      { currency: summary.currency },
+                    )}
+                    onClick={() => toggleHidden(summary.currency)}
+                    sx={{
+                      width: 34,
+                      height: 34,
+                      flex: "none",
+                      color: "inherit",
+                      border: "1px solid",
+                      borderColor: branded
+                        ? "rgb(255 255 255 / 0.35)"
+                        : "divider",
+                    }}
+                  >
+                    {masked ? (
+                      <EyeOffIcon sx={{ fontSize: 14 }} />
+                    ) : (
+                      <EyeIcon sx={{ fontSize: 14 }} />
+                    )}
+                  </IconButton>
+                </Box>
               </Box>
               <Typography
                 className="muted"
@@ -179,6 +255,7 @@ export function BalanceStrip({
                   )}
                   currency={summary.currency}
                   exponent={exponentOf(summary.currency)}
+                  masked={masked}
                 />
               </Typography>
               <Box
@@ -214,6 +291,7 @@ export function BalanceStrip({
                       )}
                       currency={summary.currency}
                       exponent={exponentOf(summary.currency)}
+                      masked={masked}
                     />
                   </Typography>
                 </Box>
@@ -240,6 +318,7 @@ export function BalanceStrip({
                       )}
                       currency={summary.currency}
                       exponent={exponentOf(summary.currency)}
+                      masked={masked}
                     />
                   </Typography>
                 </Box>
@@ -267,16 +346,33 @@ export function BalanceStrip({
                 data-active={index === activeIndex ? "true" : "false"}
                 onClick={() => scrollToCard(index)}
                 sx={(theme) => ({
-                  width: 18,
-                  height: 6,
+                  // S13: the button's hit area is 24x24 while the visible
+                  // indicator stays an 18x6 pill drawn by ::before.
+                  position: "relative",
+                  width: 24,
+                  height: 24,
                   p: 0,
                   border: 0,
                   cursor: "pointer",
-                  borderRadius: "999px",
-                  bgcolor:
-                    index === activeIndex
-                      ? theme.palette.primary.main
-                      : theme.palette.divider,
+                  bgcolor: "transparent",
+                  "&:focus-visible": {
+                    outline: `3px solid ${theme.palette.primary.main}`,
+                    outlineOffset: 2,
+                  },
+                  "&::before": {
+                    content: '""',
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    width: 18,
+                    height: 6,
+                    borderRadius: "999px",
+                    bgcolor:
+                      index === activeIndex
+                        ? theme.palette.primary.main
+                        : theme.palette.divider,
+                  },
                 })}
               />
             ))}

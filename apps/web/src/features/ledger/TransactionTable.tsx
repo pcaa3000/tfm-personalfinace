@@ -1,4 +1,5 @@
 import {
+  Box,
   Button,
   Chip,
   Stack,
@@ -14,7 +15,12 @@ import { useTranslation } from "react-i18next";
 
 import { formatBusinessDate } from "./format";
 import { categoryLabel } from "./TransactionForm";
-import type { AccountView, CategoryView, LedgerRow } from "./types";
+import type {
+  AccountView,
+  CategoryView,
+  LedgerRow,
+  TransactionType,
+} from "./types";
 
 interface Props {
   transactions: LedgerRow[];
@@ -23,7 +29,19 @@ interface Props {
   onEdit: (transaction: LedgerRow) => void;
   onVoid: (transaction: LedgerRow) => void;
   onHistory: (transaction: LedgerRow) => void;
+  onNewMovement?: () => void;
 }
+
+// S9: the transfer token keeps one identity across table and
+// day-cards (the artboard's --transfer violet-grey).
+const TYPE_COLOR: Record<
+  TransactionType,
+  "success" | "error" | "transfer"
+> = {
+  income: "success",
+  expense: "error",
+  transfer: "transfer",
+};
 
 /**
  * Dense desktop table (S12-6). The header sticks below the top
@@ -37,6 +55,7 @@ export function TransactionTable({
   onEdit,
   onVoid,
   onHistory,
+  onNewMovement,
 }: Props) {
   const { t, i18n } = useTranslation();
   const categoryLabels = new Map(
@@ -45,7 +64,33 @@ export function TransactionTable({
   const accountLabels = new Map(accounts.map((a) => [a.id, a.name]));
 
   if (transactions.length === 0) {
-    return <Typography color="text.secondary">{t("table.empty")}</Typography>;
+    // S1: the empty state offers an action, not only text.
+    return (
+      <Box
+        sx={{
+          display: "grid",
+          justifyItems: "center",
+          gap: 1.25,
+          py: { xs: 4, md: 6 },
+          textAlign: "center",
+        }}
+      >
+        <Typography color="text.secondary">{t("table.empty")}</Typography>
+        <Typography variant="caption" color="text.secondary">
+          {t("table.emptyHint")}
+        </Typography>
+        {onNewMovement ? (
+          <Button
+            variant="contained"
+            size="small"
+            onClick={onNewMovement}
+            sx={{ mt: 0.5 }}
+          >
+            {t("table.emptyAction")}
+          </Button>
+        ) : null}
+      </Box>
+    );
   }
 
   const accountCell = (trx: LedgerRow): string => {
@@ -65,7 +110,13 @@ export function TransactionTable({
   return (
     <TableContainer
       sx={(theme) => ({
+        // S8: horizontal scroll + a 720px floor (artboard table
+        // min-width) so the 8 columns never compress at 960–1100px.
+        // Only in the narrow band: overflow-x:auto makes this container
+        // the sticky header's scrollport and would break its vertical
+        // stick on wide screens (worker finding, T3).
         overflowX: "clip",
+        "@media (max-width: 1179.98px)": { overflowX: "auto" },
         border: "1px solid",
         borderColor: "divider",
         borderRadius: "20px",
@@ -73,7 +124,11 @@ export function TransactionTable({
         boxShadow: theme.shadows[1],
       })}
     >
-      <Table size="small" aria-label={t("transactions.title")}>
+      <Table
+        size="small"
+        sx={{ minWidth: 720 }}
+        aria-label={t("transactions.title")}
+      >
         <TableHead>
           <TableRow
             sx={{
@@ -113,13 +168,7 @@ export function TransactionTable({
                   <Chip
                     size="small"
                     variant="outlined"
-                    color={
-                      trx.type === "income"
-                        ? "success"
-                        : trx.type === "expense"
-                          ? "error"
-                          : "default"
-                    }
+                    color={TYPE_COLOR[trx.type]}
                     label={t(`form.${trx.type}`)}
                   />
                 </TableCell>
@@ -148,7 +197,10 @@ export function TransactionTable({
                     </>
                   )}
                 </TableCell>
-                <TableCell align="right">
+                <TableCell
+                  align="right"
+                  sx={{ color: `${TYPE_COLOR[trx.type]}.main` }}
+                >
                   {trx.type === "income" ? "+" : trx.type === "expense" ? "−" : ""}
                   {trx.amount} {trx.currency}
                 </TableCell>

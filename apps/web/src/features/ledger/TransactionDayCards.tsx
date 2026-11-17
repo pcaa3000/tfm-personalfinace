@@ -2,6 +2,7 @@ import {
   alpha,
   Avatar,
   Box,
+  Button,
   IconButton,
   ListItemIcon,
   ListItemText,
@@ -37,12 +38,18 @@ interface Props {
   onEdit: (transaction: LedgerRow) => void;
   onVoid: (transaction: LedgerRow) => void;
   onHistory: (transaction: LedgerRow) => void;
+  onNewMovement?: () => void;
 }
 
-const TYPE_COLOR: Record<TransactionType, "success" | "error" | "secondary"> = {
+// S9: transfers use the dedicated palette token — the same
+// violet-grey the desktop table uses (artboard --transfer).
+const TYPE_COLOR: Record<
+  TransactionType,
+  "success" | "error" | "transfer"
+> = {
   income: "success",
   expense: "error",
-  transfer: "secondary",
+  transfer: "transfer",
 };
 
 function TypeIcon({ type }: { type: TransactionType }) {
@@ -63,6 +70,7 @@ export function TransactionDayCards({
   onEdit,
   onVoid,
   onHistory,
+  onNewMovement,
 }: Props) {
   const { t, i18n } = useTranslation();
   const [menuFor, setMenuFor] = useState<{
@@ -76,7 +84,33 @@ export function TransactionDayCards({
   const accountLabels = new Map(accounts.map((a) => [a.id, a.name]));
 
   if (transactions.length === 0) {
-    return <Typography color="text.secondary">{t("table.empty")}</Typography>;
+    // S1: the empty state offers an action, not only text.
+    return (
+      <Box
+        sx={{
+          display: "grid",
+          justifyItems: "center",
+          gap: 1.25,
+          py: { xs: 4, md: 6 },
+          textAlign: "center",
+        }}
+      >
+        <Typography color="text.secondary">{t("table.empty")}</Typography>
+        <Typography variant="caption" color="text.secondary">
+          {t("table.emptyHint")}
+        </Typography>
+        {onNewMovement ? (
+          <Button
+            variant="contained"
+            size="small"
+            onClick={onNewMovement}
+            sx={{ mt: 0.5 }}
+          >
+            {t("table.emptyAction")}
+          </Button>
+        ) : null}
+      </Box>
+    );
   }
 
   const groups = new Map<string, LedgerRow[]>();
