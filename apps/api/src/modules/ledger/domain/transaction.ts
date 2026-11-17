@@ -8,6 +8,7 @@ import {
   type Result,
 } from "../../shared-kernel/index.js";
 import { TransactionRevision, type FieldChange } from "./transaction-revision.js";
+import { TransactionSplit } from "./transaction-split.js";
 
 export type TransactionType = "income" | "expense" | "transfer";
 export type TransactionStatus = "confirmed" | "voided";
@@ -33,6 +34,61 @@ function describeCategory(category: CategoryAssignment): string {
     : `categorized:${category.categoryId}`;
 }
 
+/**
+ * Audit-friendly serialization of a split collection, e.g.
+ * `cat-food=20.00+cat-home=5.50` or `none` when empty.
+ */
+function describeSplits(splits: readonly TransactionSplit[]): string {
+  if (splits.length === 0) {
+    return "none";
+  }
+  return splits
+    .map((s) => `${s.categoryId}=${s.amount.toDecimalString()}`)
+    .join("+");
+}
+
+/**
+ * INV-TRX-SPLIT-01: when splits exist, each one must share the transaction
+ * currency and their amounts must sum exactly to the transaction amount in
+ * integer minor units — no rounding drift. Per-split positivity and a
+ * non-empty categoryId are enforced by {@link TransactionSplit.create};
+ * category existence is validated at use-case level, not here.
+ */
+function validateSplits(
+  splits: readonly TransactionSplit[],
+  amount: Money,
+): Result<void, DomainError> {
+  let sum = 0n;
+  for (const split of splits) {
+    if (!split.amount.currency.equals(amount.currency)) {
+      return err(
+        new DomainError(
+          "TRANSACTION_SPLIT_CURRENCY_MISMATCH",
+          "Split currency must match the transaction currency (INV-TRX-SPLIT-01)",
+        ),
+      );
+    }
+    if (!split.amount.isPositive()) {
+      return err(
+        new DomainError(
+          "TRANSACTION_SPLIT_AMOUNT_NOT_POSITIVE",
+          "Split amount must be greater than zero (INV-TRX-SPLIT-01)",
+        ),
+      );
+    }
+    sum += split.amount.minorUnits;
+  }
+  if (sum !== amount.minorUnits) {
+    return err(
+      new DomainError(
+        "TRANSACTION_SPLITS_SUM_MISMATCH",
+        "Split amounts must sum exactly to the transaction amount (INV-TRX-SPLIT-01)",
+      ),
+    );
+  }
+  return ok(undefined);
+}
+
 export interface RecordManualInput {
   readonly id: string;
   readonly workspaceId: WorkspaceId;
@@ -46,6 +102,8 @@ export interface RecordManualInput {
   /** Destination account for transfers; required on transfer, forbidden on income/expense (INV-TFR-01). */
   readonly destinationAccountId?: string | null;
   readonly category?: CategoryAssignment;
+  /** Optional category-level breakdown; when non-empty it must satisfy INV-TRX-SPLIT-01. */
+  readonly splits?: readonly TransactionSplit[];
   readonly originReference?: string;
   readonly confirmedAt: Date;
   readonly confirmedBy: string;
@@ -71,6 +129,8 @@ export interface TransactionState {
   readonly confirmedAt: Date;
   readonly confirmedBy: string;
   readonly revisions: TransactionRevision[];
+  /** Persisted split collection; absent only for rows predating splits. */
+  readonly splits?: readonly TransactionSplit[];
 }
 
 export interface ReviseInput {
@@ -81,6 +141,8 @@ export interface ReviseInput {
   readonly accountId?: string;
   readonly destinationAccountId?: string | null;
   readonly category?: CategoryAssignment;
+  /** When provided, replaces the whole split collection (`[]` clears it). */
+  readonly splits?: readonly TransactionSplit[];
   readonly revisedAt: Date;
   readonly revisedBy: string;
 }
@@ -146,6 +208,7 @@ export class Transaction {
     readonly confirmedAt: Date,
     readonly confirmedBy: string,
     private _revisions: TransactionRevision[],
+    private _splits: TransactionSplit[],
   ) {}
 
   static recordManual(input: RecordManualInput): Result<Transaction, DomainError> {
@@ -183,6 +246,14 @@ export class Transaction {
         ? UNCATEGORIZED
         : (input.category ?? UNCATEGORIZED);
 
+    const splits = input.splits ?? [];
+    if (splits.length > 0) {
+      const splitCheck = validateSplits(splits, input.amount);
+      if (!splitCheck.ok) {
+        return splitCheck;
+      }
+    }
+
     return ok(
       new Transaction(
         input.id,
@@ -201,6 +272,7 @@ export class Transaction {
         input.confirmedAt,
         input.confirmedBy,
         [],
+        [...splits],
       ),
     );
   }
@@ -224,6 +296,7 @@ export class Transaction {
       state.confirmedAt,
       state.confirmedBy,
       [...state.revisions],
+      [...(state.splits ?? [])],
     );
   }
 
@@ -253,6 +326,9 @@ export class Transaction {
   }
   get revisions(): readonly TransactionRevision[] {
     return this._revisions;
+  }
+  get splits(): readonly TransactionSplit[] {
+    return this._splits;
   }
 
   revise(input: ReviseInput): Result<TransactionRevision, DomainError> {
@@ -297,6 +373,15 @@ export class Transaction {
     );
     if (!transferCheck.ok) {
       return transferCheck;
+    }
+
+    const effectiveAmount = input.amount ?? this._amount;
+    const nextSplits = input.splits;
+    if (nextSplits !== undefined && nextSplits.length > 0) {
+      const splitCheck = validateSplits(nextSplits, effectiveAmount);
+      if (!splitCheck.ok) {
+        return splitCheck;
+      }
     }
 
     const nextCategory =
@@ -357,6 +442,16 @@ export class Transaction {
         next: describeCategory(nextCategory),
       });
     }
+    if (
+      nextSplits !== undefined &&
+      describeSplits(nextSplits) !== describeSplits(this._splits)
+    ) {
+      changes.push({
+        field: "splits",
+        previous: describeSplits(this._splits),
+        next: describeSplits(nextSplits),
+      });
+    }
 
     if (changes.length === 0) {
       return err(
@@ -377,6 +472,7 @@ export class Transaction {
       this._destinationAccountId = input.destinationAccountId;
     }
     if (nextCategory !== undefined) this._category = nextCategory;
+    if (nextSplits !== undefined) this._splits = [...nextSplits];
 
     return ok(revision);
   }

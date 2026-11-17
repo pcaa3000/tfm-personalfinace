@@ -13,10 +13,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
- * Drizzle mirror of the Prisma-managed schema (apps/api/prisma/schema.prisma).
- * Table and column names are EXACT: Prisma @@map names the tables and every
- * field maps 1:1 to a camelCase quoted column. This file only describes the
- * existing tables — it never generates migrations.
+ * Source of truth for the physical schema; `pnpm db:generate` emits SQL
+ * migrations under apps/api/drizzle from changes made here.
  */
 
 export const workspaces = pgTable(
@@ -174,6 +172,41 @@ export const ledgerTransactionRevisions = pgTable(
       columns: [table.transactionId],
       foreignColumns: [ledgerTransactions.id],
     }).onDelete("cascade").onUpdate("cascade"),
+  ],
+);
+
+/**
+ * Category-level breakdown of a transaction (receipt-scan-drafts T1, S4).
+ * INV-TRX-SPLIT-01 is enforced by the domain aggregate; `position` keeps
+ * the collection's order stable across save/load.
+ */
+export const ledgerTransactionSplits = pgTable(
+  "ledger_transaction_splits",
+  {
+    id: text("id").primaryKey(),
+    transactionId: text("transactionId").notNull(),
+    categoryId: text("categoryId").notNull(),
+    amountMinor: bigint("amountMinor", { mode: "bigint" }).notNull(),
+    position: integer("position").notNull(),
+  },
+  (table) => [
+    uniqueIndex("ledger_transaction_splits_transactionId_position_key").on(
+      table.transactionId,
+      table.position,
+    ),
+    index("ledger_transaction_splits_transactionId_idx").on(
+      table.transactionId,
+    ),
+    foreignKey({
+      name: "ledger_transaction_splits_transactionId_fkey",
+      columns: [table.transactionId],
+      foreignColumns: [ledgerTransactions.id],
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      name: "ledger_transaction_splits_categoryId_fkey",
+      columns: [table.categoryId],
+      foreignColumns: [categories.id],
+    }).onDelete("restrict").onUpdate("cascade"),
   ],
 );
 

@@ -20,6 +20,10 @@ export {
   type RevisionKind,
 } from "./domain/transaction-revision.js";
 export {
+  TransactionSplit,
+  type TransactionSplitInput,
+} from "./domain/transaction-split.js";
+export {
   TRANSACTION_REPOSITORY,
   type TransactionFilter,
   type TransactionRepositoryPort,

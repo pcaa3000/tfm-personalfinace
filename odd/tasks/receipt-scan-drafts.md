@@ -1,0 +1,47 @@
+# Feature: Registro de movimientos por escaneo de voucher/ticket
+
+Objetivo: registrar ingresos/gastos desde una imagen (cámara o galería/archivos), generando un borrador con splits por categoría que el usuario aprueba.
+Branch: `feature/receipt-scan-drafts` | Delivery: `single-pr` con commits por unidad de trabajo (Conventional Commits sin atribución IA) | Test runner: `pnpm vitest` (dominio/aplicación/web) + integración e2e sobre PostgreSQL Docker.
+
+## Specs
+
+- S1 (L1): "registro de ingresos/gastos por medio de imagenes que puedes ser adquiridas desde la camara o galeria/archivos del dispositivos." — entrada de imagen única (`input[type=file]` con `accept="image/*"` + `capture` en móvil) que cubre cámara y galería/archivos.
+- S2 (L1): "Una vez analizada la imagen el sistema debe generar el borrador un borrador con los datos adquiridos del scan." — el scan produce un **borrador** (no confirma): `receipt_scans` con estado `draft_ready`, datos extraídos y splits propuestos; la transacción solo se crea al aprobar.
+- S3 (L1): "autoclasificarlo en la categoria mas adecuada (aqui podrias usar modelos como jev de typesafe)." — extracción estructurada typesafe: schema zod valida la salida del LLM; el catálogo del workspace (`CategoryCatalogPort.listForWorkspace`) alimenta la clasificación; `confidence` baja → `UNCATEGORIZED` + decisión del usuario.
+- S4 (L2, L3 — decisión confirmada "vamos por la opcion 3"): una `Transaction` (monto total, una cuenta, una fecha) + N `TransactionSplit {categoryId, amount}`; invariante `INV-TRX-SPLIT-01`: `∑ splits = amount` de la transacción, verificada en **todos** los paths de mutación (alta, `PATCH`, void/revisión — lección T8a). Motivación: un ticket de supermercado mezcla categorías; un restaurante no requiere detalle por ítem.
+- S5 (L3): "escaneamos el voucher/ticket, generando un json, este json lo pasamos al llm, para su categorizacion." — pipeline en dos pasos detrás de puertos: (a) extracción imagen → JSON de ítems (vision), (b) LLM categoriza ítems contra el catálogo del workspace.
+- S6 (L3): "lo agrupamos por categoria, obteniendo el monto total por categoria, y un concepto general." — el borrador agrupa ítems por `categoryId` sugerida: un split por categoría (no por ítem), `concept` general del ticket (ej. comercio) y detalle de ítems guardado como evidencia del scan.
+- S7 (L3): "le mostramos al usuario los registros obtenidos por categoria para que de su aprobacion." — UI de revisión del borrador: filas por categoría con monto editable, agregar/quitar filas, cambiar categoría, cuenta y fecha; aprobar → `RecordManualTransaction` con `origin: "ticket"` e `idempotencyKey`.
+- S8 (L3): "la seccion de categoria, debería tener un boton para agregar mas categorias sin salir del formulario de transaccion." — botón "nueva categoría" inline en el selector de categorías (form manual y revisión de borrador): crea categoría vía API y la selecciona sin salir del flujo.
+- S9 (docs/03, docs/05, docs/06-Fase2): la imagen sigue el pipeline ya diseñado: cuarentena → validación MIME/tamaño → storage (Supabase Storage) → OCR/LLM detrás de `ReceiptScanPort` reemplazable → envío mínimo a terceros; job async en worker pg-boss.
+
+## Open decisions
+
+- **D1 — Proveedor LLM/vision**: ✅ RESUELTO (L5, L6): **Gemini 3.5 Flash-Lite** (`gemini-3.5-flash-lite`, ~500 RPD free tier, JSON schema nativo). Modelo configurable vía `GEMINI_MODEL` (env, `requiredEnv` fail-fast); `GEMINI_API_KEY` requerida. Caveat declarado: free tier puede usar datos para entrenar → consentimiento en UI + puerto permite migrar a paid/local. Adapter OpenAI-compatible (OpenRouter/Groq/Ollama) como puerto alterno de bajo costo incremental.
+- **D1b — Estrategia de categorización**: ✅ RESUELTO (L7): híbrida. El LLM categoriza ítems en la **misma llamada** de extracción (costo marginal ~0). System-one typesafe (mapa merchant→categoría e ítem-normalizado→categoría, aprendido de correcciones del usuario) pisa sugerencias del LLM en scans futuros y alimenta la sugerencia en captura manual → implementa el "explainable suggestion rules" del módulo categorization.
+- **D2 — Almacenamiento**: Supabase Storage (misma cuenta que auth) asumido como default; revisar si docs/03 exige S3-compatible genérico.
+
+## Tasks
+
+| ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
+|----|-------|----|------|--------|--------------------|
+| T1 | Split de transacciones — dominio + persistencia: `TransactionSplit` VO (categoryId+Money>0), tabla `ledger_transaction_splits` (convención `ledger_*`), `INV-TRX-SPLIT-01` en `recordManual` y `revise` (suma = amount exacto, minor units), migración `0003_sudden_maria_hill.sql` | S4 | worker | done | `<commit>` · RED (specs no compilaban, 17 nuevas pendientes) → GREEN 56/56 focused, suite 532 verde, depcruise 0 · Risk: item 1 (migración + FK ON DELETE RESTRICT; migrate aplicado manualmente por fallo silencioso del spinner — verificar en staging/CI) |
+| T2 | Splits en todos los paths de mutación: `RecordManualTransactionUseCase` (acepta splits), `Transaction.revise`, `PATCH /transactions/:id`, listado/view exponen splits | S4 | worker | pending | |
+| T3 | Upload + cuarentena: `POST /api/v1/receipts` (multipart, MIME/tamaño, límite body), `ReceiptStoragePort` → Supabase Storage, tabla `receipt_scans` (`pending`) | S1, S9 | worker | pending | |
+| T4 | Pipeline async — extracción: job pg-boss `receipt-scan` en worker, `ReceiptScanPort` paso (a) imagen → JSON de ítems validado con zod; estado `extracted` | S5, S9 | worker | pending | |
+| T5 | Categorización híbrida (D1b): ítems + catálogo workspace → `categoryKey` + `confidence` por ítem en la misma llamada LLM; mapa system-one merchant→categoría / ítem→categoría aprendido de correcciones pisa sugerencias; agrupar por categoría → splits + `concept`; estado `draft_ready`; baja confianza → `UNCATEGORIZED` | S3, S5, S6, D1b | worker | pending | |
+| T6 | Aprobación del borrador: `GET /receipts/:id/draft`, `POST /receipts/:id/confirm` → `RecordManualTransaction` con splits e `origin:"ticket"`, `idempotencyKey`; rechazo/descarte | S2, S4, S7 | worker | pending | |
+| T7 | Web — captura y revisión: entrada "Ticket/foto" en `NewMovementDialog`, upload, polling/estado del scan, UI de revisión con filas por categoría editables + confirmación | S1, S2, S7 | worker | pending | |
+| T8 | Web — alta inline de categoría: botón en selector de categorías (form manual + revisión) que abre mini-form, crea vía API y selecciona; + sugerencia system-one por keywords del concepto en captura manual (D1b) | S8, D1b | worker | pending | |
+| T9 | Env/docs/i18n: variables `requiredEnv` del proveedor elegido (D1), `.env.example`, traducciones es/en, actualización de docs/06 | S1, S9 | inline | pending | |
+
+## Log
+
+- L1: "Explora las opciones para la implementacion del registro de ingresos/gastos por medio de imagenes que puedes ser adquiridas desde la camara o galeria/archivos del dispositivos. Una vez analizada la imagen el sistema debe generar el borrador un borrador con los datos adquiridos del scan, ademas de poder autoclasificarlo en la categoria mas adecuada (aqui podrias usar modelos como jev de typesafe)"
+- L2: "Antes de continuar, consultarte si para una aplicacion de ingresos y gastos, los ticket se deben registrar item x item (teniendo en cuenta que que en un supermercado puedes compar alimentos como articulos de cuidado personal o ropa) y cuando vas a un restaurante (cada item puede ser un plato distinto)" — análisis entregado: opción 3 (splits por categoría, no transacción por ítem) recomendada.
+- L3: "Ok, vamos por la opcion 3, entonces primero escaneamos el voucher/ticket, generando un json, este json lo pasamos al llm, para su categorizacion. Con el json categorizado, lo agrupamos por categoria, obteniendo el monto total por categoria, y un concepto general. Finalmente le mostramos al usuario los registros obtenidos por categoria para que de su aprobacion. Por cierto, la seccion de categoria, debería tener un boton para agregar mas categorias sin salir del formulario de transaccion."
+- L4: Creación del documento y branch `feature/receipt-scan-drafts`; pipeline confirmado: imagen → JSON ítems → LLM categoriza → agrupar por categoría → borrador con splits → aprobación del usuario.
+- L5: "Ok, vamos por la opcion 3, entonces primero escaneamos el voucher/ticket, generando un json..." + análisis de opciones de proveedor: usuario pidió free tier y validó que Gemini 2.5 está desfasado.
+- L6: "Ok, Gemini 3.5 Flash Lite" — D1 resuelto: Gemini 3.5 Flash-Lite con `GEMINI_MODEL`/`GEMINI_API_KEY` configurables.
+- L7: "para la categorizacion esta pensando en modelos system-one como jev de typesafe, que tan recomendable es en cuanto costo/beneficio y performance de app." — análisis entregado: híbrido (LLM en la misma llamada de extracción + reglas typesafe aprendidas de correcciones del usuario + sugerencia system-one en captura manual).
+- L8: T1 cerrado por worker: `TransactionSplit` + `ledger_transaction_splits` + `INV-TRX-SPLIT-01`; naming `ledger_*` aceptado (coherente con `ledger_transactions`/`ledger_transaction_revisions`); splits validados contra amount efectivo en `revise`; `splits: []` limpia la colección; revisión audita campo `"splits"`.
