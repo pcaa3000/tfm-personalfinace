@@ -14,7 +14,7 @@ Extensión a sesiones normales del requisito demo (docs/01: RNF-020/CA-018).
 
 | ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
 |----|-------|-----|------|--------|--------------------|
-| T1 | Hook `useInactivityLogout` en AuthProvider + specs | S1–S4 | `apps/web/src/features/auth/use-inactivity-logout.ts`, `auth.tsx`, `inactivity-logout.spec.tsx` | done | 653bf1d — RED→GREEN: 6 fallos/8 → 8/8 specs; suite auth 46/46; typecheck + eslint 0 errores |
+| T1 | Hook `useInactivityLogout` en AuthProvider + specs | S1–S4 | `apps/web/src/features/auth/use-inactivity-logout.ts`, `auth.tsx`, `inactivity-logout.spec.tsx` | done | 653bf1d + 119d096 — RED→GREEN: 6 fallos/8 → 8/8 specs; suite auth 47/47; typecheck + eslint 0 errores; native review aprobada (review-f365848ae944a658) tras corrección R1-001 |
 
 ## Log
 
