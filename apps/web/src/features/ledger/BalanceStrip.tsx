@@ -267,16 +267,33 @@ export function BalanceStrip({
                 data-active={index === activeIndex ? "true" : "false"}
                 onClick={() => scrollToCard(index)}
                 sx={(theme) => ({
-                  width: 18,
-                  height: 6,
+                  // S13: the button's hit area is 24x24 while the visible
+                  // indicator stays an 18x6 pill drawn by ::before.
+                  position: "relative",
+                  width: 24,
+                  height: 24,
                   p: 0,
                   border: 0,
                   cursor: "pointer",
-                  borderRadius: "999px",
-                  bgcolor:
-                    index === activeIndex
-                      ? theme.palette.primary.main
-                      : theme.palette.divider,
+                  bgcolor: "transparent",
+                  "&:focus-visible": {
+                    outline: `3px solid ${theme.palette.primary.main}`,
+                    outlineOffset: 2,
+                  },
+                  "&::before": {
+                    content: '""',
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    width: 18,
+                    height: 6,
+                    borderRadius: "999px",
+                    bgcolor:
+                      index === activeIndex
+                        ? theme.palette.primary.main
+                        : theme.palette.divider,
+                  },
                 })}
               />
             ))}

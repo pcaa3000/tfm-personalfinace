@@ -66,6 +66,32 @@ function renderStrip() {
   );
 }
 
+/**
+ * Serialized CSS of every injected rule that targets the element's own
+ * generated (non-Mui) classes — emotion <style> tags, since jsdom cannot
+ * compute styles from stylesheets.
+ */
+function cssTextOf(el: Element): string {
+  const classes = [...el.classList].filter((c) => !c.startsWith("Mui"));
+  let out = "";
+  for (const style of document.querySelectorAll("style")) {
+    const sheet = style.sheet;
+    if (sheet) {
+      for (const rule of Array.from(sheet.cssRules ?? [])) {
+        if (classes.some((c) => rule.cssText.includes(`.${c}`))) {
+          out += rule.cssText;
+        }
+      }
+    } else {
+      const text = style.textContent ?? "";
+      for (const chunk of text.split("}")) {
+        if (classes.some((c) => chunk.includes(`.${c}`))) out += chunk + "}";
+      }
+    }
+  }
+  return out.replace(/\s+/g, "");
+}
+
 beforeAll(async () => {
   await i18n.changeLanguage("es");
 });
@@ -140,6 +166,23 @@ describe("BalanceStrip (S12-5, S12-7 financial design system)", () => {
     fireEvent.click(getByLabelText("Moneda siguiente"));
 
     expect(scrollBy).toHaveBeenCalledWith({ left: 224, behavior: "smooth" });
+  });
+
+  it("gives each carousel dot a hit area of at least 24px while the pill stays 18x6 (S13)", () => {
+    const { container } = renderStrip();
+
+    const dot = container.querySelector("[data-part='carousel-dot']");
+    expect(dot).toBeTruthy();
+
+    const css = cssTextOf(dot!);
+    // Hit area: the button itself is at least 24x24.
+    expect(css).toContain("width:24px");
+    expect(css).toContain("height:24px");
+    // Visual indicator: the 18x6 pill is drawn by an inner ::before.
+    const before = css.match(/::before\{([^}]*)\}/);
+    expect(before).toBeTruthy();
+    expect(before![1]).toContain("width:18px");
+    expect(before![1]).toContain("height:6px");
   });
 
   it("clicking a dot scrolls directly to that card", () => {

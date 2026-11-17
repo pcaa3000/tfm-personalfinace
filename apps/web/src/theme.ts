@@ -68,6 +68,18 @@ export function buildAppTheme(mode: ThemeMode): Theme {
         'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     },
     components: {
+      MuiButtonBase: {
+        styleOverrides: {
+          root: ({ theme }) => ({
+            // S12: visible keyboard focus ring — the artboard's
+            // `outline: 3px solid var(--focus)` on every ButtonBase.
+            "&.Mui-focusVisible, &:focus-visible": {
+              outline: `3px solid ${theme.palette.primary.main}`,
+              outlineOffset: 2,
+            },
+          }),
+        },
+      },
       MuiButton: {
         styleOverrides: {
           root: { textTransform: "none", fontWeight: 600 },
