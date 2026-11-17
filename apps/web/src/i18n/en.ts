@@ -176,6 +176,10 @@ export const en: TranslationShape = {
   },
   filters: {
     search: "Search concept",
+    searchPlaceholder: "Search concept…",
+    toggle: "Filters",
+    currentMonth: "Current month",
+    last30Days: "Last 30 days",
     all: "All",
     from: "From",
     to: "To",

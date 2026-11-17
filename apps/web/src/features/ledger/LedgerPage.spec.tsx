@@ -14,6 +14,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import i18n from "../../i18n";
 import { ThemeModeProvider } from "../../theme-mode";
 import { fetchBalance, listTransactions, updateWorkspace } from "./api";
+import { formatBusinessDate } from "./format";
 import { LedgerPage, TRANSACTIONS_PAGE_SIZE } from "./LedgerPage";
 import {
   listPendingTransactions,
@@ -227,6 +228,70 @@ describe("LedgerPage default period (S12-5)", () => {
           to: `${y}-${m}-${lastDay}`,
         }),
       );
+    });
+  });
+});
+
+describe("LedgerPage filters compactness and period (T2, S4-S6)", () => {
+  it("collapses the secondary filters behind a toggle on mobile (S4)", async () => {
+    mockMatchMedia(false);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    const toggle = await screen.findByRole("button", { name: "Filtros" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByLabelText("Desde")).toBeNull();
+    expect(screen.getByLabelText("Buscar concepto")).toBeTruthy();
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+      expect(screen.getByLabelText("Desde")).toBeTruthy();
+    });
+  });
+
+  it("applies the last-30-days shortcut to the transactions query (S5)", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Últimos 30 días" }),
+    );
+
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const to = new Date();
+    const from = new Date(to);
+    from.setDate(from.getDate() - 29);
+    const iso = (d: Date) =>
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    await waitFor(() => {
+      expect(listTransactions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ from: iso(from), to: iso(to) }),
+      );
+    });
+  });
+
+  it("shows the active period next to the Movimientos heading (S6)", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    const { container } = renderPage();
+
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const y = now.getFullYear();
+    const m = pad(now.getMonth() + 1);
+    const lastDay = pad(new Date(y, now.getMonth() + 1, 0).getDate());
+    const from = formatBusinessDate(`${y}-${m}-01`, i18n.language);
+    const to = formatBusinessDate(`${y}-${m}-${lastDay}`, i18n.language);
+
+    await waitFor(() => {
+      const badge = container.querySelector('[data-part="active-period"]');
+      expect(badge?.textContent).toContain(from);
+      expect(badge?.textContent).toContain(to);
     });
   });
 });

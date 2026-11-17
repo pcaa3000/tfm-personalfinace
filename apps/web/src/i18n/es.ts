@@ -172,6 +172,10 @@ export const es = {
   },
   filters: {
     search: "Buscar concepto",
+    searchPlaceholder: "Buscar concepto…",
+    toggle: "Filtros",
+    currentMonth: "Mes en curso",
+    last30Days: "Últimos 30 días",
     all: "Todas",
     from: "Desde",
     to: "Hasta",

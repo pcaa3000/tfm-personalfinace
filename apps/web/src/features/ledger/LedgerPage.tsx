@@ -44,7 +44,7 @@ import { CategoriesDialog } from "./CategoriesDialog";
 import { CurrenciesDialog } from "./CurrenciesDialog";
 import { EditTransactionDialog } from "./EditTransactionDialog";
 import { errorMessage } from "./errors";
-import { currencyExponentResolver } from "./format";
+import { currencyExponentResolver, formatBusinessDate } from "./format";
 import { MobileNav } from "./MobileNav";
 import { NewMovementDialog } from "./NewMovementDialog";
 import { createTransactionOrQueue, toPendingView } from "./offline/create-or-queue";
@@ -82,7 +82,7 @@ export const TRANSACTIONS_PAGE_SIZE = 25;
 const DESKTOP_QUERY = "(min-width:960px)";
 
 export function LedgerPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const desktop = useMediaQuery(DESKTOP_QUERY);
   const [editing, setEditing] = useState<TransactionView | null>(null);
@@ -292,6 +292,22 @@ export function LedgerPage() {
   const scrollToList = () =>
     listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
+  // S6: surface the active period next to the section title, not just
+  // deducible via the row count (artboard "Movimientos · Noviembre 2026").
+  const activePeriodLabel = (() => {
+    const { from, to } = filters;
+    if (from && to) {
+      return `${formatBusinessDate(from, i18n.language)} – ${formatBusinessDate(to, i18n.language)}`;
+    }
+    if (from) {
+      return `${t("filters.from")}: ${formatBusinessDate(from, i18n.language)}`;
+    }
+    if (to) {
+      return `${t("filters.to")}: ${formatBusinessDate(to, i18n.language)}`;
+    }
+    return null;
+  })();
+
   const listSection = (
     <Box
       component="section"
@@ -481,6 +497,15 @@ export function LedgerPage() {
             <Typography variant="caption" color="text.secondary">
               {t("transactions.inPeriod", { count: tableRows.length })}
             </Typography>
+            {activePeriodLabel ? (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                data-part="active-period"
+              >
+                {`· ${activePeriodLabel}`}
+              </Typography>
+            ) : null}
           </Box>
         </Box>
 
