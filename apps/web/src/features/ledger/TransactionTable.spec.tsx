@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import i18n from "../../i18n";
@@ -111,6 +111,26 @@ describe("TransactionTable (es)", () => {
     );
     expect(screen.getByText("Transferencia")).toBeTruthy();
     expect(screen.getByText(/BCP soles\s*→\s*Efectivo/)).toBeTruthy();
+  });
+
+  it("empty state offers a CTA that invokes onNewMovement (S1)", () => {
+    const onNewMovement = vi.fn();
+    render(
+      <TransactionTable
+        transactions={[]}
+        categories={[]}
+        accounts={accounts}
+        onEdit={vi.fn()}
+        onVoid={vi.fn()}
+        onHistory={vi.fn()}
+        onNewMovement={onNewMovement}
+      />,
+    );
+    expect(screen.getByText("Todavía no hay movimientos.")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Registrá tu primer movimiento" }),
+    );
+    expect(onNewMovement).toHaveBeenCalledTimes(1);
   });
 
   it("shows 'Sin cuenta' for a transaction without account", () => {

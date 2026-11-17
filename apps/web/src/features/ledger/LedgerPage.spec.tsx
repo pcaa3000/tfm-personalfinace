@@ -600,3 +600,89 @@ describe("LedgerPage accounts management (T25)", () => {
     });
   });
 });
+
+describe("LedgerPage list states (T1, S1-S3)", () => {
+  it("empty list offers a CTA that opens the new-movement dialog on desktop", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Registrá tu primer movimiento",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: "Nuevo movimiento" }),
+    ).toBeTruthy();
+  });
+
+  it("empty day cards offer the same CTA on mobile", async () => {
+    mockMatchMedia(false);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Registrá tu primer movimiento",
+      }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: "Nuevo movimiento" }),
+    ).toBeTruthy();
+  });
+
+  it("shows skeleton rows while the first page loads", async () => {
+    vi.mocked(listTransactions).mockReturnValue(new Promise(() => {}));
+
+    const { container } = renderPage();
+
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll(".MuiSkeleton-root").length,
+      ).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  it("shows a retry button on error that refetches the list", async () => {
+    vi.mocked(listTransactions).mockRejectedValue(new Error("boom"));
+
+    renderPage();
+
+    const retry = await screen.findByRole("button", { name: "Reintentar" });
+    vi.mocked(listTransactions).mockClear();
+    fireEvent.click(retry);
+
+    await waitFor(() => {
+      expect(listTransactions).toHaveBeenCalled();
+    });
+  });
+
+  it("shows a retry in the balance area when the balance query fails", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+    vi.mocked(fetchBalance).mockRejectedValue(new Error("boom"));
+
+    renderPage();
+
+    const retry = await screen.findByRole("button", { name: "Reintentar" });
+    vi.mocked(fetchBalance).mockClear();
+    vi.mocked(fetchBalance).mockResolvedValue([]);
+    fireEvent.click(retry);
+
+    await waitFor(() => {
+      expect(fetchBalance).toHaveBeenCalled();
+    });
+  });
+
+  it("shows a 'no accounts yet' hint when the balance succeeds empty", async () => {
+    vi.mocked(listTransactions).mockResolvedValue([]);
+    vi.mocked(fetchBalance).mockResolvedValue([]);
+
+    renderPage();
+
+    expect(await screen.findByText(/Todavía no hay cuentas/)).toBeTruthy();
+  });
+});

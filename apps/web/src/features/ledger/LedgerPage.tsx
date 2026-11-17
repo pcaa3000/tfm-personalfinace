@@ -5,8 +5,10 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  Alert,
   Box,
   Button,
+  Skeleton,
   Typography,
   useMediaQuery,
 } from "@mui/material";
@@ -302,9 +304,33 @@ export function LedgerPage() {
       }}
     >
       {transactionsQuery.isLoading ? (
-        <Typography>{t("transactions.loading")}</Typography>
+        // S2: skeleton rows instead of plain loading text.
+        <Box
+          data-part="transactions-skeleton"
+          aria-label={t("transactions.loading")}
+          sx={{ display: "grid", gap: 1 }}
+        >
+          <Skeleton variant="rounded" height={36} />
+          <Skeleton variant="rounded" height={52} />
+          <Skeleton variant="rounded" height={52} />
+          <Skeleton variant="rounded" height={52} />
+        </Box>
       ) : transactionsQuery.isError ? (
-        <Typography color="error">{t("transactions.loadError")}</Typography>
+        // S2: error offers a retry that refetches the list.
+        <Alert
+          severity="error"
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => void transactionsQuery.refetch()}
+            >
+              {t("transactions.retry")}
+            </Button>
+          }
+        >
+          {t("transactions.loadError")}
+        </Alert>
       ) : desktop ? (
         <TransactionTable
           transactions={tableRows}
@@ -313,6 +339,7 @@ export function LedgerPage() {
           onEdit={setEditing}
           onVoid={setVoiding}
           onHistory={setHistoryFor}
+          onNewMovement={() => setMovementOpen(true)}
         />
       ) : (
         <TransactionDayCards
@@ -323,6 +350,7 @@ export function LedgerPage() {
           onEdit={setEditing}
           onVoid={setVoiding}
           onHistory={setHistoryFor}
+          onNewMovement={() => setMovementOpen(true)}
         />
       )}
       {transactionsQuery.hasNextPage ? (
@@ -399,12 +427,32 @@ export function LedgerPage() {
               {t("balance.hint")}
             </Typography>
           </Box>
-          <BalanceStrip
-            summaries={summaries}
-            accounts={accounts}
-            defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
-            exponentOf={exponentOf}
-          />
+          {balanceQuery.isError ? (
+            // S3: balance failures surface a retry instead of empty space.
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Typography variant="body2" color="error">
+                {t("balance.loadError")}
+              </Typography>
+              <Button
+                size="small"
+                onClick={() => void balanceQuery.refetch()}
+              >
+                {t("balance.retry")}
+              </Button>
+            </Box>
+          ) : balanceQuery.isSuccess && summaries.length === 0 ? (
+            // S3: an empty successful balance shows a visible hint.
+            <Typography variant="caption" color="text.secondary">
+              {t("balance.noAccounts")}
+            </Typography>
+          ) : (
+            <BalanceStrip
+              summaries={summaries}
+              accounts={accounts}
+              defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
+              exponentOf={exponentOf}
+            />
+          )}
           <Box sx={{ mt: { xs: 1.25, md: 1.75 } }}>
             <TransactionFilters
               categories={categories}

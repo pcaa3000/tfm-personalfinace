@@ -1,4 +1,5 @@
 import {
+  Box,
   Button,
   Chip,
   Stack,
@@ -23,6 +24,7 @@ interface Props {
   onEdit: (transaction: LedgerRow) => void;
   onVoid: (transaction: LedgerRow) => void;
   onHistory: (transaction: LedgerRow) => void;
+  onNewMovement?: () => void;
 }
 
 /**
@@ -37,6 +39,7 @@ export function TransactionTable({
   onEdit,
   onVoid,
   onHistory,
+  onNewMovement,
 }: Props) {
   const { t, i18n } = useTranslation();
   const categoryLabels = new Map(
@@ -45,7 +48,33 @@ export function TransactionTable({
   const accountLabels = new Map(accounts.map((a) => [a.id, a.name]));
 
   if (transactions.length === 0) {
-    return <Typography color="text.secondary">{t("table.empty")}</Typography>;
+    // S1: the empty state offers an action, not only text.
+    return (
+      <Box
+        sx={{
+          display: "grid",
+          justifyItems: "center",
+          gap: 1.25,
+          py: { xs: 4, md: 6 },
+          textAlign: "center",
+        }}
+      >
+        <Typography color="text.secondary">{t("table.empty")}</Typography>
+        <Typography variant="caption" color="text.secondary">
+          {t("table.emptyHint")}
+        </Typography>
+        {onNewMovement ? (
+          <Button
+            variant="contained"
+            size="small"
+            onClick={onNewMovement}
+            sx={{ mt: 0.5 }}
+          >
+            {t("table.emptyAction")}
+          </Button>
+        ) : null}
+      </Box>
+    );
   }
 
   const accountCell = (trx: LedgerRow): string => {
