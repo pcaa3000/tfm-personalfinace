@@ -219,8 +219,8 @@ export function BalanceStrip({
                     )}
                     onClick={() => toggleHidden(summary.currency)}
                     sx={{
-                      width: 26,
-                      height: 26,
+                      width: 34,
+                      height: 34,
                       flex: "none",
                       color: "inherit",
                       border: "1px solid",
