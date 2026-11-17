@@ -131,6 +131,8 @@ export const en: TranslationShape = {
     loadError: "Could not load the balance.",
     retry: "Retry",
     noAccounts: "No accounts yet. Create one from Manage.",
+    showAmounts: "Show {{currency}} amounts",
+    hideAmounts: "Hide {{currency}} amounts",
   },
   summary: {
     title: "Summary by currency",

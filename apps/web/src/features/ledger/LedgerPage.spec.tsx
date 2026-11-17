@@ -345,6 +345,11 @@ describe("LedgerPage balance block (S12-5)", () => {
       },
     ]);
     vi.mocked(listTransactions).mockResolvedValue([]);
+    // Amounts are hidden by default (hide-balance-amounts S2); reveal PEN.
+    localStorage.setItem(
+      "tfm-hide-amounts-cards",
+      JSON.stringify({ PEN: false }),
+    );
 
     const { container } = renderPage();
 

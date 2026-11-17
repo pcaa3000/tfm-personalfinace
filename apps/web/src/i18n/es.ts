@@ -127,6 +127,8 @@ export const es = {
     loadError: "No se pudo cargar el balance.",
     retry: "Reintentar",
     noAccounts: "Todavía no hay cuentas. Creá una desde Gestión.",
+    showAmounts: "Mostrar montos de {{currency}}",
+    hideAmounts: "Ocultar montos de {{currency}}",
   },
   summary: {
     title: "Resumen por moneda",
