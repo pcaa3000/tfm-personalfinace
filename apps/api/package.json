@@ -14,7 +14,7 @@
     "db:push": "drizzle-kit push",
     "db:seed": "tsx src/drizzle/seed.ts",
     "typecheck": "tsc --noEmit",
-    "dev:worker": "DATABASE_URL=postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance tsx watch src/worker.ts",
+    "dev:worker": "DATABASE_URL=postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance tsx watch --env-file=.env src/worker.ts",
     "worker": "DATABASE_URL=postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance tsx src/worker.ts"
   },
   "dependencies": {
