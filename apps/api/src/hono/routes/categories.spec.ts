@@ -240,6 +240,16 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     getBalance: {
       execute: vi.fn(async () => []),
     },
+    // receipt-scan-drafts T3 — stubs; this router never calls them.
+    uploadReceipt: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getReceiptScan: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getReceiptFile: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
   };
 }
 

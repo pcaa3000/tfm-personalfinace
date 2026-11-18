@@ -211,6 +211,45 @@ export const ledgerTransactionSplits = pgTable(
 );
 
 /**
+ * Quarantined receipt uploads (receipt-scan-drafts T3, S9). The object
+ * lives in storage under `storageKey`; the row tracks the async pipeline
+ * status (`pending` → `extracted` → `draft_ready` → `confirmed`, or
+ * `rejected`/`failed`) and carries the extraction/draft payloads plus
+ * the confirmed transaction once the user approves the draft (T6).
+ */
+export const receiptScans = pgTable(
+  "receipts_receipt_scans",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspaceId").notNull(),
+    uploaderSubject: text("uploaderSubject").notNull(),
+    storageKey: text("storageKey").notNull(),
+    originalFilename: text("originalFilename").notNull(),
+    mimeType: text("mimeType").notNull(),
+    sizeBytes: integer("sizeBytes").notNull(),
+    status: text("status").notNull().default("pending"),
+    extractedPayload: jsonb("extractedPayload"),
+    draftPayload: jsonb("draftPayload"),
+    transactionId: text("transactionId"),
+    error: text("error"),
+    createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("receipts_receipt_scans_workspaceId_idx").on(table.workspaceId),
+    foreignKey({
+      name: "receipts_receipt_scans_transactionId_fkey",
+      columns: [table.transactionId],
+      foreignColumns: [ledgerTransactions.id],
+    }).onDelete("set null").onUpdate("cascade"),
+  ],
+);
+
+/**
  * Transactional outbox (worker-pgboss-outbox S1): domain events are
  * inserted in the SAME transaction as the business write; a separate
  * worker drains pending rows (`processedAt IS NULL`) into pg-boss.

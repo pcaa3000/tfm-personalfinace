@@ -1,3 +1,6 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import {
   createApp,
   DEFAULT_HTTP_SECURITY,
@@ -39,12 +42,36 @@ import { DrizzleBalanceAdapter } from "../modules/ledger/infrastructure/drizzle-
 import { GetWorkspaceBalanceUseCase } from "../modules/ledger/application/get-workspace-balance.use-case.js";
 import { DrizzleNotificationRepository } from "../modules/notifications/infrastructure/drizzle-notification.repository.js";
 import { ListNotificationsUseCase } from "../modules/notifications/application/list-notifications.use-case.js";
+import { DrizzleReceiptScanRepository } from "../modules/receipts/infrastructure/drizzle-receipt-scan.repository.js";
+import { LocalReceiptStorage } from "../modules/receipts/infrastructure/local-receipt-storage.js";
+import { S3ReceiptStorage } from "../modules/receipts/infrastructure/s3-receipt-storage.js";
+import { PgBossReceiptScanDispatcher } from "../modules/receipts/infrastructure/pgboss-receipt-scan.dispatcher.js";
+import { UploadReceiptUseCase } from "../modules/receipts/application/upload-receipt.use-case.js";
+import { GetReceiptScanUseCase } from "../modules/receipts/application/get-receipt-scan.use-case.js";
+import { GetReceiptFileUseCase } from "../modules/receipts/application/get-receipt-file.use-case.js";
+import { RECEIPT_MAX_BYTES_DEFAULT } from "../modules/receipts/domain/receipt-upload.js";
 
 /**
  * Composition root (T4): explicit wiring, no DI container.
  * `buildApp` returns the Hono app plus handles to release resources, so the
  * HTTP server (main.ts) and the e2e suites share the exact same wiring.
  */
+
+/**
+ * Receipt quarantine config (receipt-scan-drafts T3, D2): `local` writes
+ * under `dir` (RECEIPT_STORAGE_DIR); `s3` targets an S3-compatible
+ * endpoint (Supabase Storage S3 or MinIO) with SigV4 credentials.
+ */
+export type ReceiptStorageEnv =
+  | { readonly driver: "local"; readonly dir: string }
+  | {
+      readonly driver: "s3";
+      readonly endpoint: string;
+      readonly region: string;
+      readonly bucket: string;
+      readonly accessKeyId: string;
+      readonly secretAccessKey: string;
+    };
 
 export interface AppEnv {
   readonly databaseUrl: string;
@@ -55,6 +82,10 @@ export interface AppEnv {
     readonly jwksUri: string;
   };
   readonly security: HttpSecurityConfig;
+  readonly receipts: {
+    readonly maxBytes: number;
+    readonly storage: ReceiptStorageEnv;
+  };
 }
 
 export interface BuiltApp {
@@ -86,6 +117,16 @@ export function buildApp(env: AppEnv): BuiltApp {
 
   const clock = new SystemClock();
   const ids = new CryptoIdGenerator();
+
+  // receipt-scan-drafts D2: storage driver selected via STORAGE_DRIVER.
+  const receiptStorage =
+    env.receipts.storage.driver === "s3"
+      ? new S3ReceiptStorage(env.receipts.storage)
+      : new LocalReceiptStorage(env.receipts.storage.dir);
+  const receiptScans = new DrizzleReceiptScanRepository(db);
+  const receiptDispatcher = new PgBossReceiptScanDispatcher(
+    env.databaseUrl,
+  );
 
   const deps: HonoDeps = {
     callerResolver,
@@ -131,12 +172,24 @@ export function buildApp(env: AppEnv): BuiltApp {
     listNotifications: new ListNotificationsUseCase(
       new DrizzleNotificationRepository(db),
     ),
+    // receipts (receipt-scan-drafts T3: upload + quarantine + polling)
+    uploadReceipt: new UploadReceiptUseCase(
+      receiptStorage,
+      receiptScans,
+      receiptDispatcher,
+      clock,
+      ids,
+      { maxBytes: env.receipts.maxBytes },
+    ),
+    getReceiptScan: new GetReceiptScanUseCase(receiptScans),
+    getReceiptFile: new GetReceiptFileUseCase(receiptScans, receiptStorage),
   };
 
   return {
     app: createApp(deps, env.security),
     db,
     close: async () => {
+      await receiptDispatcher.close();
       await pool.end();
     },
   };
@@ -179,6 +232,17 @@ function securityFromProcess(): HttpSecurityConfig {
         DEFAULT_HTTP_SECURITY.rateLimitRead.windowMs,
       ),
     },
+    // receipt-scan-drafts T3: multipart cap = RECEIPT_MAX_BYTES + slack
+    // for boundary/field overhead, so an over-limit file still reaches
+    // the quarantine check (typed RECEIPT_TOO_LARGE) instead of a bare
+    // 413. A misconfigured value fails fast like the rate limits.
+    receiptUploadBodyLimitBytes:
+      parsePositiveInt(
+        "RECEIPT_MAX_BYTES",
+        process.env.RECEIPT_MAX_BYTES,
+        RECEIPT_MAX_BYTES_DEFAULT,
+      ) +
+      256 * 1024,
   };
 }
 
@@ -211,6 +275,7 @@ function parsePositiveInt(
 export function envFromProcess(): AppEnv {
   const databaseUrl = requiredEnv("DATABASE_URL");
   const security = securityFromProcess();
+  const receipts = receiptsFromProcess();
   const authMode = process.env.AUTH_MODE;
   if (authMode === "oidc") {
     const required = (name: string): string => {
@@ -224,6 +289,7 @@ export function envFromProcess(): AppEnv {
       databaseUrl,
       authMode: "oidc",
       security,
+      receipts,
       oidc: {
         issuer: required("OIDC_ISSUER"),
         audience: required("OIDC_AUDIENCE"),
@@ -237,11 +303,54 @@ export function envFromProcess(): AppEnv {
         "AUTH_MODE=dev is forbidden when NODE_ENV=production",
       );
     }
-    return { databaseUrl, authMode: "dev", security };
+    return { databaseUrl, authMode: "dev", security, receipts };
   }
   throw new Error(
     `AUTH_MODE must be "dev" or "oidc"; got ${
       authMode === undefined ? "unset" : JSON.stringify(authMode)
     }`,
+  );
+}
+
+/**
+ * Receipt storage + quarantine config (receipt-scan-drafts T3, D2).
+ * `STORAGE_DRIVER` fails closed like AUTH_MODE; `local` needs no config
+ * in dev (RECEIPT_STORAGE_DIR defaults to an OS temp dir, outside the
+ * repo) while `s3` fails fast when any of its settings is missing — a
+ * half-configured object store must never silently downgrade.
+ */
+function receiptsFromProcess(): AppEnv["receipts"] {
+  const maxBytes = parsePositiveInt(
+    "RECEIPT_MAX_BYTES",
+    process.env.RECEIPT_MAX_BYTES,
+    RECEIPT_MAX_BYTES_DEFAULT,
+  );
+  const driver = process.env.STORAGE_DRIVER ?? "local";
+  if (driver === "local") {
+    return {
+      maxBytes,
+      storage: {
+        driver: "local",
+        dir:
+          process.env.RECEIPT_STORAGE_DIR ??
+          join(tmpdir(), "tfm-receipts"),
+      },
+    };
+  }
+  if (driver === "s3") {
+    return {
+      maxBytes,
+      storage: {
+        driver: "s3",
+        endpoint: requiredEnv("S3_ENDPOINT"),
+        region: requiredEnv("S3_REGION"),
+        bucket: requiredEnv("S3_BUCKET"),
+        accessKeyId: requiredEnv("S3_ACCESS_KEY_ID"),
+        secretAccessKey: requiredEnv("S3_SECRET_ACCESS_KEY"),
+      },
+    };
+  }
+  throw new Error(
+    `STORAGE_DRIVER must be "local" or "s3"; got ${JSON.stringify(driver)}`,
   );
 }

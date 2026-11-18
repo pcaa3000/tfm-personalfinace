@@ -7,7 +7,12 @@ import type {
 import type { AccountView } from "../modules/accounts/application/account.view.js";
 import type { CategoryView } from "../modules/categorization/index.js";
 import type { CurrencyView } from "../modules/currencies/index.js";
-import { WorkspaceId, ok } from "../modules/shared-kernel/index.js";
+import {
+  DomainError,
+  WorkspaceId,
+  err,
+  ok,
+} from "../modules/shared-kernel/index.js";
 import { createApp } from "./app.js";
 
 const wsResult = WorkspaceId.create("ws-1");
@@ -103,6 +108,16 @@ function makeDeps() {
     updatePreferences: { execute: vi.fn(async () => ok(WORKSPACE)) },
     getBalance: { execute: vi.fn(async () => []) },
     listNotifications: { execute: vi.fn(async () => []) },
+    // receipt-scan-drafts T3 — stubs; the shell specs never call them.
+    uploadReceipt: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getReceiptScan: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getReceiptFile: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
   };
 }
 
@@ -182,6 +197,47 @@ describe("HTTP hardening (S4 — GAP-SEC-02)", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ concept: "x".repeat(200) }),
     });
+    expect(res.status).toBe(413);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("PAYLOAD_TOO_LARGE");
+  });
+
+  it("POST /api/v1/receipts gets the larger multipart limit, not the 1 MiB write cap (T3)", async () => {
+    const app = createApp(makeDeps(), {
+      bodyLimitBytes: 64,
+      receiptUploadBodyLimitBytes: 4096,
+    });
+    const form = new FormData();
+    form.append(
+      "file",
+      new File([new Uint8Array(1000)], "ticket.jpg", { type: "image/jpeg" }),
+    );
+
+    const res = await app.request("/api/v1/receipts", {
+      method: "POST",
+      body: form,
+    });
+
+    // Reached the handler instead of being cut by the generic write limit.
+    expect(res.status).not.toBe(413);
+  });
+
+  it("POST /api/v1/receipts still rejects bodies over the receipt limit with 413", async () => {
+    const app = createApp(makeDeps(), {
+      bodyLimitBytes: 64,
+      receiptUploadBodyLimitBytes: 256,
+    });
+    const form = new FormData();
+    form.append(
+      "file",
+      new File([new Uint8Array(1000)], "ticket.jpg", { type: "image/jpeg" }),
+    );
+
+    const res = await app.request("/api/v1/receipts", {
+      method: "POST",
+      body: form,
+    });
+
     expect(res.status).toBe(413);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe("PAYLOAD_TOO_LARGE");

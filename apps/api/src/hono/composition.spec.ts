@@ -20,6 +20,14 @@ const ENV_KEYS = [
   "RATE_LIMIT_WINDOW_MS",
   "RATE_LIMIT_READ_MAX",
   "RATE_LIMIT_READ_WINDOW_MS",
+  "STORAGE_DRIVER",
+  "RECEIPT_STORAGE_DIR",
+  "RECEIPT_MAX_BYTES",
+  "S3_ENDPOINT",
+  "S3_REGION",
+  "S3_BUCKET",
+  "S3_ACCESS_KEY_ID",
+  "S3_SECRET_ACCESS_KEY",
 ] as const;
 
 const DATABASE_URL = "postgresql://u:p@db:5432/spec";
@@ -202,6 +210,73 @@ describe("envFromProcess — HTTP security config (S4/S5)", () => {
     expect(envFromProcess().security.rateLimitRead).toEqual({
       max: 500,
       windowMs: 30_000,
+    });
+  });
+});
+
+describe("envFromProcess — receipt storage + upload limits (receipt-scan-drafts T3, D2)", () => {
+  it("defaults to the local driver with a temp quarantine dir when unset (dev)", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    const env = envFromProcess();
+    expect(env.receipts.storage.driver).toBe("local");
+    if (env.receipts.storage.driver === "local") {
+      expect(env.receipts.storage.dir.length).toBeGreaterThan(0);
+    }
+    expect(env.receipts.maxBytes).toBe(5 * 1024 * 1024);
+  });
+
+  it("reads RECEIPT_STORAGE_DIR and RECEIPT_MAX_BYTES for the local driver", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.STORAGE_DRIVER = "local";
+    process.env.RECEIPT_STORAGE_DIR = "/var/lib/tfm/receipts";
+    process.env.RECEIPT_MAX_BYTES = "1048576";
+    const env = envFromProcess();
+    expect(env.receipts.storage).toEqual({
+      driver: "local",
+      dir: "/var/lib/tfm/receipts",
+    });
+    expect(env.receipts.maxBytes).toBe(1_048_576);
+  });
+
+  it("rejects a non-positive RECEIPT_MAX_BYTES instead of silently disabling quarantine", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.RECEIPT_MAX_BYTES = "0";
+    expect(() => envFromProcess()).toThrow(/RECEIPT_MAX_BYTES/);
+  });
+
+  it("fails closed on an unknown STORAGE_DRIVER", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.STORAGE_DRIVER = "ftp";
+    expect(() => envFromProcess()).toThrow(/STORAGE_DRIVER/);
+  });
+
+  it("fails fast when STORAGE_DRIVER=s3 is missing its config", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.STORAGE_DRIVER = "s3";
+    expect(() => envFromProcess()).toThrow(/S3_/);
+  });
+
+  it("reads the full s3 driver config", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.STORAGE_DRIVER = "s3";
+    process.env.S3_ENDPOINT = "https://proj.supabase.co/storage/v1/s3";
+    process.env.S3_REGION = "eu-west-1";
+    process.env.S3_BUCKET = "receipts-quarantine";
+    process.env.S3_ACCESS_KEY_ID = "ak";
+    process.env.S3_SECRET_ACCESS_KEY = "sk";
+    const env = envFromProcess();
+    expect(env.receipts.storage).toEqual({
+      driver: "s3",
+      endpoint: "https://proj.supabase.co/storage/v1/s3",
+      region: "eu-west-1",
+      bucket: "receipts-quarantine",
+      accessKeyId: "ak",
+      secretAccessKey: "sk",
     });
   });
 });
