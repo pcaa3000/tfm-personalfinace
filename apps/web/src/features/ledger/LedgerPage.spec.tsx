@@ -157,6 +157,7 @@ function makeTx(id: string, partial: Partial<TransactionView> = {}): Transaction
     origin: "manual",
     confirmedAt: "2026-10-01T00:00:00.000Z",
     revisionCount: 0,
+    splits: [],
     ...partial,
   };
 }

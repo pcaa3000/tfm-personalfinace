@@ -131,9 +131,12 @@ export function TransactionDayCards({
         : t("table.noAccount");
       return `${account} → ${destination}`;
     }
-    const category = trx.categoryId
-      ? (categoryLabels.get(trx.categoryId) ?? trx.categoryId)
-      : t("form.uncategorized");
+    const category =
+      trx.splits.length > 1
+        ? t("table.splitCount", { count: trx.splits.length })
+        : trx.categoryId
+          ? (categoryLabels.get(trx.categoryId) ?? trx.categoryId)
+          : t("form.uncategorized");
     return `${account} · ${category}`;
   };
 

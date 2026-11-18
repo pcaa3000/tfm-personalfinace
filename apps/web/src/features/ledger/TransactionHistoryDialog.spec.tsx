@@ -28,6 +28,7 @@ const transaction: TransactionView = {
   origin: "manual",
   confirmedAt: "2026-10-01T00:00:00.000Z",
   revisionCount: 2,
+    splits: [],
 };
 
 const revisions: TransactionRevisionView[] = [

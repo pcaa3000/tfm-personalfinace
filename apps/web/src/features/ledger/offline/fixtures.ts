@@ -49,6 +49,7 @@ export function viewFixture(
     origin: "manual",
     confirmedAt: new Date().toISOString(),
     revisionCount: 0,
+    splits: [],
     ...overrides,
   };
 }

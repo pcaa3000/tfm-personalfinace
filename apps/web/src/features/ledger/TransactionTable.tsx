@@ -177,9 +177,11 @@ export function TransactionTable({
                 <TableCell>
                   {trx.type === "transfer"
                     ? "—"
-                    : trx.categoryId
-                      ? (categoryLabels.get(trx.categoryId) ?? trx.categoryId)
-                      : t("form.uncategorized")}
+                    : trx.splits.length > 1
+                      ? t("table.splitCount", { count: trx.splits.length })
+                      : trx.categoryId
+                        ? (categoryLabels.get(trx.categoryId) ?? trx.categoryId)
+                        : t("form.uncategorized")}
                 </TableCell>
                 <TableCell>
                   {pending ? (

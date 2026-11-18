@@ -537,12 +537,19 @@ export function LedgerPage() {
         defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
         currencies={currencyCodes}
         timezone={workspace?.timezone}
+        exponentOf={exponentOf}
         submitting={createMutation.isPending}
         error={
           createMutation.error ? errorMessage(createMutation.error, t) : null
         }
         onClose={() => setMovementOpen(false)}
         onSubmit={onSubmit}
+        onReceiptConfirmed={() => {
+          // The confirm can create categories (S10) besides the
+          // transaction — refresh both lists.
+          void queryClient.invalidateQueries({ queryKey: ["categories"] });
+          void invalidateLedger().then(() => setMovementOpen(false));
+        }}
       />
       <AccountsDialog
         open={management === "accounts"}
