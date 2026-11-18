@@ -247,6 +247,14 @@ export class Transaction {
         : (input.category ?? UNCATEGORIZED);
 
     const splits = input.splits ?? [];
+    if (input.type === "transfer" && splits.length > 0) {
+      return err(
+        new DomainError(
+          "TRANSFER_SPLITS_FORBIDDEN",
+          "Transfers cannot carry category splits",
+        ),
+      );
+    }
     if (splits.length > 0) {
       const splitCheck = validateSplits(splits, input.amount);
       if (!splitCheck.ok) {
@@ -377,8 +385,20 @@ export class Transaction {
 
     const effectiveAmount = input.amount ?? this._amount;
     const nextSplits = input.splits;
-    if (nextSplits !== undefined && nextSplits.length > 0) {
-      const splitCheck = validateSplits(nextSplits, effectiveAmount);
+    // INV-TRX-SPLIT-01 is checked against the *effective* post-revision
+    // state: an amount change alone must not strand a stored split
+    // collection that no longer sums to it (T8a lesson).
+    const effectiveSplits = nextSplits ?? this._splits;
+    if (effectiveType === "transfer" && effectiveSplits.length > 0) {
+      return err(
+        new DomainError(
+          "TRANSFER_SPLITS_FORBIDDEN",
+          "Transfers cannot carry category splits",
+        ),
+      );
+    }
+    if (effectiveSplits.length > 0) {
+      const splitCheck = validateSplits(effectiveSplits, effectiveAmount);
       if (!splitCheck.ok) {
         return splitCheck;
       }

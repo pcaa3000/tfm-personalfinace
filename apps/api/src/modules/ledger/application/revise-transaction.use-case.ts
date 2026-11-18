@@ -13,10 +13,15 @@ import {
   type CategoryAssignment,
   type TransactionType,
 } from "../domain/transaction.js";
+import type { TransactionSplit } from "../domain/transaction-split.js";
 import type { AccountValidationPort } from "./ports/account-validation.port.js";
 import type { CategoryValidationPort } from "./ports/category-validation.port.js";
 import type { Clock } from "./ports/clock.port.js";
 import type { TransactionRepositoryPort } from "./ports/transaction-repository.port.js";
+import {
+  buildTransactionSplits,
+  type TransactionSplitCommand,
+} from "./transaction-splits.js";
 import { toTransactionView, type TransactionView } from "./transaction.view.js";
 
 /**
@@ -36,6 +41,13 @@ export interface ReviseTransactionCommand {
   readonly accountId?: string;
   readonly destinationAccountId?: string | null;
   readonly categoryId?: string | null;
+  /**
+   * When provided, replaces the whole split collection (`[]` clears it);
+   * absent keeps the stored splits. Amounts are integer minor units of the
+   * effective currency and must satisfy INV-TRX-SPLIT-01 against the
+   * effective amount. Forbidden when the effective type is transfer.
+   */
+  readonly splits?: readonly TransactionSplitCommand[];
   readonly actor: string;
 }
 
@@ -210,6 +222,22 @@ export class ReviseTransactionUseCase {
       }
     }
 
+    let splits: TransactionSplit[] | undefined;
+    if (command.splits !== undefined) {
+      const built = await buildTransactionSplits(
+        command.splits,
+        effectiveCurrency,
+        command.workspaceId,
+        // Transfers cannot carry splits; the aggregate rejects them on the
+        // effective type, so there is no category to validate on that path.
+        effectiveType === "transfer" ? null : this.categories,
+      );
+      if (!built.ok) {
+        return built;
+      }
+      splits = built.value;
+    }
+
     const revision = transaction.revise({
       ...(command.type !== undefined ? { type: command.type } : {}),
       ...(amount !== undefined ? { amount } : {}),
@@ -220,6 +248,7 @@ export class ReviseTransactionUseCase {
         ? { destinationAccountId: command.destinationAccountId }
         : {}),
       ...(category !== undefined ? { category } : {}),
+      ...(splits !== undefined ? { splits } : {}),
       revisedAt: this.clock.now(),
       revisedBy: command.actor,
     });

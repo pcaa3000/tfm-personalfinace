@@ -1,5 +1,12 @@
 import type { Transaction, TransactionType } from "../domain/transaction.js";
 
+/** One category-level split line inside {@link TransactionView.splits}. */
+export interface TransactionSplitView {
+  readonly categoryId: string;
+  /** Decimal string in the transaction currency, never a float. */
+  readonly amount: string;
+}
+
 /** Flat, serializable read model returned by ledger use cases. */
 export interface TransactionView {
   readonly id: string;
@@ -17,6 +24,8 @@ export interface TransactionView {
   readonly origin: "manual" | "ticket" | "voice";
   readonly confirmedAt: string; // ISO instant
   readonly revisionCount: number;
+  /** Category breakdown in stored order; empty when the transaction has none. */
+  readonly splits: readonly TransactionSplitView[];
 }
 
 export function toTransactionView(trx: Transaction): TransactionView {
@@ -37,5 +46,9 @@ export function toTransactionView(trx: Transaction): TransactionView {
     origin: trx.origin,
     confirmedAt: trx.confirmedAt.toISOString(),
     revisionCount: trx.revisions.length,
+    splits: trx.splits.map((split) => ({
+      categoryId: split.categoryId,
+      amount: split.amount.toDecimalString(),
+    })),
   };
 }

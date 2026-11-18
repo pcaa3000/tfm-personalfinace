@@ -136,6 +136,21 @@ describe("Transaction.recordManual splits (INV-TRX-SPLIT-01)", () => {
       expect(result.error.code).toBe("TRANSACTION_SPLIT_CURRENCY_MISMATCH");
     }
   });
+
+  it("rejects splits on a transfer transaction", () => {
+    const result = Transaction.recordManual({
+      ...baseInput,
+      type: "transfer",
+      accountId: "acc-1",
+      destinationAccountId: "acc-2",
+      splits: [split("cat-food", "25.50")],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_SPLITS_FORBIDDEN");
+    }
+  });
 });
 
 describe("Transaction.revise splits (INV-TRX-SPLIT-01)", () => {
@@ -234,6 +249,97 @@ describe("Transaction.revise splits (INV-TRX-SPLIT-01)", () => {
     if (!result.ok) {
       expect(result.error.code).toBe("TRANSACTION_NO_CHANGES");
     }
+  });
+
+  it("rejects revising the amount alone when stored splits no longer sum to it", () => {
+    const created = Transaction.recordManual({
+      ...baseInput,
+      splits: [split("cat-food", "20.00"), split("cat-home", "5.50")],
+    });
+    if (!created.ok) throw new Error("setup failed");
+    const trx = created.value;
+
+    const result = trx.revise({
+      amount: eur("30.00"),
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSACTION_SPLITS_SUM_MISMATCH");
+    }
+    expect(trx.amount.toDecimalString()).toBe("25.50");
+  });
+
+  it("rejects revising to transfer while the transaction still has splits", () => {
+    const created = Transaction.recordManual({
+      ...baseInput,
+      splits: [split("cat-food", "25.50")],
+    });
+    if (!created.ok) throw new Error("setup failed");
+    const trx = created.value;
+
+    const result = trx.revise({
+      type: "transfer",
+      destinationAccountId: "acc-2",
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_SPLITS_FORBIDDEN");
+    }
+  });
+
+  it("rejects non-empty splits on a revision of a transfer", () => {
+    const created = Transaction.recordManual({
+      ...baseInput,
+      type: "transfer",
+      accountId: "acc-1",
+      destinationAccountId: "acc-2",
+    });
+    if (!created.ok) throw new Error("setup failed");
+    const trx = created.value;
+
+    const result = trx.revise({
+      splits: [split("cat-food", "25.50")],
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_SPLITS_FORBIDDEN");
+    }
+  });
+
+  it("allows revising to transfer when splits are cleared in the same revision", () => {
+    const created = Transaction.recordManual({
+      ...baseInput,
+      splits: [split("cat-food", "25.50")],
+    });
+    if (!created.ok) throw new Error("setup failed");
+    const trx = created.value;
+
+    const result = trx.revise({
+      type: "transfer",
+      destinationAccountId: "acc-2",
+      splits: [],
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(trx.type).toBe("transfer");
+    expect(trx.splits).toEqual([]);
+    expect(result.value.changes).toEqual(
+      expect.arrayContaining([
+        { field: "splits", previous: "cat-food=25.50", next: "none" },
+      ]),
+    );
   });
 
   it("rejects splits on a voided transaction before validating them", () => {

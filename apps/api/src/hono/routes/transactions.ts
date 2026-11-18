@@ -21,6 +21,13 @@ import { sanitizeZodIssues } from "../middleware/zod-details.js";
 
 // Zod schemas are copied verbatim from the Nest TransactionsController so
 // validation envelopes (INVALID_BODY / INVALID_QUERY + details) stay identical.
+// `splits` is an additive optional field (receipt-scan-drafts T2/S4): each
+// amount is an integer count of minor units in the transaction currency.
+const splitSchema = z.object({
+  categoryId: z.string().min(1),
+  amount: z.number().int().positive(),
+});
+
 const createTransactionSchema = z.object({
   type: z.enum(["income", "expense", "transfer"]),
   amount: z.string().min(1).max(48),
@@ -32,6 +39,7 @@ const createTransactionSchema = z.object({
   destinationAccountId: z.string().min(1).nullable().optional(),
   categoryId: z.string().nullable().optional(),
   idempotencyKey: z.string().min(8).max(128).optional(),
+  splits: z.array(splitSchema).optional(),
 });
 
 const reviseTransactionSchema = z.object({
@@ -44,6 +52,8 @@ const reviseTransactionSchema = z.object({
   accountId: z.string().min(1).optional(),
   destinationAccountId: z.string().min(1).nullable().optional(),
   categoryId: z.string().nullable().optional(),
+  // Replace semantics: `[]` clears the stored collection.
+  splits: z.array(splitSchema).optional(),
 });
 
 const listTransactionsSchema = z.object({
@@ -118,6 +128,9 @@ export function registerTransactionRoutes(
       accountId: parsed.data.accountId,
       destinationAccountId: parsed.data.destinationAccountId ?? null,
       categoryId: parsed.data.categoryId ?? null,
+      ...(parsed.data.splits !== undefined
+        ? { splits: parsed.data.splits }
+        : {}),
       actor: caller.subject,
     });
     if (!result.ok) {
@@ -196,6 +209,9 @@ export function registerTransactionRoutes(
         : {}),
       ...(parsed.data.categoryId !== undefined
         ? { categoryId: parsed.data.categoryId }
+        : {}),
+      ...(parsed.data.splits !== undefined
+        ? { splits: parsed.data.splits }
         : {}),
       actor: caller.subject,
     });

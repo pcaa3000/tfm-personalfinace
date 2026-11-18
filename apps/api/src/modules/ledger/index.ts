@@ -59,7 +59,8 @@ export {
   VoidTransactionUseCase,
   type VoidTransactionCommand,
 } from "./application/void-transaction.use-case.js";
-export { toTransactionView, type TransactionView } from "./application/transaction.view.js";
+export { toTransactionView, type TransactionView, type TransactionSplitView } from "./application/transaction.view.js";
+export { type TransactionSplitCommand } from "./application/transaction-splits.js";
 export {
   toTransactionRevisionView,
   type TransactionRevisionView,
