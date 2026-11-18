@@ -398,3 +398,148 @@ describe("ReceiptFlow — capture → poll → review (T7, S1+S2+S7+S10)", () =>
     });
   });
 });
+
+describe("ReceiptFlow — desktop camera capture (T11, S1)", () => {
+  const trackStop = vi.fn();
+
+  const fakeStream = () =>
+    ({ getTracks: () => [{ stop: trackStop }] }) as unknown as MediaStream;
+
+  function stubGetUserMedia(
+    impl: (constraints?: MediaStreamConstraints) => Promise<MediaStream>,
+  ) {
+    const getUserMedia = vi.fn(impl);
+    Object.defineProperty(window.navigator, "mediaDevices", {
+      value: { getUserMedia },
+      configurable: true,
+    });
+    return getUserMedia;
+  }
+
+  beforeEach(() => {
+    trackStop.mockClear();
+    // jsdom does not implement canvas rendering.
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(
+      function (this: HTMLCanvasElement, callback: BlobCallback) {
+        callback(new Blob(["jpeg"], { type: "image/jpeg" }));
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete (window.navigator as { mediaDevices?: unknown }).mediaDevices;
+  });
+
+  it("opens a live camera view from the pick step", async () => {
+    const getUserMedia = stubGetUserMedia(() =>
+      Promise.resolve(fakeStream()),
+    );
+    renderFlow();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capturar con cámara" }),
+    );
+
+    await waitFor(() => {
+      expect(getUserMedia).toHaveBeenCalledWith({
+        video: { facingMode: "environment" },
+      });
+    });
+    expect(
+      await screen.findByRole("button", { name: "Capturar" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Cancelar" }),
+    ).toBeTruthy();
+    expect(document.querySelector("video")).toBeTruthy();
+  });
+
+  it("captures a frame into a File that enters the same upload/review path", async () => {
+    stubGetUserMedia(() => Promise.resolve(fakeStream()));
+    vi.mocked(uploadReceipt).mockResolvedValue(scanView("pending"));
+    vi.mocked(getReceiptScan).mockResolvedValue(scanView("draft_ready"));
+    vi.mocked(getReceiptDraft).mockResolvedValue(draftPayload());
+    renderFlow();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capturar con cámara" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Capturar" }));
+
+    await waitFor(() => {
+      expect(uploadReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "captura.jpg",
+          type: "image/jpeg",
+        }),
+      );
+    });
+    // Same scan path as a picked file: the draft review is reachable.
+    expect(await screen.findByLabelText("Concepto")).toBeTruthy();
+    expect(trackStop).toHaveBeenCalled();
+  });
+
+  it("falls back to a plain video constraint when facingMode fails", async () => {
+    const getUserMedia = stubGetUserMedia(
+      vi
+        .fn<(c?: MediaStreamConstraints) => Promise<MediaStream>>()
+        .mockRejectedValueOnce(
+          new DOMException("overconstrained", "OverconstrainedError"),
+        )
+        .mockResolvedValueOnce(fakeStream()),
+    );
+    renderFlow();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capturar con cámara" }),
+    );
+
+    await waitFor(() => {
+      expect(getUserMedia).toHaveBeenNthCalledWith(2, { video: true });
+    });
+    expect(
+      await screen.findByRole("button", { name: "Capturar" }),
+    ).toBeTruthy();
+  });
+
+  it("shows a localized alert and keeps the file picker when the camera is unavailable", async () => {
+    stubGetUserMedia(() =>
+      Promise.reject(new DOMException("denied", "NotAllowedError")),
+    );
+    renderFlow();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capturar con cámara" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "No se pudo acceder a la cámara. Elegí una imagen.",
+      ),
+    ).toBeTruthy();
+    expect(document.querySelector('input[type="file"]')).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Elegir imagen" }),
+    ).toBeTruthy();
+  });
+
+  it("cancel closes the camera view and stops the tracks", async () => {
+    stubGetUserMedia(() => Promise.resolve(fakeStream()));
+    renderFlow();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capturar con cámara" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => {
+      expect(trackStop).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("button", { name: "Capturar" })).toBeNull();
+    expect(document.querySelector('input[type="file"]')).toBeTruthy();
+  });
+});

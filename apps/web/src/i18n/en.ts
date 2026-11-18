@@ -43,6 +43,10 @@ export const en: TranslationShape = {
   receipt: {
     chooseImage: "Choose image",
     changeImage: "Change image",
+    captureCamera: "Capture with camera",
+    capture: "Capture",
+    cancel: "Cancel",
+    cameraUnavailable: "Camera is unavailable. Choose an image.",
     previewAlt: "Receipt preview",
     uploading: "Uploading image…",
     analyzing: "Analyzing receipt…",

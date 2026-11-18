@@ -39,6 +39,10 @@ export const es = {
   receipt: {
     chooseImage: "Elegir imagen",
     changeImage: "Cambiar imagen",
+    captureCamera: "Capturar con cámara",
+    capture: "Capturar",
+    cancel: "Cancelar",
+    cameraUnavailable: "No se pudo acceder a la cámara. Elegí una imagen.",
     previewAlt: "Vista previa del ticket",
     uploading: "Subiendo imagen…",
     analyzing: "Analizando ticket…",

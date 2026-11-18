@@ -108,13 +108,26 @@ export function ReceiptFlow({
     null,
   );
   const previewRef = useRef<string | null>(null);
+  // Desktop camera capture (T11): `capture="environment"` is ignored by
+  // desktop browsers, so the pick step offers a getUserMedia fallback.
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(
     () => () => {
       if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+      streamRef.current?.getTracks().forEach((track) => track.stop());
     },
     [],
   );
+
+  useEffect(() => {
+    if (cameraActive && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [cameraActive]);
 
   const effectiveTimezone =
     timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -157,9 +170,7 @@ export function ReceiptFlow({
       });
   };
 
-  const onFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const picked = event.target.files?.[0];
-    if (!picked) return;
+  const acceptFile = (picked: File) => {
     setFile(picked);
     if (previewRef.current) URL.revokeObjectURL(previewRef.current);
     previewRef.current =
@@ -168,6 +179,66 @@ export function ReceiptFlow({
         : null;
     setPreviewUrl(previewRef.current);
     startScan(picked);
+  };
+
+  const onFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = event.target.files?.[0];
+    if (!picked) return;
+    acceptFile(picked);
+  };
+
+  const stopCamera = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setCameraActive(false);
+  };
+
+  const openCamera = async () => {
+    setCameraError(false);
+    const mediaDevices = navigator.mediaDevices;
+    if (!mediaDevices?.getUserMedia) {
+      setCameraError(true);
+      return;
+    }
+    try {
+      let stream: MediaStream;
+      try {
+        stream = await mediaDevices.getUserMedia({
+          video: { facingMode: "environment" },
+        });
+      } catch {
+        stream = await mediaDevices.getUserMedia({ video: true });
+      }
+      streamRef.current = stream;
+      setCameraActive(true);
+    } catch {
+      setCameraError(true);
+    }
+  };
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    if (!video || !streamRef.current) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    canvas
+      .getContext("2d")
+      ?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(
+      (blob) => {
+        stopCamera();
+        if (!blob) {
+          setCameraError(true);
+          return;
+        }
+        acceptFile(
+          new File([blob], "captura.jpg", { type: "image/jpeg" }),
+        );
+      },
+      "image/jpeg",
+      0.9,
+    );
   };
 
   const patchReview = (patch: Partial<ReceiptReviewState>) =>
@@ -467,17 +538,51 @@ export function ReceiptFlow({
   return (
     <Stack spacing={2} data-part="receipt-pick">
       {error ? <Alert severity="error">{error}</Alert> : null}
+      {cameraError ? (
+        <Alert severity="error">{t("receipt.cameraUnavailable")}</Alert>
+      ) : null}
       {preview}
-      <Button component="label" variant="outlined">
-        {file ? t("receipt.changeImage") : t("receipt.chooseImage")}
-        <input
-          hidden
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={onFileChange}
-        />
-      </Button>
+      {cameraActive ? (
+        <Stack spacing={1} data-part="receipt-camera">
+          <Box
+            component="video"
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            sx={{
+              maxWidth: "100%",
+              maxHeight: 240,
+              borderRadius: "12px",
+              border: "1px solid",
+              borderColor: "divider",
+            }}
+          />
+          <Stack direction="row" spacing={1}>
+            <Button variant="contained" onClick={capturePhoto}>
+              {t("receipt.capture")}
+            </Button>
+            <Button variant="outlined" onClick={stopCamera}>
+              {t("receipt.cancel")}
+            </Button>
+          </Stack>
+        </Stack>
+      ) : null}
+      <Stack direction="row" spacing={1}>
+        <Button component="label" variant="outlined">
+          {file ? t("receipt.changeImage") : t("receipt.chooseImage")}
+          <input
+            hidden
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={onFileChange}
+          />
+        </Button>
+        <Button variant="outlined" onClick={() => void openCamera()}>
+          {t("receipt.captureCamera")}
+        </Button>
+      </Stack>
       {file && error ? (
         <Button variant="contained" onClick={() => startScan(file)}>
           {t("receipt.retry")}
