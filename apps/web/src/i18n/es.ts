@@ -75,6 +75,7 @@ export const es = {
     destinationAccountHint: "Entre cuentas distintas de la misma moneda",
     noAccountForCurrency: "No hay cuentas para esta moneda. Creala en Gestión.",
     uncategorized: "Sin categorizar",
+    categorySuggestion: "¿Categoría: {{name}}?",
     save: "Guardar movimiento",
     saveChanges: "Guardar cambios",
     saving: "Guardando…",
@@ -253,6 +254,10 @@ export const es = {
     shopping: "Compras",
     taxes: "Impuestos y obligaciones",
     "e2e-food": "Comida E2E",
+    inline: {
+      action: "Nueva categoría",
+      title: "Nueva categoría",
+    },
     manage: {
       title: "Categorías",
       name: "Nombre de la categoría",

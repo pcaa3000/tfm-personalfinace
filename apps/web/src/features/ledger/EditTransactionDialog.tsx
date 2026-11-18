@@ -2,7 +2,12 @@ import { Dialog, DialogContent, DialogTitle } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
 import { TransactionForm, type TransactionFormValues } from "./TransactionForm";
-import type { AccountView, CategoryView, TransactionView } from "./types";
+import type {
+  AccountView,
+  CategoryView,
+  CreateCategoryInput,
+  TransactionView,
+} from "./types";
 
 interface Props {
   transaction: TransactionView | null;
@@ -16,6 +21,10 @@ interface Props {
   submitting: boolean;
   error: string | null;
   onClose: () => void;
+  /** Inline category creation inside the form's category select (T8, S8). */
+  onCreateCategory?:
+    | ((input: CreateCategoryInput) => Promise<CategoryView>)
+    | undefined;
   onSubmit: (id: string, values: TransactionFormValues) => void;
 }
 
@@ -29,6 +38,7 @@ export function EditTransactionDialog({
   submitting,
   error,
   onClose,
+  onCreateCategory,
   onSubmit,
 }: Props) {
   const { t } = useTranslation();
@@ -45,6 +55,7 @@ export function EditTransactionDialog({
             timezone={timezone}
             submitting={submitting}
             error={error}
+            onCreateCategory={onCreateCategory}
             submitLabel={t("form.saveChanges")}
             initialValues={{
               type: transaction.type,

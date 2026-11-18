@@ -14,7 +14,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { formatBusinessDate } from "./format";
-import { categoryLabel } from "./TransactionForm";
+import { categoryLabel } from "./category-label";
 import type {
   AccountView,
   CategoryView,

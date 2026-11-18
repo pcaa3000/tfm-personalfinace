@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { confirmReceipt, rejectReceipt } from "./api";
+import { CategorySelect } from "./CategorySelect";
 import { errorMessage } from "./errors";
 import { minorToDecimalString, todayInTimeZone } from "./format";
 import { TrashIcon } from "./icons";
@@ -30,8 +31,12 @@ import {
   uploadAndAwaitDraft,
 } from "./receipt-scan-flow";
 import { defaultCurrencyExponent } from "./summarize";
-import { categoryLabel } from "./TransactionForm";
-import type { AccountView, CategoryView, TransactionView } from "./types";
+import type {
+  AccountView,
+  CategoryView,
+  CreateCategoryInput,
+  TransactionView,
+} from "./types";
 
 interface Props {
   categories: CategoryView[];
@@ -45,6 +50,10 @@ interface Props {
   /** Test hooks — default to ~2s cadence / ~60s budget. */
   pollIntervalMs?: number | undefined;
   timeoutMs?: number | undefined;
+  /** Inline category creation in the review rows (T8, S8). */
+  onCreateCategory?:
+    | ((input: CreateCategoryInput) => Promise<CategoryView>)
+    | undefined;
   onConfirmed: (transaction: TransactionView) => void;
   onClose: () => void;
 }
@@ -83,6 +92,7 @@ export function ReceiptFlow({
   exponentOf = defaultCurrencyExponent,
   pollIntervalMs,
   timeoutMs,
+  onCreateCategory,
   onConfirmed,
   onClose,
 }: Props) {
@@ -333,34 +343,34 @@ export function ReceiptFlow({
             sx={{ alignItems: "center" }}
             data-part="receipt-split-row"
           >
-            <TextField
-              select
+            <CategorySelect
               label={t("form.category")}
+              categories={categories}
               value={selectionValue(row.selection)}
-              onChange={(event) =>
+              onChange={(next) =>
                 patchSplit(index, {
-                  selection: selectionFromValue(
-                    event.target.value,
-                    row.selection,
-                  ),
+                  selection: selectionFromValue(next, row.selection),
                 })
               }
+              // Array, not a fragment: MUI Select only resolves the
+              // selected option's display from direct children —
+              // React.Children.map flattens arrays but not fragments.
+              leadingOptions={[
+                <MenuItem key="none" value="none">
+                  {t("form.uncategorized")}
+                </MenuItem>,
+                row.selection.kind === "new" ? (
+                  <MenuItem key="new" value="new">
+                    {t("receipt.newCategoryOption", {
+                      name: row.selection.name,
+                    })}
+                  </MenuItem>
+                ) : null,
+              ]}
+              categoryValuePrefix="cat:"
+              onCreateCategory={onCreateCategory}
               sx={{ flex: 1 }}
-            >
-              <MenuItem value="none">{t("form.uncategorized")}</MenuItem>
-              {row.selection.kind === "new" ? (
-                <MenuItem value="new">
-                  {t("receipt.newCategoryOption", {
-                    name: row.selection.name,
-                  })}
-                </MenuItem>
-              ) : null}
-              {categories.map((category) => (
-                <MenuItem key={category.id} value={`cat:${category.id}`}>
-                  {categoryLabel(category, t)}
-                </MenuItem>
-              ))}
-            </TextField>
+            />
             <TextField
               label={t("form.amount")}
               value={row.amount}

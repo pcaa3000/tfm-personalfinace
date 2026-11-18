@@ -25,6 +25,7 @@ import {
 import type {
   AccountView,
   CategoryView,
+  CreateCategoryInput,
   TransactionType,
   TransactionView,
 } from "./types";
@@ -45,6 +46,10 @@ interface Props {
   onSubmit: (values: TransactionFormValues) => void;
   /** Receipt flow finished — the confirmed movement already exists. */
   onReceiptConfirmed?: ((transaction: TransactionView) => void) | undefined;
+  /** Inline category creation in the manual + review forms (T8, S8). */
+  onCreateCategory?:
+    | ((input: CreateCategoryInput) => Promise<CategoryView>)
+    | undefined;
 }
 
 type Picked = TransactionType | "receipt";
@@ -67,6 +72,7 @@ export function NewMovementDialog({
   onClose,
   onSubmit,
   onReceiptConfirmed,
+  onCreateCategory,
 }: Props) {
   const { t } = useTranslation();
   const [picked, setPicked] = useState<Picked | null>(null);
@@ -174,6 +180,7 @@ export function NewMovementDialog({
             exponentOf={exponentOf}
             onClose={onClose}
             onConfirmed={(transaction) => onReceiptConfirmed?.(transaction)}
+            onCreateCategory={onCreateCategory}
           />
         ) : (
           <TransactionForm
@@ -185,6 +192,7 @@ export function NewMovementDialog({
             error={error}
             initialValues={{ type: picked }}
             timezone={timezone}
+            onCreateCategory={onCreateCategory}
             onSubmit={onSubmit}
           />
         )}

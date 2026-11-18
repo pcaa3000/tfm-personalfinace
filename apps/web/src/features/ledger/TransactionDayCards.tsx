@@ -22,7 +22,7 @@ import {
   MoreIcon,
   SwapIcon,
 } from "./icons";
-import { categoryLabel } from "./TransactionForm";
+import { categoryLabel } from "./category-label";
 import type {
   AccountView,
   CategoryView,

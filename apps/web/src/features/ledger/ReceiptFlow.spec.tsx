@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -125,6 +126,9 @@ function draftPayload(overrides: Partial<ReceiptDraftPayload> = {}): ReceiptDraf
 interface RenderOptions {
   onConfirmed?: (tx: TransactionView) => void;
   onClose?: () => void;
+  onCreateCategory?: (
+    input: import("./types").CreateCategoryInput,
+  ) => Promise<CategoryView>;
 }
 
 function renderFlow(options: RenderOptions = {}) {
@@ -141,6 +145,9 @@ function renderFlow(options: RenderOptions = {}) {
       timeoutMs={5_000}
       onConfirmed={onConfirmed}
       onClose={onClose}
+      {...(options.onCreateCategory
+        ? { onCreateCategory: options.onCreateCategory }
+        : {})}
     />,
   );
   return { onConfirmed, onClose };
@@ -290,6 +297,85 @@ describe("ReceiptFlow — capture → poll → review (T7, S1+S2+S7+S10)", () =>
         "El escaneo de tickets necesita conexión.",
       ),
     ).toBeTruthy();
+  });
+
+  it("creates a category inline from a review row and confirms with it (T8, S8)", async () => {
+    const onCreateCategory = vi.fn().mockResolvedValue({
+      id: "cat-pets",
+      key: "mascotas",
+      label: "Mascotas",
+      nature: "essential",
+      custom: true,
+    } satisfies CategoryView);
+    renderFlow({ onCreateCategory });
+    vi.mocked(uploadReceipt).mockResolvedValue(scanView("pending"));
+    vi.mocked(getReceiptScan).mockResolvedValue(scanView("draft_ready"));
+    vi.mocked(getReceiptDraft).mockResolvedValue(draftPayload());
+    vi.mocked(confirmReceipt).mockResolvedValue({
+      transaction: confirmedTransaction,
+      createdCategories: [],
+    });
+
+    pickFile();
+    await screen.findByLabelText("Concepto");
+
+    const rowSelect = screen.getAllByRole("combobox", {
+      name: "Categoría",
+    })[0];
+    if (!rowSelect) throw new Error("split category select not rendered");
+    fireEvent.mouseDown(rowSelect);
+    fireEvent.click(
+      screen.getByRole("option", { name: /Nueva categoría/i }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(
+      within(dialog).getByLabelText("Nombre de la categoría"),
+      { target: { value: "Mascotas" } },
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Crear categoría" }),
+    );
+
+    await waitFor(() => {
+      expect(onCreateCategory).toHaveBeenCalledWith({
+        label: "Mascotas",
+        nature: "essential",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Cuenta" }));
+    fireEvent.click(await screen.findByRole("option", { name: "BCP soles" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Aprobar y registrar" }),
+    );
+
+    // The inline-created category lands in the confirm payload.
+    await waitFor(() => {
+      expect(confirmReceipt).toHaveBeenCalledWith(
+        "rc-1",
+        expect.objectContaining({
+          splits: [
+            {
+              categoryId: "cat-pets",
+              newCategory: null,
+              amountMinorUnits: 5000,
+            },
+            {
+              categoryId: null,
+              newCategory: {
+                name: "Cuidado personal",
+                nature: "discretionary",
+              },
+              amountMinorUnits: 4000,
+            },
+          ],
+        }),
+      );
+    });
   });
 
   it("discards the scan via POST reject and closes", async () => {

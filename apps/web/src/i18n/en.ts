@@ -79,6 +79,7 @@ export const en: TranslationShape = {
     destinationAccountHint: "Between different accounts of the same currency",
     noAccountForCurrency: "No accounts for this currency. Create one in Manage.",
     uncategorized: "Uncategorized",
+    categorySuggestion: "Category: {{name}}?",
     save: "Save transaction",
     saveChanges: "Save changes",
     saving: "Saving…",
@@ -257,6 +258,10 @@ export const en: TranslationShape = {
     shopping: "Shopping",
     taxes: "Taxes & obligations",
     "e2e-food": "E2E Food",
+    inline: {
+      action: "New category",
+      title: "New category",
+    },
     manage: {
       title: "Categories",
       name: "Category name",
