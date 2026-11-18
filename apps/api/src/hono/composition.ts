@@ -119,10 +119,7 @@ export function buildApp(env: AppEnv): BuiltApp {
   const ids = new CryptoIdGenerator();
 
   // receipt-scan-drafts D2: storage driver selected via STORAGE_DRIVER.
-  const receiptStorage =
-    env.receipts.storage.driver === "s3"
-      ? new S3ReceiptStorage(env.receipts.storage)
-      : new LocalReceiptStorage(env.receipts.storage.dir);
+  const receiptStorage = createReceiptStorage(env.receipts.storage);
   const receiptScans = new DrizzleReceiptScanRepository(db);
   const receiptDispatcher = new PgBossReceiptScanDispatcher(
     env.databaseUrl,
@@ -320,37 +317,51 @@ export function envFromProcess(): AppEnv {
  * half-configured object store must never silently downgrade.
  */
 function receiptsFromProcess(): AppEnv["receipts"] {
-  const maxBytes = parsePositiveInt(
-    "RECEIPT_MAX_BYTES",
-    process.env.RECEIPT_MAX_BYTES,
-    RECEIPT_MAX_BYTES_DEFAULT,
-  );
+  return {
+    maxBytes: parsePositiveInt(
+      "RECEIPT_MAX_BYTES",
+      process.env.RECEIPT_MAX_BYTES,
+      RECEIPT_MAX_BYTES_DEFAULT,
+    ),
+    storage: receiptStorageFromProcess(),
+  };
+}
+
+/**
+ * Storage-driver env parsing (receipt-scan-drafts T3+T4, D2) — shared by
+ * the HTTP composition root and the standalone worker, which needs the
+ * same driver to read quarantined bytes.
+ */
+export function receiptStorageFromProcess(): ReceiptStorageEnv {
   const driver = process.env.STORAGE_DRIVER ?? "local";
   if (driver === "local") {
     return {
-      maxBytes,
-      storage: {
-        driver: "local",
-        dir:
-          process.env.RECEIPT_STORAGE_DIR ??
-          join(tmpdir(), "tfm-receipts"),
-      },
+      driver: "local",
+      dir:
+        process.env.RECEIPT_STORAGE_DIR ??
+        join(tmpdir(), "tfm-receipts"),
     };
   }
   if (driver === "s3") {
     return {
-      maxBytes,
-      storage: {
-        driver: "s3",
-        endpoint: requiredEnv("S3_ENDPOINT"),
-        region: requiredEnv("S3_REGION"),
-        bucket: requiredEnv("S3_BUCKET"),
-        accessKeyId: requiredEnv("S3_ACCESS_KEY_ID"),
-        secretAccessKey: requiredEnv("S3_SECRET_ACCESS_KEY"),
-      },
+      driver: "s3",
+      endpoint: requiredEnv("S3_ENDPOINT"),
+      region: requiredEnv("S3_REGION"),
+      bucket: requiredEnv("S3_BUCKET"),
+      accessKeyId: requiredEnv("S3_ACCESS_KEY_ID"),
+      secretAccessKey: requiredEnv("S3_SECRET_ACCESS_KEY"),
     };
   }
   throw new Error(
     `STORAGE_DRIVER must be "local" or "s3"; got ${JSON.stringify(driver)}`,
   );
+}
+
+/** Builds the storage adapter for a parsed {@link ReceiptStorageEnv}. */
+export function createReceiptStorage(
+  config: ReceiptStorageEnv,
+): LocalReceiptStorage | S3ReceiptStorage {
+  return config.driver === "s3"
+    ? new S3ReceiptStorage(config)
+    : new LocalReceiptStorage(config.dir);
 }

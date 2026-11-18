@@ -77,8 +77,9 @@ describe("UploadReceiptUseCase — quarantine gate (receipt-scan-drafts T3, S1+S
     expect(saved).toHaveLength(1);
     expect(saved[0]!.status).toBe("pending");
     expect(saved[0]!.storageKey).toBe("quarantine/ws-1/scan-id-1.jpg");
-    // Minimal job payload for the T4 worker handler.
-    expect(dispatcher.enqueueScan).toHaveBeenCalledWith("scan-id-1");
+    // Minimal job payload for the T4 worker handler — the workspace id
+    // scopes the worker's repository lookup (T4+T5).
+    expect(dispatcher.enqueueScan).toHaveBeenCalledWith("scan-id-1", "ws-1");
     expect(scans.save).toHaveBeenCalled();
   });
 

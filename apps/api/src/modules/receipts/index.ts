@@ -30,6 +30,22 @@ export {
   type ReceiptScanDispatcher,
 } from "./application/ports/receipt-scan-dispatcher.port.js";
 export {
+  RECEIPT_SCANNER,
+  type ReceiptScanPort,
+} from "./application/ports/receipt-scan.port.js";
+export type {
+  ReceiptScanExtraction,
+  ReceiptScanItem,
+  ReceiptScanNewCategorySuggestion,
+} from "./domain/receipt-scan-extraction.js";
+export {
+  buildReceiptDraft,
+  RECEIPT_LOW_CONFIDENCE,
+  type ReceiptDraftNewCategory,
+  type ReceiptDraftPayload,
+  type ReceiptDraftSplit,
+} from "./domain/receipt-draft.js";
+export {
   UploadReceiptUseCase,
   type ReceiptUploadPolicy,
   type UploadReceiptCommand,
@@ -50,3 +66,8 @@ export {
 } from "./infrastructure/s3-receipt-storage.js";
 export { DrizzleReceiptScanRepository } from "./infrastructure/drizzle-receipt-scan.repository.js";
 export { PgBossReceiptScanDispatcher } from "./infrastructure/pgboss-receipt-scan.dispatcher.js";
+export {
+  GeminiReceiptScanAdapter,
+  GEMINI_DEFAULT_BASE_URL,
+  type GeminiReceiptScanConfig,
+} from "./infrastructure/gemini-receipt-scan.adapter.js";

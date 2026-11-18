@@ -21,9 +21,9 @@ export class PgBossReceiptScanDispatcher implements ReceiptScanDispatcher {
     });
   }
 
-  async enqueueScan(receiptId: string): Promise<void> {
+  async enqueueScan(receiptId: string, workspaceId: string): Promise<void> {
     await this.ensureStarted();
-    await this.boss.send(RECEIPT_SCAN_QUEUE, { receiptId });
+    await this.boss.send(RECEIPT_SCAN_QUEUE, { receiptId, workspaceId });
   }
 
   async close(): Promise<void> {

@@ -5,7 +5,12 @@
  * the row is the source of truth.
  */
 export interface ReceiptScanDispatcher {
-  enqueueScan(receiptId: string): Promise<void>;
+  /**
+   * Job payload {receiptId, workspaceId} mirrors LedgerEventJob — the
+   * workspace scope lets the worker resolve the row through the
+   * workspace-scoped repository port.
+   */
+  enqueueScan(receiptId: string, workspaceId: string): Promise<void>;
 }
 
 export const RECEIPT_SCAN_DISPATCHER = Symbol("RECEIPT_SCAN_DISPATCHER");

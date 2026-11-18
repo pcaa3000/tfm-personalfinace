@@ -76,16 +76,28 @@ export class ReceiptScan {
     readonly mimeType: string,
     readonly sizeBytes: number,
     private _status: ReceiptScanStatus,
-    readonly extractedPayload: unknown | null,
-    readonly draftPayload: unknown | null,
+    private _extractedPayload: unknown | null,
+    private _draftPayload: unknown | null,
     readonly transactionId: string | null,
-    readonly error: string | null,
+    private _error: string | null,
     readonly createdAt: Date,
     private _updatedAt: Date,
   ) {}
 
   get status(): ReceiptScanStatus {
     return this._status;
+  }
+
+  get extractedPayload(): unknown | null {
+    return this._extractedPayload;
+  }
+
+  get draftPayload(): unknown | null {
+    return this._draftPayload;
+  }
+
+  get error(): string | null {
+    return this._error;
   }
 
   get updatedAt(): Date {
@@ -152,6 +164,31 @@ export class ReceiptScan {
         input.now,
       ),
     );
+  }
+
+  /**
+   * T4+T5 (S5+S6, D1b): extraction and the categorized draft arrive from a
+   * single LLM call, so the row goes pending → draft_ready in one
+   * transition, carrying both the raw extraction (evidence) and the
+   * grouped draft the user reviews.
+   */
+  markDraftReady(
+    extractedPayload: unknown,
+    draftPayload: unknown,
+    now: Date,
+  ): void {
+    this._extractedPayload = extractedPayload;
+    this._draftPayload = draftPayload;
+    this._error = null;
+    this._status = "draft_ready";
+    this._updatedAt = now;
+  }
+
+  /** Terminal pipeline failure — `error` is surfaced on the polling view. */
+  markFailed(message: string, now: Date): void {
+    this._status = "failed";
+    this._error = message.slice(0, 500);
+    this._updatedAt = now;
   }
 
   /** Rebuilds the entity from persisted state without re-validating. */

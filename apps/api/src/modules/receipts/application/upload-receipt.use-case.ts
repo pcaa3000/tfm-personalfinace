@@ -86,7 +86,7 @@ export class UploadReceiptUseCase {
     await this.scans.save(scan.value);
 
     try {
-      await this.dispatcher.enqueueScan(id);
+      await this.dispatcher.enqueueScan(id, command.workspaceId.value);
     } catch (cause) {
       console.error(
         `[receipts] failed to enqueue receipt-scan job for ${id}:`,
