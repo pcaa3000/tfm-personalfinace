@@ -5,6 +5,8 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { CategoryCatalogProvisionerPort } from "../../identity-workspace/index.js";
 import type { WorkspaceId } from "../../shared-kernel/index.js";
 import type { CategoryRepositoryPort } from "../application/ports/category-repository.port.js";
+import type { SystemCategoryPort } from "../application/ports/system-category.port.js";
+import type { CategoryView } from "../application/category-catalog.port.js";
 import { Category } from "../domain/category.js";
 import { categories } from "../../../drizzle/schema.js";
 import type { DrizzleDb } from "../../../drizzle/db.js";
@@ -14,13 +16,24 @@ import type { DrizzleDb } from "../../../drizzle/db.js";
 const UNCATEGORIZED_KEY = "uncategorized";
 
 /**
- * Drizzle implementation of {@link CategoryRepositoryPort} and
- * {@link CategoryCatalogProvisionerPort}. Mirrors
- * PrismaCategoryRepository semantics against the same physical table
- * defined in src/drizzle/schema.ts.
+ * Deterministic id for the lazily provisioned global fallback (T6):
+ * `INSERT … ON CONFLICT DO NOTHING` on the primary key makes concurrent
+ * `ensureUncategorized` calls race-safe — the (key, workspaceId) unique
+ * index cannot deduplicate NULL workspaceIds.
+ */
+export const SYSTEM_UNCATEGORIZED_ID = "sys-uncategorized";
+
+/**
+ * Drizzle implementation of {@link CategoryRepositoryPort},
+ * {@link CategoryCatalogProvisionerPort} and {@link SystemCategoryPort}.
+ * Mirrors PrismaCategoryRepository semantics against the same physical
+ * table defined in src/drizzle/schema.ts.
  */
 export class DrizzleCategoryRepository
-  implements CategoryRepositoryPort, CategoryCatalogProvisionerPort
+  implements
+    CategoryRepositoryPort,
+    CategoryCatalogProvisionerPort,
+    SystemCategoryPort
 {
   constructor(private readonly db: DrizzleDb) {}
 
@@ -87,6 +100,61 @@ export class DrizzleCategoryRepository
       ),
     );
     return count > 0;
+  }
+
+  /**
+   * SystemCategoryPort (receipt-scan-drafts T6): resolves the protected
+   * global `uncategorized` fallback, provisioning it lazily when absent
+   * (the drizzle baseline carries no seed rows). Returns a read-side
+   * view, not the aggregate — the row's `nature` ("uncategorized") is a
+   * system marker outside CategoryNature, so it must never be
+   * reconstituted as a workspace Category.
+   */
+  async ensureUncategorized(): Promise<CategoryView> {
+    const found = await this.findGlobalUncategorized();
+    if (found) {
+      return found;
+    }
+    await this.db
+      .insert(categories)
+      .values({
+        id: SYSTEM_UNCATEGORIZED_ID,
+        key: UNCATEGORIZED_KEY,
+        label: "Sin categorizar",
+        nature: UNCATEGORIZED_KEY,
+        workspaceId: null,
+      })
+      .onConflictDoNothing();
+    const created = await this.findGlobalUncategorized();
+    if (!created) {
+      throw new Error(
+        "failed to provision the global uncategorized category",
+      );
+    }
+    return created;
+  }
+
+  private async findGlobalUncategorized(): Promise<CategoryView | null> {
+    const [row] = await this.db
+      .select()
+      .from(categories)
+      .where(
+        and(
+          eq(categories.key, UNCATEGORIZED_KEY),
+          isNull(categories.workspaceId),
+        ),
+      )
+      .limit(1);
+    if (!row) {
+      return null;
+    }
+    return {
+      id: row.id,
+      key: row.key,
+      label: row.label,
+      nature: row.nature,
+      custom: false,
+    };
   }
 
   /**

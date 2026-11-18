@@ -23,6 +23,13 @@ export const RECEIPT_SCAN_STATUSES = [
 
 export type ReceiptScanStatus = (typeof RECEIPT_SCAN_STATUSES)[number];
 
+/** States the scan never leaves: user-confirmed, user-rejected, pipeline-dead. */
+export const RECEIPT_TERMINAL_STATUSES: readonly ReceiptScanStatus[] = [
+  "confirmed",
+  "rejected",
+  "failed",
+];
+
 export interface QuarantineScanInput {
   readonly id: string;
   readonly workspaceId: WorkspaceId;
@@ -78,7 +85,7 @@ export class ReceiptScan {
     private _status: ReceiptScanStatus,
     private _extractedPayload: unknown | null,
     private _draftPayload: unknown | null,
-    readonly transactionId: string | null,
+    private _transactionId: string | null,
     private _error: string | null,
     readonly createdAt: Date,
     private _updatedAt: Date,
@@ -90,6 +97,15 @@ export class ReceiptScan {
 
   get extractedPayload(): unknown | null {
     return this._extractedPayload;
+  }
+
+  get transactionId(): string | null {
+    return this._transactionId;
+  }
+
+  /** true once the scan reached a state it never leaves (T6). */
+  get isTerminal(): boolean {
+    return RECEIPT_TERMINAL_STATUSES.includes(this._status);
   }
 
   get draftPayload(): unknown | null {
@@ -188,6 +204,23 @@ export class ReceiptScan {
   markFailed(message: string, now: Date): void {
     this._status = "failed";
     this._error = message.slice(0, 500);
+    this._updatedAt = now;
+  }
+
+  /**
+   * T6 (S2+S7): the user approved the draft — links the recorded
+   * transaction. Callers must gate on `status === "draft_ready"`;
+   * replay detection compares the stored key before re-confirming.
+   */
+  markConfirmed(transactionId: string, now: Date): void {
+    this._status = "confirmed";
+    this._transactionId = transactionId;
+    this._updatedAt = now;
+  }
+
+  /** T6: the user discards the scan; allowed only from non-terminal states. */
+  markRejected(now: Date): void {
+    this._status = "rejected";
     this._updatedAt = now;
   }
 

@@ -15,5 +15,9 @@ export {
   CATEGORY_REPOSITORY,
   type CategoryRepositoryPort,
 } from "./application/ports/category-repository.port.js";
+export {
+  SYSTEM_CATEGORY,
+  type SystemCategoryPort,
+} from "./application/ports/system-category.port.js";
 export { Category } from "./domain/category.js";
 export type { CategoryNature } from "./domain/category.js";

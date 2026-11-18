@@ -11,6 +11,7 @@ import {
   Transaction,
   UNCATEGORIZED,
   categorized,
+  type TransactionOrigin,
   type TransactionType,
 } from "../domain/transaction.js";
 import type { TransactionSplit } from "../domain/transaction-split.js";
@@ -47,6 +48,10 @@ export interface RecordManualTransactionCommand {
    * transfers.
    */
   readonly splits?: readonly TransactionSplitCommand[];
+  /** Entry channel; defaults to "manual" — the receipt confirm passes "ticket" (T6). */
+  readonly origin?: TransactionOrigin;
+  /** Optional external reference tied to the origin (e.g. the receipt scan id). */
+  readonly originReference?: string;
   readonly actor: string;
 }
 
@@ -194,6 +199,10 @@ export class RecordManualTransactionUseCase {
           ? UNCATEGORIZED
           : categorized(command.categoryId),
       splits,
+      ...(command.origin !== undefined ? { origin: command.origin } : {}),
+      ...(command.originReference !== undefined
+        ? { originReference: command.originReference }
+        : {}),
       confirmedAt: this.clock.now(),
       confirmedBy: command.actor,
     });

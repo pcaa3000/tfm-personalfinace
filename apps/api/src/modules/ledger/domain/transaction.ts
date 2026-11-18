@@ -104,6 +104,8 @@ export interface RecordManualInput {
   readonly category?: CategoryAssignment;
   /** Optional category-level breakdown; when non-empty it must satisfy INV-TRX-SPLIT-01. */
   readonly splits?: readonly TransactionSplit[];
+  /** Entry channel; defaults to "manual" (receipt confirm passes "ticket", T6). */
+  readonly origin?: TransactionOrigin;
   readonly originReference?: string;
   readonly confirmedAt: Date;
   readonly confirmedBy: string;
@@ -275,7 +277,7 @@ export class Transaction {
         destinationAccountId,
         category,
         "confirmed",
-        "manual",
+        input.origin ?? "manual",
         input.originReference ?? null,
         input.confirmedAt,
         input.confirmedBy,

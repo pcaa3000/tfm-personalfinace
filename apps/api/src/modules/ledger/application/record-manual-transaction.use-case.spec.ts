@@ -403,4 +403,35 @@ describe("RecordManualTransactionUseCase", () => {
     }
     expect(repo.saved).toHaveLength(1);
   });
+
+  it("defaults origin to 'manual'", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute(command);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.origin).toBe("manual");
+    }
+    expect(repo.saved[0]?.origin).toBe("manual");
+  });
+
+  it("records origin 'ticket' with an originReference (receipt-scan-drafts T6)", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      origin: "ticket",
+      originReference: "scan-1",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.origin).toBe("ticket");
+    }
+    expect(repo.saved[0]?.origin).toBe("ticket");
+    expect(repo.saved[0]?.originReference).toBe("scan-1");
+  });
 });

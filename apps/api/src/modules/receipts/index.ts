@@ -51,6 +51,14 @@ export {
   type UploadReceiptCommand,
 } from "./application/upload-receipt.use-case.js";
 export { GetReceiptScanUseCase } from "./application/get-receipt-scan.use-case.js";
+export { GetReceiptDraftUseCase } from "./application/get-receipt-draft.use-case.js";
+export { RejectReceiptScanUseCase } from "./application/reject-receipt-scan.use-case.js";
+export {
+  ConfirmReceiptDraftUseCase,
+  type ConfirmReceiptDraftCommand,
+  type ConfirmReceiptDraftResult,
+  type ConfirmReceiptSplitInput,
+} from "./application/confirm-receipt-draft.use-case.js";
 export {
   GetReceiptFileUseCase,
   type ReceiptFileView,

@@ -118,6 +118,15 @@ function makeDeps() {
     getReceiptFile: {
       execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },
+    getReceiptDraft: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    confirmReceiptDraft: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    rejectReceiptScan: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
   };
 }
 

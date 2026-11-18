@@ -49,6 +49,9 @@ import { PgBossReceiptScanDispatcher } from "../modules/receipts/infrastructure/
 import { UploadReceiptUseCase } from "../modules/receipts/application/upload-receipt.use-case.js";
 import { GetReceiptScanUseCase } from "../modules/receipts/application/get-receipt-scan.use-case.js";
 import { GetReceiptFileUseCase } from "../modules/receipts/application/get-receipt-file.use-case.js";
+import { GetReceiptDraftUseCase } from "../modules/receipts/application/get-receipt-draft.use-case.js";
+import { ConfirmReceiptDraftUseCase } from "../modules/receipts/application/confirm-receipt-draft.use-case.js";
+import { RejectReceiptScanUseCase } from "../modules/receipts/application/reject-receipt-scan.use-case.js";
 import { RECEIPT_MAX_BYTES_DEFAULT } from "../modules/receipts/domain/receipt-upload.js";
 
 /**
@@ -125,17 +128,20 @@ export function buildApp(env: AppEnv): BuiltApp {
     env.databaseUrl,
   );
 
+  const recordManual = new RecordManualTransactionUseCase(
+    transactions,
+    accounts,
+    categoryValidation,
+    clock,
+    ids,
+  );
+  const createCategory = new CreateCategoryUseCase(categories, ids);
+
   const deps: HonoDeps = {
     callerResolver,
     workspaceContext: workspace,
     // transactions
-    recordManual: new RecordManualTransactionUseCase(
-      transactions,
-      accounts,
-      categoryValidation,
-      clock,
-      ids,
-    ),
+    recordManual,
     listTransactions: new ListTransactionsUseCase(transactions),
     reviseTransaction: new ReviseTransactionUseCase(
       transactions,
@@ -154,7 +160,7 @@ export function buildApp(env: AppEnv): BuiltApp {
     archiveAccount: new ArchiveAccountUseCase(accounts),
     // categories
     categoryCatalog: categoryValidation,
-    createCategory: new CreateCategoryUseCase(categories, ids),
+    createCategory,
     reviseCategory: new ReviseCategoryUseCase(categories),
     archiveCategory: new ArchiveCategoryUseCase(categories),
     // currencies
@@ -180,6 +186,18 @@ export function buildApp(env: AppEnv): BuiltApp {
     ),
     getReceiptScan: new GetReceiptScanUseCase(receiptScans),
     getReceiptFile: new GetReceiptFileUseCase(receiptScans, receiptStorage),
+    // receipt draft review + confirm (receipt-scan-drafts T6)
+    getReceiptDraft: new GetReceiptDraftUseCase(receiptScans),
+    confirmReceiptDraft: new ConfirmReceiptDraftUseCase(
+      receiptScans,
+      transactions,
+      recordManual,
+      createCategory,
+      categoryValidation,
+      categories,
+      clock,
+    ),
+    rejectReceiptScan: new RejectReceiptScanUseCase(receiptScans, clock),
   };
 
   return {
