@@ -47,6 +47,33 @@ function calledUrl(): string {
   return String(firstCall[0]);
 }
 
+function calledHeaders(): Record<string, string> {
+  const firstCall = fetchMock.mock.calls[0];
+  if (!firstCall) throw new Error("fetch was not called");
+  return (firstCall[1]?.headers ?? {}) as Record<string, string>;
+}
+
+describe("dev auth bypass", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    setAccessTokenProvider(null);
+  });
+
+  it("sends x-dev-user: dev-user when VITE_AUTH_BYPASS is true in dev", async () => {
+    vi.stubEnv("DEV", true);
+    vi.stubEnv("VITE_AUTH_BYPASS", "true");
+    await listAccounts();
+    expect(calledHeaders()["x-dev-user"]).toBe("dev-user");
+  });
+
+  it("does not send x-dev-user when bypass is off", async () => {
+    vi.stubEnv("DEV", true);
+    vi.stubEnv("VITE_AUTH_BYPASS", "false");
+    await listAccounts();
+    expect(calledHeaders()["x-dev-user"]).toBeUndefined();
+  });
+});
+
 describe("listTransactions", () => {
   it("requests the bare endpoint without filters", async () => {
     await listTransactions();

@@ -1,3 +1,4 @@
+import { isAuthBypassed } from "../auth/supabase";
 import type {
   ReceiptConfirmInput,
   ReceiptDraftPayload,
@@ -98,7 +99,12 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
 async function authHeaders(): Promise<Record<string, string>> {
   const token = accessTokenProvider ? await accessTokenProvider() : null;
-  return token ? { authorization: `Bearer ${token}` } : {};
+  if (token) return { authorization: `Bearer ${token}` };
+  // Dev bypass (T26): AUTH_MODE=dev is fail-closed and requires the
+  // `x-dev-user` header (GAP-SEC-01). `dev-user` is the seeded subject
+  // (apps/api/src/drizzle/seed.ts). Never emitted outside dev builds.
+  if (isAuthBypassed()) return { "x-dev-user": "dev-user" };
+  return {};
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
