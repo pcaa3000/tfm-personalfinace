@@ -25,7 +25,7 @@ const ENV_KEYS = [
   "RECEIPT_MAX_BYTES",
   "S3_ENDPOINT",
   "S3_REGION",
-  "S3_BUCKET",
+  "RECEIPT_S3_BUCKET",
   "S3_ACCESS_KEY_ID",
   "S3_SECRET_ACCESS_KEY",
   "RECEIPT_SCAN_DISPATCHER",
@@ -273,7 +273,7 @@ describe("envFromProcess — receipt storage + upload limits (receipt-scan-draft
     process.env.STORAGE_DRIVER = "s3";
     process.env.S3_ENDPOINT = "https://proj.supabase.co/storage/v1/s3";
     process.env.S3_REGION = "eu-west-1";
-    process.env.S3_BUCKET = "receipts-quarantine";
+    process.env.RECEIPT_S3_BUCKET = "receipts-quarantine";
     process.env.S3_ACCESS_KEY_ID = "ak";
     process.env.S3_SECRET_ACCESS_KEY = "sk";
     const env = envFromProcess();

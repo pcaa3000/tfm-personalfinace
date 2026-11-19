@@ -501,7 +501,7 @@ export function receiptStorageFromProcess(): ReceiptStorageEnv {
       driver: "s3",
       endpoint: requiredEnv("S3_ENDPOINT"),
       region: requiredEnv("S3_REGION"),
-      bucket: requiredEnv("S3_BUCKET"),
+      bucket: requiredEnv("RECEIPT_S3_BUCKET"),
       accessKeyId: requiredEnv("S3_ACCESS_KEY_ID"),
       secretAccessKey: requiredEnv("S3_SECRET_ACCESS_KEY"),
     };
