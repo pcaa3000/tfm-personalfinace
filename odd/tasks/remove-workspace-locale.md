@@ -16,9 +16,14 @@ Removes the unused `locale` workspace preference end-to-end (UI, API, use case, 
 | T3 | API: quitar `locale` de route, use case, WorkspaceContext, adapters, schema + migración `drop column`, seed, specs | S1 | worker | done | RED→GREEN 718 api specs + tsc + depcruise + eslint · migración `0006_spooky_luminals.sql` · Risk: items 1 (DROP COLUMN autorizado L2) y 3 (PATCH rechaza `{locale}` con INVALID_BODY) |
 | T4 | Docs: actualizar referencias a `locale` como preferencia (docs/01 RF-003/RN-004, docs/03, docs/04, docs/05, docs/06) | S1 | inline | done | Risk: none |
 
+| — | Corte único del feature (rama `feature/remove-workspace-locale`) | S1, S2 | — | done | `9c2f003` |
+
 ## Log
 
 - L1 (usuario): «Si locale no tiene ninguna funcionalidad, sería mejor quitarlo. Por otro lado si el formate de fecha lo determina el languageSwitcher, cuando es "ES" el formato fecha deberia ser "dd/mm/yyyy" y cuando es "EN" deberia ser "mm/dd/yyyy"».
 - L2 (usuario, decisión): quitar `locale` también de la base — migración que elimina la columna `workspaces.locale`.
 - L3 (hallazgo): `locale` se persistía pero ningún consumidor lo leía; el formateo de fechas usa `i18n.language` (tfm-locale) en `format.ts`.
 - L4 (proceso): T2/T3 delegados a dos workers con superficies disjuntas (apps/web / apps/api). La tabla física es `identity_workspace_workspaces`. Pendiente: aplicar `db:migrate` en entornos (DROP COLUMN irreversible, autorizado en L2).
+- L5 (usuario): la modificación de `apps/api/.env.example` es del usuario; queda fuera del commit del feature (sigue modificada en el árbol).
+- L6 (verify): verificador independiente — migración byte-exacta, journal idx 6, snapshot solo pierde `locale`, `drizzle-kit generate` en scratch → "No schema changes"; spec durable `apps/api/test/drizzle-locale-migration.spec.ts` (5/5) incorporada al corte.
+- L7 (proceso): corte único `9c2f003` en rama `feature/remove-workspace-locale` (creada desde `feature/receipt-scan-drafts`).
