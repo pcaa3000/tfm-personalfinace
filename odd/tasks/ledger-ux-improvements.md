@@ -37,7 +37,7 @@ El usuario autorizó implementar de la más alta a la más baja prioridad.
 | T2 | Unidad B: filtros mobile + atajos + período + placeholder | S4-S7 | worker | done | caa94af; RED→GREEN 10fail/31pass → 41/41; suite 242/242; tsc+eslint limpios. Riesgo: none. |
 | T3 | Unidad C: tabla min-width + color transfer + auto-mini rail | S8-S10 | worker | done | cc43724; RED→GREEN 8fail/37pass → 45/45; suite 255/255; tsc+eslint limpios. Ajuste del padre: overflowX:auto solo <1180px para preservar sticky header. Riesgo: none. |
 | T4 | Unidad D: target del ojo + focus-visible + dots | S11-S13 | worker | done | e46f39b (S12-S13); S11 aplicado en feat/hide-balance-amounts como fix propio (el ojo vive en esa rama, aún sin mergear). RED→GREEN 3fail/8pass → 11/11; suite 258/258; tsc+eslint limpios. Riesgo: none. |
-| T5 | Unidad E: label "Tipo" recortado en diálogos de movimiento | S14 | inline | done | RED no aplicable (jsdom no mide layout — fix visual); TransactionForm 20/20 + ReceiptFlow 12/12 verdes; tsc limpio. Riesgo: none. |
+| T5 | Unidad E: label "Tipo" recortado en diálogos de movimiento | S14 | inline | done | 94c4e1d; RED no aplicable (jsdom no mide layout — fix visual); TransactionForm 20/20 + ReceiptFlow 12/12 verdes; tsc limpio. Riesgo: none. |
 
 ## Log
 
