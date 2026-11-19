@@ -68,6 +68,7 @@ const baseRow: LedgerRow = {
   origin: "manual",
   confirmedAt: "2026-10-01T12:00:00Z",
   revisionCount: 0,
+    splits: [],
 };
 
 beforeAll(async () => {

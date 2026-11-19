@@ -47,7 +47,7 @@ La plataforma trata información financiera, imágenes de compras y voz. Por eso
 |---|---|---|
 | Pública | Documentación y textos de producto | Integridad y control de publicación |
 | Interna | Métricas agregadas sin identidad, configuración no secreta | Acceso operativo y retención acotada |
-| Personal | Issuer–subject, locale, zona horaria, preferencias | Cifrado, acceso por necesidad y exportación/borrado |
+| Personal | Issuer–subject, zona horaria, preferencias | Cifrado, acceso por necesidad y exportación/borrado |
 | Financiera sensible | Transacciones, categorías, comercios, planes e insights | Autorización por propietario, cifrado, auditoría y no inclusión en logs |
 | Contenido altamente sensible | Tickets, audio, texto OCR, transcripción y notas | Retención mínima, objetos privados, proveedor consentido y descarga firmada |
 | Secreta | Claves, tokens, credenciales, cookies y material criptográfico | Gestor de secretos, rotación, nunca repositorio/log/cliente |

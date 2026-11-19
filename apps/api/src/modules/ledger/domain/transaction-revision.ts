@@ -9,6 +9,7 @@ export type RevisionField =
   | "accountId"
   | "destinationAccountId"
   | "category"
+  | "splits"
   | "status";
 
 export interface FieldChange {

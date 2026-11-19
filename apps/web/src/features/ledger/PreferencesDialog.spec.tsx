@@ -13,7 +13,6 @@ import type { WorkspaceView } from "./types";
 
 const workspace: WorkspaceView = {
   workspaceId: "ws-1",
-  locale: "es-PE",
   timezone: "UTC",
   defaultCurrency: "PEN",
 };

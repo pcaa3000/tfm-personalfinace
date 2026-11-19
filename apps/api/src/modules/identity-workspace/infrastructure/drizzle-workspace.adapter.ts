@@ -60,7 +60,6 @@ export class DrizzleWorkspaceAdapter
 
     return {
       workspaceId: unwrap(WorkspaceId.create(workspace.id)),
-      locale: workspace.locale,
       timezone: workspace.timezone,
       defaultCurrency: workspace.defaultCurrency,
     };
@@ -96,7 +95,6 @@ export class DrizzleWorkspaceAdapter
             id: randomUUID(),
             identityKey,
             kind: "personal",
-            locale: "en-US",
             timezone: "UTC",
             defaultCurrency: "PEN",
           })
@@ -130,14 +128,10 @@ export class DrizzleWorkspaceAdapter
   ): Promise<WorkspaceContext> {
     const set: {
       defaultCurrency?: string;
-      locale?: string;
       timezone?: string;
     } = {};
     if (patch.defaultCurrency !== undefined) {
       set.defaultCurrency = patch.defaultCurrency;
-    }
-    if (patch.locale !== undefined) {
-      set.locale = patch.locale;
     }
     if (patch.timezone !== undefined) {
       set.timezone = patch.timezone;
@@ -163,7 +157,6 @@ export class DrizzleWorkspaceAdapter
     }
     return {
       workspaceId,
-      locale: workspace.locale,
       timezone: workspace.timezone,
       defaultCurrency: workspace.defaultCurrency,
     };

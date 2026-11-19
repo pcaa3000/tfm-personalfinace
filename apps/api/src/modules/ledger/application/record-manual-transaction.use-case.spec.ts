@@ -40,7 +40,7 @@ const accounts: AccountValidationPort = {
 };
 
 const categories: CategoryValidationPort = {
-  existsForWorkspace: async (_ws, id) => id === "cat-food",
+  existsForWorkspace: async (_ws, id) => id === "cat-food" || id === "cat-home",
 };
 const clock: Clock = { now: () => new Date("2026-10-27T12:00:00Z") };
 const ids: IdGenerator = { next: () => "trx-generated" };
@@ -266,5 +266,172 @@ describe("RecordManualTransactionUseCase", () => {
       expect(result.error.code).toBe("ACCOUNT_CURRENCY_MISMATCH");
     }
     expect(repo.saved).toHaveLength(0);
+  });
+
+  it("records a transaction with splits and exposes them in the view (INV-TRX-SPLIT-01)", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      splits: [
+        { categoryId: "cat-food", amount: 2000 },
+        { categoryId: "cat-home", amount: 550 },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.splits).toEqual([
+      { categoryId: "cat-food", amount: "20.00" },
+      { categoryId: "cat-home", amount: "5.50" },
+    ]);
+    expect(repo.saved).toHaveLength(1);
+    expect(repo.saved[0]?.splits).toHaveLength(2);
+  });
+
+  it("exposes an empty splits collection for a transaction without splits", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute(command);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.splits).toEqual([]);
+    }
+  });
+
+  it("rejects a split whose category does not exist in the workspace", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      splits: [
+        { categoryId: "cat-food", amount: 2000 },
+        { categoryId: "cat-missing", amount: 550 },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("CATEGORY_NOT_FOUND");
+    }
+    expect(repo.saved).toHaveLength(0);
+  });
+
+  it("rejects splits whose sum does not equal the transaction amount (INV-TRX-SPLIT-01)", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      splits: [
+        { categoryId: "cat-food", amount: 2000 },
+        { categoryId: "cat-home", amount: 100 },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSACTION_SPLITS_SUM_MISMATCH");
+    }
+    expect(repo.saved).toHaveLength(0);
+  });
+
+  it.each([0, -150, 20.5])(
+    "rejects a split amount that is not a positive integer of minor units: %s",
+    async (amount) => {
+      const repo = new InMemoryTransactions();
+      const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+      const result = await useCase.execute({
+        ...command,
+        splits: [{ categoryId: "cat-food", amount }],
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("TRANSACTION_SPLIT_AMOUNT_NOT_POSITIVE");
+      }
+      expect(repo.saved).toHaveLength(0);
+    },
+  );
+
+  it("rejects splits on a transfer", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      type: "transfer",
+      accountId: "acc-1",
+      destinationAccountId: "acc-2",
+      categoryId: null,
+      splits: [{ categoryId: "cat-food", amount: 2550 }],
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_SPLITS_FORBIDDEN");
+    }
+    expect(repo.saved).toHaveLength(0);
+  });
+
+  it("returns the stored transaction with its splits on an idempotent replay", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+    const first = await useCase.execute({
+      ...command,
+      splits: [{ categoryId: "cat-food", amount: 2550 }],
+    });
+    if (!first.ok) throw new Error("setup failed");
+
+    const second = await useCase.execute({
+      ...command,
+      concept: "Different concept",
+      splits: [{ categoryId: "cat-food", amount: 2550 }],
+    });
+
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      expect(second.value.id).toBe(first.value.id);
+      expect(second.value.splits).toEqual([
+        { categoryId: "cat-food", amount: "25.50" },
+      ]);
+    }
+    expect(repo.saved).toHaveLength(1);
+  });
+
+  it("defaults origin to 'manual'", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute(command);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.origin).toBe("manual");
+    }
+    expect(repo.saved[0]?.origin).toBe("manual");
+  });
+
+  it("records origin 'ticket' with an originReference (receipt-scan-drafts T6)", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      origin: "ticket",
+      originReference: "scan-1",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.origin).toBe("ticket");
+    }
+    expect(repo.saved[0]?.origin).toBe("ticket");
+    expect(repo.saved[0]?.originReference).toBe("scan-1");
   });
 });

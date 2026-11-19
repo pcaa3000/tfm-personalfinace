@@ -1,0 +1,2 @@
+ALTER TABLE "receipts_receipt_scans" ADD COLUMN "fileHash" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "receipts_receipt_scans_workspaceId_fileHash_key" ON "receipts_receipt_scans" USING btree ("workspaceId","fileHash");

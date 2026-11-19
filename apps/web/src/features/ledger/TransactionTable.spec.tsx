@@ -24,6 +24,7 @@ const baseRow: LedgerRow = {
   origin: "manual",
   confirmedAt: "2026-10-01T12:00:00Z",
   revisionCount: 0,
+  splits: [],
 };
 
 const accounts = [
@@ -185,5 +186,21 @@ describe("TransactionTable (es)", () => {
   it("shows 'Sin cuenta' for a transaction without account", () => {
     renderTable({ transactions: [{ ...baseRow, accountId: null }] });
     expect(screen.getByText("Sin cuenta")).toBeTruthy();
+  });
+
+  it("shows the split count when a transaction is divided (receipt-scan-drafts T7)", () => {
+    renderTable({
+      transactions: [
+        {
+          ...baseRow,
+          splits: [
+            { categoryId: "cat-food", amount: "8.50" },
+            { categoryId: "cat-home", amount: "4.00" },
+          ],
+        },
+      ],
+    });
+    expect(screen.getByText("Dividido (2)")).toBeTruthy();
+    expect(screen.queryByText("Sin categorizar")).toBeNull();
   });
 });

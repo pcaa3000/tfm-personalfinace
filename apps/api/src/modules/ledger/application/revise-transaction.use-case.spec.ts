@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { WorkspaceId } from "../../shared-kernel/index.js";
 import { Transaction, categorized } from "../domain/transaction.js";
+import { TransactionSplit } from "../domain/transaction-split.js";
 import type { AccountValidationPort } from "./ports/account-validation.port.js";
 import type { CategoryValidationPort } from "./ports/category-validation.port.js";
 import type { Clock } from "./ports/clock.port.js";
@@ -54,20 +55,34 @@ if (!wsResult.ok || !otherWsResult.ok) throw new Error("setup failed");
 const ws = wsResult.value;
 const otherWs = otherWsResult.value;
 
-async function makeTransaction(): Promise<Transaction> {
+async function makeTransaction(
+  options: { transfer?: boolean; splits?: { categoryId: string; amount: string }[] } = {},
+): Promise<Transaction> {
   const { Money, BusinessDate } = await import("../../shared-kernel/index.js");
   const amount = Money.create("25.50", "EUR");
   const date = BusinessDate.create("2026-10-27", "UTC");
   if (!amount.ok || !date.ok) throw new Error("setup failed");
+  const splits = (options.splits ?? []).map((s) => {
+    const splitAmount = Money.create(s.amount, "EUR");
+    if (!splitAmount.ok) throw new Error("setup failed");
+    const split = TransactionSplit.create({
+      categoryId: s.categoryId,
+      amount: splitAmount.value,
+    });
+    if (!split.ok) throw new Error("setup failed");
+    return split.value;
+  });
   const trx = Transaction.recordManual({ accountId: "acc-1",
     id: "trx-1",
     workspaceId: ws,
     idempotencyKey: "idem-1",
-    type: "expense",
+    type: options.transfer ? "transfer" : "expense",
     amount: amount.value,
     businessDate: date.value,
     concept: "Grocery run",
-    category: categorized("cat-food"),
+    ...(options.transfer ? { destinationAccountId: "acc-eur-2" } : {}),
+    ...(options.transfer ? {} : { category: categorized("cat-food") }),
+    splits,
     confirmedAt: new Date("2026-10-27T10:00:00Z"),
     confirmedBy: "subject-1",
   });
@@ -451,5 +466,111 @@ describe("ReviseTransactionUseCase", () => {
     if (!result.ok) {
       expect(result.error.code).toBe("TRANSFER_DESTINATION_FORBIDDEN");
     }
+  });
+
+  it("replaces the split collection and returns it in the view (INV-TRX-SPLIT-01)", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      splits: [
+        { categoryId: "cat-food", amount: 2000 },
+        { categoryId: "cat-home", amount: 550 },
+      ],
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.splits).toEqual([
+      { categoryId: "cat-food", amount: "20.00" },
+      { categoryId: "cat-home", amount: "5.50" },
+    ]);
+    expect(result.value.revisionCount).toBe(1);
+    expect(repo.saved).toHaveLength(1);
+  });
+
+  it("rejects a split whose category does not exist in the workspace", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      splits: [{ categoryId: "cat-missing", amount: 2550 }],
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("CATEGORY_NOT_FOUND");
+    }
+    expect(repo.saved).toHaveLength(0);
+  });
+
+  it("clears the stored splits when revising with an empty collection", async () => {
+    const trx = await makeTransaction({
+      splits: [{ categoryId: "cat-food", amount: "25.50" }],
+    });
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      splits: [],
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.splits).toEqual([]);
+    expect(result.value.revisionCount).toBe(1);
+  });
+
+  it("rejects an amount revision that breaks the stored split sum (INV-TRX-SPLIT-01)", async () => {
+    const trx = await makeTransaction({
+      splits: [{ categoryId: "cat-food", amount: "25.50" }],
+    });
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      amount: "30.00",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSACTION_SPLITS_SUM_MISMATCH");
+    }
+    expect(repo.saved).toHaveLength(0);
+  });
+
+  it("rejects splits when the effective type is transfer", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      type: "transfer",
+      destinationAccountId: "acc-eur-2",
+      splits: [{ categoryId: "cat-food", amount: 2550 }],
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("TRANSFER_SPLITS_FORBIDDEN");
+    }
+    expect(repo.saved).toHaveLength(0);
   });
 });

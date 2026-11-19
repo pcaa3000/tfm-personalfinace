@@ -11,13 +11,19 @@ import {
   Transaction,
   UNCATEGORIZED,
   categorized,
+  type TransactionOrigin,
   type TransactionType,
 } from "../domain/transaction.js";
+import type { TransactionSplit } from "../domain/transaction-split.js";
 import type { AccountValidationPort } from "./ports/account-validation.port.js";
 import type { CategoryValidationPort } from "./ports/category-validation.port.js";
 import type { Clock } from "./ports/clock.port.js";
 import type { IdGenerator } from "./ports/id-generator.port.js";
 import type { TransactionRepositoryPort } from "./ports/transaction-repository.port.js";
+import {
+  buildTransactionSplits,
+  type TransactionSplitCommand,
+} from "./transaction-splits.js";
 import { toTransactionView, type TransactionView } from "./transaction.view.js";
 
 export interface RecordManualTransactionCommand {
@@ -35,6 +41,17 @@ export interface RecordManualTransactionCommand {
   readonly destinationAccountId?: string | null;
   /** null = explicit uncategorized choice. */
   readonly categoryId: string | null;
+  /**
+   * Optional category-level breakdown; amounts are integer minor units of
+   * the transaction currency. When non-empty it must satisfy
+   * INV-TRX-SPLIT-01 (sum equals the transaction amount); forbidden on
+   * transfers.
+   */
+  readonly splits?: readonly TransactionSplitCommand[];
+  /** Entry channel; defaults to "manual" — the receipt confirm passes "ticket" (T6). */
+  readonly origin?: TransactionOrigin;
+  /** Optional external reference tied to the origin (e.g. the receipt scan id). */
+  readonly originReference?: string;
   readonly actor: string;
 }
 
@@ -151,6 +168,22 @@ export class RecordManualTransactionUseCase {
       );
     }
 
+    let splits: TransactionSplit[] = [];
+    if (command.splits !== undefined) {
+      const built = await buildTransactionSplits(
+        command.splits,
+        money.value.currency.code,
+        command.workspaceId,
+        // Transfers cannot carry splits; the aggregate rejects them, so
+        // there is no category to validate on that path.
+        command.type === "transfer" ? null : this.categories,
+      );
+      if (!built.ok) {
+        return built;
+      }
+      splits = built.value;
+    }
+
     const transaction = Transaction.recordManual({
       id: this.ids.next(),
       workspaceId: command.workspaceId,
@@ -165,6 +198,11 @@ export class RecordManualTransactionUseCase {
         command.type === "transfer" || command.categoryId === null
           ? UNCATEGORIZED
           : categorized(command.categoryId),
+      splits,
+      ...(command.origin !== undefined ? { origin: command.origin } : {}),
+      ...(command.originReference !== undefined
+        ? { originReference: command.originReference }
+        : {}),
       confirmedAt: this.clock.now(),
       confirmedBy: command.actor,
     });

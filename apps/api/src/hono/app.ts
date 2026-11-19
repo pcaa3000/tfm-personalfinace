@@ -16,6 +16,8 @@ import type { CurrencyRouteDeps } from "./routes/currencies.js";
 import { registerCurrencyRoutes } from "./routes/currencies.js";
 import type { NotificationRouteDeps } from "./routes/notifications.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
+import type { ReceiptRouteDeps } from "./routes/receipts.js";
+import { registerReceiptRoutes } from "./routes/receipts.js";
 import type { TransactionRouteDeps } from "./routes/transactions.js";
 import { registerTransactionRoutes } from "./routes/transactions.js";
 import type { WorkspaceRouteDeps } from "./routes/workspace.js";
@@ -30,7 +32,8 @@ export type HonoDeps = TransactionRouteDeps &
   CategoryRouteDeps &
   CurrencyRouteDeps &
   WorkspaceRouteDeps &
-  NotificationRouteDeps;
+  NotificationRouteDeps &
+  ReceiptRouteDeps;
 
 /** HTTP hardening knobs (S4/S5) — resolved from env in the composition root. */
 export interface HttpSecurityConfig {
@@ -46,6 +49,12 @@ export interface HttpSecurityConfig {
     readonly max: number;
     readonly windowMs: number;
   };
+  /**
+   * Multipart cap for `POST /api/v1/receipts` only (receipt-scan-drafts
+   * T3): image uploads need more than the 1 MiB JSON write cap. Set to
+   * RECEIPT_MAX_BYTES + multipart slack in the composition root.
+   */
+  readonly receiptUploadBodyLimitBytes: number;
 }
 
 /**
@@ -57,6 +66,7 @@ export const DEFAULT_HTTP_SECURITY: HttpSecurityConfig = {
   bodyLimitBytes: 1024 * 1024,
   rateLimit: { max: 60, windowMs: 60_000 },
   rateLimitRead: { max: 240, windowMs: 60_000 },
+  receiptUploadBodyLimitBytes: 5 * 1024 * 1024 + 256 * 1024,
 };
 
 const WRITE_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
@@ -89,8 +99,26 @@ export function createApp(
       maxAge: 600,
     }),
   );
+  // receipt-scan-drafts T3: the upload endpoint gets its own larger cap
+  // BEFORE the generic write limiter, which skips it below.
+  app.use("/api/v1/receipts", async (c, next) => {
+    if (c.req.method !== "POST") {
+      return next();
+    }
+    return bodyLimit({
+      maxSize: config.receiptUploadBodyLimitBytes,
+      onError: (ctx) =>
+        ctx.json(
+          { code: "PAYLOAD_TOO_LARGE", message: "Request body too large" },
+          413,
+        ),
+    })(c, next);
+  });
   app.use("/api/*", async (c, next) => {
-    if (!WRITE_METHODS.has(c.req.method)) {
+    if (
+      !WRITE_METHODS.has(c.req.method) ||
+      (c.req.method === "POST" && c.req.path === "/api/v1/receipts")
+    ) {
       return next();
     }
     return bodyLimit({
@@ -132,6 +160,7 @@ export function createApp(
   registerCurrencyRoutes(app, deps);
   registerWorkspaceRoutes(app, deps);
   registerNotificationRoutes(app, deps);
+  registerReceiptRoutes(app, deps);
 
   app.notFound((c) =>
     c.json(

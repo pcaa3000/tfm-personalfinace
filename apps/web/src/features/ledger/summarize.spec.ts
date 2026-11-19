@@ -19,6 +19,7 @@ const trx = (partial: Partial<TransactionView>): TransactionView => ({
   origin: "manual",
   confirmedAt: "2026-10-27T00:00:00Z",
   revisionCount: 0,
+    splits: [],
   ...partial,
 });
 

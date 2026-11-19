@@ -21,6 +21,7 @@ import {
   reviseCategory,
   reviseCurrency,
   reviseTransaction,
+  retryReceiptScan,
   unarchiveAccount,
   updateWorkspace,
   voidTransaction,
@@ -46,6 +47,33 @@ function calledUrl(): string {
   if (!firstCall) throw new Error("fetch was not called");
   return String(firstCall[0]);
 }
+
+function calledHeaders(): Record<string, string> {
+  const firstCall = fetchMock.mock.calls[0];
+  if (!firstCall) throw new Error("fetch was not called");
+  return (firstCall[1]?.headers ?? {}) as Record<string, string>;
+}
+
+describe("dev auth bypass", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    setAccessTokenProvider(null);
+  });
+
+  it("sends x-dev-user: dev-user when VITE_AUTH_BYPASS is true in dev", async () => {
+    vi.stubEnv("DEV", true);
+    vi.stubEnv("VITE_AUTH_BYPASS", "true");
+    await listAccounts();
+    expect(calledHeaders()["x-dev-user"]).toBe("dev-user");
+  });
+
+  it("does not send x-dev-user when bypass is off", async () => {
+    vi.stubEnv("DEV", true);
+    vi.stubEnv("VITE_AUTH_BYPASS", "false");
+    await listAccounts();
+    expect(calledHeaders()["x-dev-user"]).toBeUndefined();
+  });
+});
 
 describe("listTransactions", () => {
   it("requests the bare endpoint without filters", async () => {
@@ -358,14 +386,13 @@ describe("workspace currencies (S12-4)", () => {
 
 describe("workspace preferences (RF-003)", () => {
   it("sends the preference patch with PATCH /workspace", async () => {
-    await updateWorkspace({ timezone: "America/Lima", locale: "es-PE" });
+    await updateWorkspace({ timezone: "America/Lima" });
 
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(String(url)).toBe("/api/v1/workspace");
     expect(init?.method).toBe("PATCH");
     expect(JSON.parse(String(init?.body))).toEqual({
       timezone: "America/Lima",
-      locale: "es-PE",
     });
   });
 
@@ -393,6 +420,16 @@ describe("unarchive accounts (T25)", () => {
     expect(String(url)).toBe("/api/v1/accounts/acc-9");
     expect(init?.method).toBe("PATCH");
     expect(String(init?.body)).toBe(JSON.stringify({ archived: false }));
+  });
+});
+
+describe("receipt scan retry (receipt-scan-drafts T12, S11)", () => {
+  it("posts to /receipts/:id/retry without re-uploading the image", async () => {
+    await retryReceiptScan("rc-1");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/receipts/rc-1/retry");
+    expect(init?.method).toBe("POST");
   });
 });
 

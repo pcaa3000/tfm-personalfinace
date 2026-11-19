@@ -6,18 +6,27 @@ export function todayInTimeZone(timeZone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());
 }
 
-/** YYYY-MM-DD business date rendered in the active locale (UTC-safe). */
+/**
+ * YYYY-MM-DD business date rendered in the active locale (UTC-safe).
+ * Explicit zero-padded fields (S2): ES -> dd/mm/yyyy, EN -> mm/dd/yyyy.
+ */
 export function formatBusinessDate(isoDate: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, { timeZone: "UTC" }).format(
-    new Date(`${isoDate}T00:00:00Z`),
-  );
+  return new Intl.DateTimeFormat(locale, {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(`${isoDate}T00:00:00Z`));
 }
 
-/** ISO instant rendered in the active locale. */
+/** ISO instant rendered in the active locale, zero-padded date part (S2). */
 export function formatInstant(iso: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, {
-    dateStyle: "short",
-    timeStyle: "short",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   }).format(new Date(iso));
 }
 

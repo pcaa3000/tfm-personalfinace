@@ -101,6 +101,7 @@ describe("ListTransactionsUseCase", () => {
         origin: "manual",
         confirmedAt: "2026-10-27T10:00:00.000Z",
         revisionCount: 0,
+        splits: [],
       },
     ]);
   });

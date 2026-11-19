@@ -1,3 +1,9 @@
+import { isAuthBypassed } from "../auth/supabase";
+import type {
+  ReceiptConfirmInput,
+  ReceiptDraftPayload,
+  ReceiptScanView,
+} from "./receipt-draft";
 import type {
   AccountView,
   BalanceItemView,
@@ -73,16 +79,7 @@ export async function currentCallerSubject(): Promise<string | null> {
   return jwtSubject(token) ?? token;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = accessTokenProvider ? await accessTokenProvider() : null;
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-  };
-  if (token) headers.authorization = `Bearer ${token}`;
-  const response = await fetch(`${BASE}${path}`, {
-    headers,
-    ...init,
-  });
+async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => null)) as
     | ({ code?: string; message?: string } & T)
     | null;
@@ -98,6 +95,45 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(code, message, response.status);
   }
   return payload as T;
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = accessTokenProvider ? await accessTokenProvider() : null;
+  if (token) return { authorization: `Bearer ${token}` };
+  // Dev bypass (T26): AUTH_MODE=dev is fail-closed and requires the
+  // `x-dev-user` header (GAP-SEC-01). `dev-user` is the seeded subject
+  // (apps/api/src/drizzle/seed.ts). Never emitted outside dev builds.
+  if (isAuthBypassed()) return { "x-dev-user": "dev-user" };
+  return {};
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    ...(await authHeaders()),
+  };
+  const response = await fetch(`${BASE}${path}`, {
+    headers,
+    ...init,
+  });
+  return parseResponse<T>(response);
+}
+
+/**
+ * Multipart variant (receipt-scan-drafts T7): FormData bodies carry
+ * their own `multipart/form-data; boundary=` content type — setting a
+ * JSON content type would corrupt the upload.
+ */
+async function requestMultipart<T>(
+  path: string,
+  form: FormData,
+): Promise<T> {
+  const response = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: await authHeaders(),
+    body: form,
+  });
+  return parseResponse<T>(response);
 }
 
 /** `GET /api/v1/balance` — per-currency aggregates for the strip (T24). */
@@ -198,7 +234,6 @@ export function getWorkspace(): Promise<WorkspaceView> {
 }
 export interface WorkspacePreferencesPatch {
   defaultCurrency?: string;
-  locale?: string;
   timezone?: string;
 }
 
@@ -256,4 +291,58 @@ export function listTransactionRevisions(
   id: string,
 ): Promise<TransactionRevisionView[]> {
   return request<TransactionRevisionView[]>(`/transactions/${id}/revisions`);
+}
+
+// --- Receipt scans (receipt-scan-drafts T7, S1+S2+S7+S10) ------------
+
+/** `POST /receipts` — multipart `file` field → 201 pending scan row. */
+export function uploadReceipt(file: File): Promise<ReceiptScanView> {
+  const form = new FormData();
+  form.append("file", file);
+  return requestMultipart<ReceiptScanView>("/receipts", form);
+}
+
+/** `GET /receipts/:id` — status polling while the pipeline runs. */
+export function getReceiptScan(id: string): Promise<ReceiptScanView> {
+  return request<ReceiptScanView>(`/receipts/${id}`);
+}
+
+/** `GET /receipts/:id/draft` — the stored draft once `draft_ready`. */
+export function getReceiptDraft(id: string): Promise<ReceiptDraftPayload> {
+  return request<ReceiptDraftPayload>(`/receipts/${id}/draft`);
+}
+
+export interface ConfirmReceiptResult {
+  transaction: TransactionView;
+  createdCategories: CategoryView[];
+}
+
+/** `POST /receipts/:id/confirm` — approve the draft → 201 transaction. */
+export function confirmReceipt(
+  id: string,
+  input: ReceiptConfirmInput & { idempotencyKey: string },
+): Promise<ConfirmReceiptResult> {
+  return request<ConfirmReceiptResult>(`/receipts/${id}/confirm`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** `POST /receipts/:id/reject` — discard the draft without registering. */
+export function rejectReceipt(id: string): Promise<ReceiptScanView> {
+  return request<ReceiptScanView>(`/receipts/${id}/reject`, {
+    method: "POST",
+  });
+}
+
+/**
+ * `POST /receipts/:id/retry` — reset a `failed` scan to `pending` and
+ * re-queue its job over the original image, never re-uploading
+ * (receipt-scan-drafts T12, S11). Non-final scans are an idempotent
+ * no-op; `confirmed`/`rejected` scans answer 409 RECEIPT_ALREADY_FINAL.
+ */
+export function retryReceiptScan(id: string): Promise<ReceiptScanView> {
+  return request<ReceiptScanView>(`/receipts/${id}/retry`, {
+    method: "POST",
+  });
 }

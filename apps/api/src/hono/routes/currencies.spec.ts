@@ -35,7 +35,6 @@ const WS = wsResult.value;
 const CALLER: CallerIdentity = { issuer: "test", subject: "user-1" };
 const WORKSPACE: WorkspaceContext = {
   workspaceId: WS,
-  locale: "en",
   timezone: "UTC",
   defaultCurrency: "EUR",
 };
@@ -83,6 +82,7 @@ function transactionView(
     origin: "manual",
     confirmedAt: "2026-10-27T10:00:00.000Z",
     revisionCount: 0,
+    splits: [],
     ...overrides,
   };
 }
@@ -226,6 +226,28 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     },
     getBalance: {
       execute: vi.fn(async () => []),
+    },
+    // receipt-scan-drafts T3 — stubs; this router never calls them.
+    uploadReceipt: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getReceiptScan: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getReceiptFile: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getReceiptDraft: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    confirmReceiptDraft: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    rejectReceiptScan: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    retryReceiptScan: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },
   };
 }

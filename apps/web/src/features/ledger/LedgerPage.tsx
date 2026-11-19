@@ -71,6 +71,7 @@ import { TransactionHistoryDialog } from "./TransactionHistoryDialog";
 import { VoidTransactionDialog } from "./VoidTransactionDialog";
 import type {
   CreateAccountInput,
+  CreateCategoryInput,
   ReviseAccountInput,
   TransactionView,
 } from "./types";
@@ -290,6 +291,15 @@ export function LedgerPage() {
 
   const onSubmit = (values: TransactionFormValues) => {
     createMutation.mutate({ ...values, idempotencyKey: crypto.randomUUID() });
+  };
+
+  // T8 (S8): inline create from the category selector — post, refresh
+  // the categories query and hand the created category back so the
+  // select can auto-select it without leaving the flow.
+  const createCategoryInline = async (input: CreateCategoryInput) => {
+    const category = await createCategory(input);
+    await queryClient.invalidateQueries({ queryKey: ["categories"] });
+    return category;
   };
 
   const toggleRail = () => {
@@ -537,12 +547,20 @@ export function LedgerPage() {
         defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
         currencies={currencyCodes}
         timezone={workspace?.timezone}
+        exponentOf={exponentOf}
         submitting={createMutation.isPending}
         error={
           createMutation.error ? errorMessage(createMutation.error, t) : null
         }
         onClose={() => setMovementOpen(false)}
         onSubmit={onSubmit}
+        onCreateCategory={createCategoryInline}
+        onReceiptConfirmed={() => {
+          // The confirm can create categories (S10) besides the
+          // transaction — refresh both lists.
+          void queryClient.invalidateQueries({ queryKey: ["categories"] });
+          void invalidateLedger().then(() => setMovementOpen(false));
+        }}
       />
       <AccountsDialog
         open={management === "accounts"}
@@ -641,6 +659,7 @@ export function LedgerPage() {
           setEditing(null);
           reviseMutation.reset();
         }}
+        onCreateCategory={createCategoryInline}
         onSubmit={(id, values) => reviseMutation.mutate({ id, values })}
       />
       <VoidTransactionDialog

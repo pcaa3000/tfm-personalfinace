@@ -9,7 +9,6 @@ export interface CallerIdentity {
 /** Server-resolved financial context; never taken from client input. */
 export interface WorkspaceContext {
   readonly workspaceId: WorkspaceId;
-  readonly locale: string;
   readonly timezone: string;
   readonly defaultCurrency: string;
 }

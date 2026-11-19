@@ -25,6 +25,7 @@ export function toPendingView(item: PendingTransaction): LedgerRow {
     origin: "manual",
     confirmedAt: item.enqueuedAt,
     revisionCount: 0,
+    splits: [],
     pendingSync: true,
   };
 }

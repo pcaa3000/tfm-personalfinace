@@ -30,7 +30,6 @@ function buildApp(options: { authenticated?: boolean } = {}) {
     workspaceContext: {
       resolve: vi.fn(async () => ({
         workspaceId: WS,
-        locale: "en",
         timezone: "UTC",
         defaultCurrency: "PEN",
       })),

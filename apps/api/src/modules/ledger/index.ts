@@ -20,6 +20,10 @@ export {
   type RevisionKind,
 } from "./domain/transaction-revision.js";
 export {
+  TransactionSplit,
+  type TransactionSplitInput,
+} from "./domain/transaction-split.js";
+export {
   TRANSACTION_REPOSITORY,
   type TransactionFilter,
   type TransactionRepositoryPort,
@@ -55,7 +59,8 @@ export {
   VoidTransactionUseCase,
   type VoidTransactionCommand,
 } from "./application/void-transaction.use-case.js";
-export { toTransactionView, type TransactionView } from "./application/transaction.view.js";
+export { toTransactionView, type TransactionView, type TransactionSplitView } from "./application/transaction.view.js";
+export { type TransactionSplitCommand } from "./application/transaction-splits.js";
 export {
   toTransactionRevisionView,
   type TransactionRevisionView,

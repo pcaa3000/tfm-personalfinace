@@ -17,7 +17,7 @@ import {
   last30DaysRange,
   type DateRange,
 } from "./period";
-import { categoryLabel } from "./TransactionForm";
+import { categoryLabel } from "./category-label";
 import type { CategoryView } from "./types";
 
 const FALLBACK_CURRENCIES = ["PEN", "USD", "EUR", "ARS", "JPY", "BHD"];

@@ -233,6 +233,37 @@ export const EyeOffIcon = makeIcon(
   </>,
 );
 
+export const CameraIcon = makeIcon(
+  <>
+    <path
+      d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinejoin="round"
+    />
+    <circle
+      cx="12"
+      cy="13"
+      r="3.4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    />
+  </>,
+);
+
+export const TrashIcon = makeIcon(
+  <path
+    d="M4 7h16M9 7V5h6v2m-9 0 1 12.5h10L18 7"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  />,
+);
+
 export const ChevronDownIcon = makeIcon(
   <path
     d="M6 9l6 6 6-6"

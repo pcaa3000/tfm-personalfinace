@@ -26,7 +26,7 @@ El flujo central es único: **capturar, proponer, revisar, confirmar y analizar*
 
 - Registro y autenticación mediante un proveedor de identidad, con usuario y contraseña, proveedores sociales (Google, Facebook u otros configurados) y passkeys.
 - Un workspace financiero personal por usuario registrado.
-- Preferencias de idioma, locale, zona horaria y moneda en el workspace.
+- Preferencias de idioma, zona horaria y moneda en el workspace.
 - Ingresos y gastos manuales.
 - Tickets capturados con cámara o seleccionados desde almacenamiento.
 - Dictados cortos desde micrófono.
@@ -181,7 +181,7 @@ Si la PWA está sin conexión, el registro confirmado por la persona entra en la
 |---|---|
 | RF-001 | La persona debe poder registrarse, autenticarse, cerrar sesión y recuperar acceso mediante OpenID Connect, incluyendo usuario y contraseña, proveedores sociales (Google, Facebook u otros habilitados) y passkeys |
 | RF-002 | La API debe restringir cada operación al workspace resuelto desde la identidad o sesión autenticada |
-| RF-003 | El workspace debe conservar idioma, locale, zona horaria y moneda predeterminada de nuevas transacciones |
+| RF-003 | El workspace debe conservar idioma, zona horaria y moneda predeterminada de nuevas transacciones |
 | RF-004 | La persona debe poder cambiar las preferencias de su workspace sin alterar moneda, zona ni fecha histórica de transacciones existentes |
 | RF-005 | La gestión de credenciales, segundo factor y passkeys debe pertenecer al proveedor de identidad, no a la aplicación de negocio |
 | RF-006 | El primer acceso de una identidad personal debe crear exactamente un workspace personal y los accesos siguientes deben recuperar el mismo |
@@ -341,7 +341,7 @@ Si la PWA está sin conexión, el registro confirmado por la persona entra en la
 | RN-001 | Solo una transacción confirmada puede afectar reportes, ahorro o insights |
 | RN-002 | El dinero se representa como decimal y moneda ISO 4217; no se utiliza coma flotante binaria |
 | RN-003 | La fecha de negocio se interpreta en la zona horaria registrada, mientras los instantes técnicos se conservan en UTC |
-| RN-004 | Cambiar locale o zona horaria del workspace no reinterpreta silenciosamente datos históricos |
+| RN-004 | Cambiar la zona horaria del workspace no reinterpreta silenciosamente datos históricos |
 | RN-005 | Un agregado financiero contiene una única moneda o incluye una conversión con fuente, tasa, par y fecha |
 | RN-006 | Una captura origina como máximo una transacción confirmada; todo consumidor asíncrono debe ser idempotente |
 | RN-007 | Una recomendación no puede producir ahorro negativo ni superior al excedente disponible después del margen de seguridad |

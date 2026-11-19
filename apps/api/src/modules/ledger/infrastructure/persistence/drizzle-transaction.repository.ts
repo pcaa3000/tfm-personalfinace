@@ -33,8 +33,10 @@ import {
   type TransactionType,
 } from "../../domain/transaction.js";
 import { TransactionRevision, type FieldChange } from "../../domain/transaction-revision.js";
+import { TransactionSplit } from "../../domain/transaction-split.js";
 import {
   ledgerTransactionRevisions,
+  ledgerTransactionSplits,
   ledgerTransactions,
 } from "../../../../drizzle/schema.js";
 import type { DrizzleDb } from "../../../../drizzle/db.js";
@@ -42,6 +44,7 @@ import { insertOutboxEvent } from "../../../../drizzle/outbox.js";
 
 type TransactionRow = typeof ledgerTransactions.$inferSelect;
 type RevisionRow = typeof ledgerTransactionRevisions.$inferSelect;
+type SplitRow = typeof ledgerTransactionSplits.$inferSelect;
 
 function unwrap<T>(result: Result<T, DomainError>): T {
   if (!result.ok) {
@@ -51,7 +54,11 @@ function unwrap<T>(result: Result<T, DomainError>): T {
 }
 
 /** Drizzle row → domain aggregate (mirrors transaction.mapper.ts toDomain). */
-function toDomain(row: TransactionRow, revisions: RevisionRow[]): Transaction {
+function toDomain(
+  row: TransactionRow,
+  revisions: RevisionRow[],
+  splits: SplitRow[],
+): Transaction {
   return Transaction.reconstitute({
     id: row.id,
     workspaceId: unwrap(WorkspaceId.create(row.workspaceId)),
@@ -82,6 +89,13 @@ function toDomain(row: TransactionRow, revisions: RevisionRow[]): Transaction {
           rev.actor,
         ),
     ),
+    splits: splits.map(
+      (split) =>
+        TransactionSplit.reconstitute({
+          categoryId: split.categoryId,
+          amount: unwrap(Money.fromMinorUnits(split.amountMinor, row.currency)),
+        }),
+    ),
   });
 }
 
@@ -92,23 +106,36 @@ async function loadWithRevisions(
   if (rows.length === 0) {
     return [];
   }
+  const ids = rows.map((r) => r.id);
   const revisions = await db
     .select()
     .from(ledgerTransactionRevisions)
-    .where(
-      inArray(
-        ledgerTransactionRevisions.transactionId,
-        rows.map((r) => r.id),
-      ),
-    )
+    .where(inArray(ledgerTransactionRevisions.transactionId, ids))
     .orderBy(asc(ledgerTransactionRevisions.revisionNumber));
+  const splits = await db
+    .select()
+    .from(ledgerTransactionSplits)
+    .where(inArray(ledgerTransactionSplits.transactionId, ids))
+    .orderBy(asc(ledgerTransactionSplits.position));
   const byTransaction = new Map<string, RevisionRow[]>();
   for (const rev of revisions) {
     const list = byTransaction.get(rev.transactionId) ?? [];
     list.push(rev);
     byTransaction.set(rev.transactionId, list);
   }
-  return rows.map((row) => toDomain(row, byTransaction.get(row.id) ?? []));
+  const splitsByTransaction = new Map<string, SplitRow[]>();
+  for (const split of splits) {
+    const list = splitsByTransaction.get(split.transactionId) ?? [];
+    list.push(split);
+    splitsByTransaction.set(split.transactionId, list);
+  }
+  return rows.map((row) =>
+    toDomain(
+      row,
+      byTransaction.get(row.id) ?? [],
+      splitsByTransaction.get(row.id) ?? [],
+    ),
+  );
 }
 
 /**
@@ -205,6 +232,23 @@ export class DrizzleTransactionRepository implements TransactionRepositoryPort {
             status: transaction.status,
           },
         });
+      // Splits are a child collection replaced wholesale on each save:
+      // delete-then-insert keeps stored order (position) in sync with the
+      // aggregate and removes rows for splits cleared by a revision.
+      await tx
+        .delete(ledgerTransactionSplits)
+        .where(eq(ledgerTransactionSplits.transactionId, transaction.id));
+      if (transaction.splits.length > 0) {
+        await tx.insert(ledgerTransactionSplits).values(
+          transaction.splits.map((split, position) => ({
+            id: randomUUID(),
+            transactionId: transaction.id,
+            categoryId: split.categoryId,
+            amountMinor: split.amount.minorUnits,
+            position,
+          })),
+        );
+      }
       if (latest) {
         await tx
           .insert(ledgerTransactionRevisions)

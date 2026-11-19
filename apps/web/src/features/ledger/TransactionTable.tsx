@@ -14,7 +14,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { formatBusinessDate } from "./format";
-import { categoryLabel } from "./TransactionForm";
+import { categoryLabel } from "./category-label";
 import type {
   AccountView,
   CategoryView,
@@ -177,9 +177,11 @@ export function TransactionTable({
                 <TableCell>
                   {trx.type === "transfer"
                     ? "—"
-                    : trx.categoryId
-                      ? (categoryLabels.get(trx.categoryId) ?? trx.categoryId)
-                      : t("form.uncategorized")}
+                    : trx.splits.length > 1
+                      ? t("table.splitCount", { count: trx.splits.length })
+                      : trx.categoryId
+                        ? (categoryLabels.get(trx.categoryId) ?? trx.categoryId)
+                        : t("form.uncategorized")}
                 </TableCell>
                 <TableCell>
                   {pending ? (

@@ -12,7 +12,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ManageListItem } from "./ManageListItem";
-import { categoryLabel } from "./TransactionForm";
+import { categoryLabel } from "./category-label";
 import type {
   CategoryView,
   CreateCategoryInput,

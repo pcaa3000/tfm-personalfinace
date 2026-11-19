@@ -11,7 +11,13 @@ import {
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ArrowDownIcon, ArrowUpIcon, SwapIcon } from "./icons";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  CameraIcon,
+  SwapIcon,
+} from "./icons";
+import { ReceiptFlow } from "./ReceiptFlow";
 import {
   TransactionForm,
   type TransactionFormValues,
@@ -19,7 +25,9 @@ import {
 import type {
   AccountView,
   CategoryView,
+  CreateCategoryInput,
   TransactionType,
+  TransactionView,
 } from "./types";
 
 interface Props {
@@ -30,16 +38,26 @@ interface Props {
   currencies: string[];
   /** Workspace IANA zone used for the businessDate default and submit. */
   timezone?: string | undefined;
+  /** Workspace currency exponents (receipt review split amounts). */
+  exponentOf?: ((code: string) => number) | undefined;
   submitting: boolean;
   error: string | null;
   onClose: () => void;
   onSubmit: (values: TransactionFormValues) => void;
+  /** Receipt flow finished — the confirmed movement already exists. */
+  onReceiptConfirmed?: ((transaction: TransactionView) => void) | undefined;
+  /** Inline category creation in the manual + review forms (T8, S8). */
+  onCreateCategory?:
+    | ((input: CreateCategoryInput) => Promise<CategoryView>)
+    | undefined;
 }
 
+type Picked = TransactionType | "receipt";
+
 /**
- * "+ Nuevo movimiento" dialog (S12-1): first step offers the three
- * movement types as quick actions; choosing one shows the transaction
- * form with that type pre-selected (artboard quick-action pattern).
+ * "+ Nuevo movimiento" dialog (S12-1): first step offers the movement
+ * types + the ticket/photo entry (receipt-scan-drafts T7, S1) as quick
+ * actions; choosing one shows the matching form.
  */
 export function NewMovementDialog({
   open,
@@ -48,54 +66,73 @@ export function NewMovementDialog({
   defaultCurrency,
   currencies,
   timezone,
+  exponentOf,
   submitting,
   error,
   onClose,
   onSubmit,
+  onReceiptConfirmed,
+  onCreateCategory,
 }: Props) {
   const { t } = useTranslation();
-  const [pickedType, setPickedType] = useState<TransactionType | null>(null);
+  const [picked, setPicked] = useState<Picked | null>(null);
 
   useEffect(() => {
-    if (!open) setPickedType(null);
+    if (!open) setPicked(null);
   }, [open]);
 
   const options: {
-    type: TransactionType;
+    type: Picked;
+    label: string;
     hint: string;
     icon: React.ReactNode;
-    colorKey: "success" | "error" | "secondary";
+    colorKey: "success" | "error" | "secondary" | "primary";
   }[] = [
     {
       type: "income",
+      label: t("form.income"),
       hint: t("movement.incomeHint"),
       icon: <ArrowUpIcon fontSize="small" />,
       colorKey: "success",
     },
     {
       type: "expense",
+      label: t("form.expense"),
       hint: t("movement.expenseHint"),
       icon: <ArrowDownIcon fontSize="small" />,
       colorKey: "error",
     },
     {
       type: "transfer",
+      label: t("form.transfer"),
       hint: t("movement.transferHint"),
       icon: <SwapIcon fontSize="small" />,
       colorKey: "secondary",
     },
+    {
+      type: "receipt",
+      label: t("movement.receipt"),
+      hint: t("movement.receiptHint"),
+      icon: <CameraIcon fontSize="small" />,
+      colorKey: "primary",
+    },
   ];
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth={picked === "receipt" ? "sm" : "xs"}
+      fullWidth
+    >
       <DialogTitle>{t("movement.chooseType")}</DialogTitle>
       <DialogContent sx={{ pb: 3 }}>
-        {pickedType === null ? (
+        {picked === null ? (
           <Box sx={{ display: "grid", gap: 1.25 }}>
             {options.map((option) => (
               <ButtonBase
                 key={option.type}
-                onClick={() => setPickedType(option.type)}
+                onClick={() => setPicked(option.type)}
                 sx={(theme) => ({
                   display: "flex",
                   alignItems: "center",
@@ -124,7 +161,7 @@ export function NewMovementDialog({
                 </Avatar>
                 <Box>
                   <Typography sx={{ display: "block", fontSize: 14, fontWeight: 700 }}>
-                    {t(`form.${option.type}`)}
+                    {option.label}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     {option.hint}
@@ -133,6 +170,18 @@ export function NewMovementDialog({
               </ButtonBase>
             ))}
           </Box>
+        ) : picked === "receipt" ? (
+          <ReceiptFlow
+            categories={categories}
+            accounts={accounts}
+            defaultCurrency={defaultCurrency}
+            currencies={currencies}
+            timezone={timezone}
+            exponentOf={exponentOf}
+            onClose={onClose}
+            onConfirmed={(transaction) => onReceiptConfirmed?.(transaction)}
+            onCreateCategory={onCreateCategory}
+          />
         ) : (
           <TransactionForm
             categories={categories}
@@ -141,8 +190,9 @@ export function NewMovementDialog({
             currencies={currencies}
             submitting={submitting}
             error={error}
-            initialValues={{ type: pickedType }}
+            initialValues={{ type: picked }}
             timezone={timezone}
+            onCreateCategory={onCreateCategory}
             onSubmit={onSubmit}
           />
         )}

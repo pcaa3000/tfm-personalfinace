@@ -20,7 +20,6 @@ class FakeSettings implements WorkspaceSettingsPort {
     this.calls.push(patch);
     return {
       workspaceId,
-      locale: patch.locale ?? "es-PE",
       timezone: patch.timezone ?? "America/Lima",
       defaultCurrency: patch.defaultCurrency ?? "PEN",
     };
@@ -40,23 +39,19 @@ describe("UpdateWorkspacePreferencesUseCase (RF-003, RF-004)", () => {
     expect(settings.calls).toEqual([{ defaultCurrency: "USD" }]);
   });
 
-  it("persists timezone and locale patches", async () => {
+  it("persists a timezone patch", async () => {
     const settings = new FakeSettings();
     const useCase = new UpdateWorkspacePreferencesUseCase(settings);
 
     const result = await useCase.execute(ws.value, {
       timezone: "America/Lima",
-      locale: "es-PE",
     });
 
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.timezone).toBe("America/Lima");
-      expect(result.value.locale).toBe("es-PE");
     }
-    expect(settings.calls).toEqual([
-      { timezone: "America/Lima", locale: "es-PE" },
-    ]);
+    expect(settings.calls).toEqual([{ timezone: "America/Lima" }]);
   });
 
   it("rejects an invalid currency without touching persistence", async () => {
@@ -85,19 +80,6 @@ describe("UpdateWorkspacePreferencesUseCase (RF-003, RF-004)", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe("TIMEZONE_INVALID");
-    }
-    expect(settings.calls).toHaveLength(0);
-  });
-
-  it("rejects an invalid locale without touching persistence", async () => {
-    const settings = new FakeSettings();
-    const useCase = new UpdateWorkspacePreferencesUseCase(settings);
-
-    const result = await useCase.execute(ws.value, { locale: "!!bad!!" });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("LOCALE_INVALID");
     }
     expect(settings.calls).toHaveLength(0);
   });

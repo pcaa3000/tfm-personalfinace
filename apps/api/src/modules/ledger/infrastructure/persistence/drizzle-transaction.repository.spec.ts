@@ -7,7 +7,9 @@ import { createDrizzleDb, type DrizzleDb } from "../../../../drizzle/db.js";
 import { outboxEvents } from "../../../../drizzle/schema.js";
 import {
   accounts,
+  categories,
   ledgerTransactionRevisions,
+  ledgerTransactionSplits,
   ledgerTransactions,
 } from "../../../../drizzle/schema.js";
 import {
@@ -21,6 +23,7 @@ import {
   Transaction,
   type TransactionType,
 } from "../../domain/transaction.js";
+import { TransactionSplit } from "../../domain/transaction-split.js";
 import { DrizzleTransactionRepository } from "./drizzle-transaction.repository.js";
 
 const DATABASE_URL =
@@ -61,6 +64,7 @@ interface TxnInput {
   accountId?: string | null;
   destinationAccountId?: string | null;
   category?: "uncategorized" | string;
+  splits?: readonly { categoryId: string; amount: string }[];
 }
 
 let seq = 0;
@@ -69,6 +73,13 @@ let seq = 0;
 const ACCOUNTS: Record<string, { source: string; dest: string }> = {
   [WS_A]: { source: "acc-tx-a-src", dest: "acc-tx-a-dst" },
   [WS_B]: { source: "acc-tx-b-src", dest: "acc-tx-b-dst" },
+};
+
+// Split categoryIds are an FK to categorization_categories — real rows are
+// seeded in beforeAll the same way accounts are.
+const CATEGORIES: Record<string, { food: string; home: string }> = {
+  [WS_A]: { food: "cat-tx-a-food", home: "cat-tx-a-home" },
+  [WS_B]: { food: "cat-tx-b-food", home: "cat-tx-b-home" },
 };
 
 function defaultAccountId(workspace: WorkspaceId): string {
@@ -104,6 +115,18 @@ function makeTransaction(input: TxnInput = {}): Transaction {
               : ({ kind: "categorized", categoryId: input.category } as const),
         }
       : {}),
+    ...(input.splits !== undefined
+      ? {
+          splits: input.splits.map((s) =>
+            unwrap(
+              TransactionSplit.create({
+                categoryId: s.categoryId,
+                amount: unwrap(Money.create(s.amount, "USD")),
+              }),
+            ),
+          ),
+        }
+      : {}),
     confirmedAt: new Date("2026-11-01T12:00:00Z"),
     confirmedBy: "spec-user",
   });
@@ -120,11 +143,15 @@ async function cleanupAll(db: DrizzleDb): Promise<void> {
     await db
       .delete(ledgerTransactionRevisions)
       .where(inArray(ledgerTransactionRevisions.transactionId, txIds));
+    await db
+      .delete(ledgerTransactionSplits)
+      .where(inArray(ledgerTransactionSplits.transactionId, txIds));
   }
   await db
     .delete(ledgerTransactions)
     .where(inArray(ledgerTransactions.workspaceId, WORKSPACES));
   await db.delete(accounts).where(inArray(accounts.workspaceId, WORKSPACES));
+  await db.delete(categories).where(inArray(categories.workspaceId, WORKSPACES));
   await db
     .delete(outboxEvents)
     .where(inArray(outboxEvents.workspaceId, WORKSPACES));
@@ -146,6 +173,18 @@ async function seedAccounts(db: DrizzleDb): Promise<void> {
         currency: "USD",
         kind: "bank",
         initialBalanceMinor: 0n,
+      });
+    }
+    for (const [suffix, id] of [
+      ["food", CATEGORIES[ws]!.food],
+      ["home", CATEGORIES[ws]!.home],
+    ] as const) {
+      await db.insert(categories).values({
+        id,
+        key: `spec-${ws}-${suffix}`,
+        label: `Spec category ${ws}-${suffix}`,
+        nature: "expense",
+        workspaceId: ws,
       });
     }
   }
@@ -385,6 +424,86 @@ describe("DrizzleTransactionRepository (integration, real Postgres)", () => {
 
     const listed = await repository.list(workspaceId(WS_B), {});
     expect(listed.map((r) => r.id)).not.toContain(trx.id);
+  });
+
+  it("persists splits in position order and reloads them with the transaction", async () => {
+    const trx = makeTransaction({
+      id: "tx-splits",
+      amount: money("25.50"),
+      splits: [
+        { categoryId: CATEGORIES[WS_A]!.food, amount: "20.00" },
+        { categoryId: CATEGORIES[WS_A]!.home, amount: "5.50" },
+      ],
+    });
+    await repository.save(trx);
+
+    const rows = await db
+      .select()
+      .from(ledgerTransactionSplits)
+      .where(eq(ledgerTransactionSplits.transactionId, trx.id));
+    const byPosition = [...rows].sort((a, b) => a.position - b.position);
+    expect(byPosition.map((r) => r.position)).toEqual([0, 1]);
+    expect(byPosition.map((r) => r.amountMinor)).toEqual([2000n, 550n]);
+
+    const found = await repository.findById(trx.workspaceId, trx.id);
+    expect(found).not.toBeNull();
+    expect(found!.splits).toHaveLength(2);
+    expect(found!.splits[0]!.categoryId).toBe(CATEGORIES[WS_A]!.food);
+    expect(found!.splits[0]!.amount.minorUnits).toBe(2000n);
+    expect(found!.splits[0]!.amount.currency.code).toBe("USD");
+    expect(found!.splits[1]!.categoryId).toBe(CATEGORIES[WS_A]!.home);
+    expect(found!.splits[1]!.amount.minorUnits).toBe(550n);
+
+    const listed = await repository.list(trx.workspaceId, {});
+    const listedTrx = listed.find((r) => r.id === trx.id);
+    expect(listedTrx?.splits).toHaveLength(2);
+  });
+
+  it("replaces splits wholesale on revise and leaves no orphan rows", async () => {
+    const trx = makeTransaction({
+      id: "tx-splits-revise",
+      amount: money("25.50"),
+      splits: [
+        { categoryId: CATEGORIES[WS_A]!.food, amount: "20.00" },
+        { categoryId: CATEGORIES[WS_A]!.home, amount: "5.50" },
+      ],
+    });
+    await repository.save(trx);
+
+    unwrap(
+      trx.revise({
+        splits: [
+          unwrap(
+            TransactionSplit.create({
+              categoryId: CATEGORIES[WS_A]!.food,
+              amount: money("25.50"),
+            }),
+          ),
+        ],
+        revisedAt: new Date("2026-11-02T09:00:00Z"),
+        revisedBy: "spec-user",
+      }),
+    );
+    await repository.save(trx);
+
+    const rows = await db
+      .select()
+      .from(ledgerTransactionSplits)
+      .where(eq(ledgerTransactionSplits.transactionId, trx.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.categoryId).toBe(CATEGORIES[WS_A]!.food);
+    expect(rows[0]!.position).toBe(0);
+
+    const found = await repository.findById(trx.workspaceId, trx.id);
+    expect(found!.splits).toHaveLength(1);
+  });
+
+  it("loads an empty split collection for transactions without splits", async () => {
+    const trx = makeTransaction({ id: "tx-no-splits" });
+    await repository.save(trx);
+
+    const found = await repository.findById(trx.workspaceId, trx.id);
+    expect(found!.splits).toEqual([]);
   });
 
   it("does not duplicate revisions when saving the same state twice", async () => {

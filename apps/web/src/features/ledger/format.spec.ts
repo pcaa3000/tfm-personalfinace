@@ -14,26 +14,19 @@ describe("formatBusinessDate", () => {
   it("renders the business date in UTC regardless of host timezone", () => {
     // Host TZ is America/Lima (UTC-5): parsing the date as local time or
     // formatting it in local time would shift the day to 30/9.
-    expect(formatBusinessDate("2026-10-01", "es")).toBe("1/10/2026");
-    expect(formatBusinessDate("2026-10-01", "en-US")).toBe("10/1/2026");
+    // S2: ES renders dd/mm/yyyy, EN mm/dd/yyyy — zero-padded fields.
+    expect(formatBusinessDate("2026-10-01", "es")).toBe("01/10/2026");
+    expect(formatBusinessDate("2026-10-01", "en-US")).toBe("10/01/2026");
   });
 });
 
 describe("formatInstant", () => {
   it("renders an ISO instant with short date and time in the locale", () => {
     const iso = "2026-10-02T15:30:00.000Z";
-    const expected = new Intl.DateTimeFormat("en-US", {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(new Date(iso));
 
-    expect(formatInstant(iso, "en-US")).toBe(expected);
-    expect(formatInstant(iso, "es")).toBe(
-      new Intl.DateTimeFormat("es", {
-        dateStyle: "short",
-        timeStyle: "short",
-      }).format(new Date(iso)),
-    );
+    // S2: zero-padded dd/mm/yyyy (es) and mm/dd/yyyy (en) date part.
+    expect(formatInstant(iso, "en-US")).toMatch(/^10\/02\/2026/);
+    expect(formatInstant(iso, "es")).toMatch(/^02\/10\/2026/);
   });
 });
 

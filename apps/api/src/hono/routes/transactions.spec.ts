@@ -31,7 +31,6 @@ const WS = wsResult.value;
 const CALLER: CallerIdentity = { issuer: "test", subject: "user-1" };
 const WORKSPACE: WorkspaceContext = {
   workspaceId: WS,
-  locale: "en",
   timezone: "UTC",
   defaultCurrency: "EUR",
 };
@@ -55,6 +54,7 @@ function transactionView(
     origin: "manual",
     confirmedAt: "2026-10-27T10:00:00.000Z",
     revisionCount: 0,
+    splits: [],
     ...overrides,
   };
 }
@@ -198,6 +198,28 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     getBalance: {
       execute: vi.fn(async () => []),
     },
+    // receipt-scan-drafts T3 — stubs; this router never calls them.
+    uploadReceipt: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getReceiptScan: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getReceiptFile: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getReceiptDraft: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    confirmReceiptDraft: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    rejectReceiptScan: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    retryReceiptScan: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
   };
 }
 
@@ -302,6 +324,68 @@ describe("POST /api/v1/transactions", () => {
       }),
     );
   });
+
+  it("forwards a splits collection (integer minor units) to the use case", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+    const splits = [
+      { categoryId: "cat-food", amount: 2000 },
+      { categoryId: "cat-home", amount: 550 },
+    ];
+    deps.recordManual.execute.mockResolvedValue(
+      ok(
+        transactionView({
+          splits: [
+            { categoryId: "cat-food", amount: "20.00" },
+            { categoryId: "cat-home", amount: "5.50" },
+          ],
+        }),
+      ),
+    );
+
+    const res = await postJson(app, "/api/v1/transactions", {
+      ...VALID_CREATE,
+      splits,
+    });
+    expect(res.status).toBe(201);
+    expect(deps.recordManual.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ splits }),
+    );
+  });
+
+  it.each([
+    [{ categoryId: "cat-food", amount: 0 }],
+    [{ categoryId: "cat-food", amount: -5 }],
+    [{ categoryId: "cat-food", amount: 20.5 }],
+    [{ categoryId: "cat-food", amount: "20.00" }],
+    [{ categoryId: "", amount: 100 }],
+    [{ amount: 100 }],
+  ])(
+    "returns 400 INVALID_BODY for malformed splits %j",
+    async (splits) => {
+      const deps = makeDeps();
+      const app = createApp(deps);
+      const res = await postJson(app, "/api/v1/transactions", {
+        ...VALID_CREATE,
+        splits,
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as Record<string, unknown>;
+      expect(body.code).toBe("INVALID_BODY");
+      expect(deps.recordManual.execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it("omits splits from the command when the payload has none", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+    deps.recordManual.execute.mockResolvedValue(ok(transactionView()));
+
+    const res = await postJson(app, "/api/v1/transactions", VALID_CREATE);
+    expect(res.status).toBe(201);
+    const command = deps.recordManual.execute.mock.calls[0]?.[0];
+    expect(command).not.toHaveProperty("splits");
+  });
 });
 
 describe("GET /api/v1/transactions", () => {
@@ -367,6 +451,35 @@ describe("PATCH /api/v1/transactions/:id", () => {
     const command = deps.reviseTransaction.execute.mock.calls[0]?.[0];
     expect(command).not.toHaveProperty("amount");
     expect(command).not.toHaveProperty("type");
+  });
+
+  it("forwards a splits collection to the use case (replace semantics; [] clears)", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+    deps.reviseTransaction.execute.mockResolvedValue(
+      ok(transactionView({ splits: [{ categoryId: "cat-food", amount: "25.50" }] })),
+    );
+
+    const res = await patchJson(app, "/api/v1/transactions/trx-9", {
+      splits: [{ categoryId: "cat-food", amount: 2550 }],
+    });
+    expect(res.status).toBe(200);
+    expect(deps.reviseTransaction.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId: WS,
+        transactionId: "trx-9",
+        splits: [{ categoryId: "cat-food", amount: 2550 }],
+      }),
+    );
+
+    deps.reviseTransaction.execute.mockClear();
+    const cleared = await patchJson(app, "/api/v1/transactions/trx-9", {
+      splits: [],
+    });
+    expect(cleared.status).toBe(200);
+    expect(deps.reviseTransaction.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ splits: [] }),
+    );
   });
 
   it("maps a TRANSACTION_NOT_FOUND DomainError to 404", async () => {

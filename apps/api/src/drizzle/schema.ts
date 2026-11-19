@@ -13,10 +13,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
- * Drizzle mirror of the Prisma-managed schema (apps/api/prisma/schema.prisma).
- * Table and column names are EXACT: Prisma @@map names the tables and every
- * field maps 1:1 to a camelCase quoted column. This file only describes the
- * existing tables — it never generates migrations.
+ * Source of truth for the physical schema; `pnpm db:generate` emits SQL
+ * migrations under apps/api/drizzle from changes made here.
  */
 
 export const workspaces = pgTable(
@@ -25,7 +23,6 @@ export const workspaces = pgTable(
     id: text("id").primaryKey(),
     identityKey: text("identityKey").notNull(),
     kind: text("kind").notNull().default("personal"),
-    locale: text("locale").notNull().default("en-US"),
     timezone: text("timezone").notNull().default("UTC"),
     defaultCurrency: text("defaultCurrency").notNull().default("USD"),
     createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
@@ -174,6 +171,88 @@ export const ledgerTransactionRevisions = pgTable(
       columns: [table.transactionId],
       foreignColumns: [ledgerTransactions.id],
     }).onDelete("cascade").onUpdate("cascade"),
+  ],
+);
+
+/**
+ * Category-level breakdown of a transaction (receipt-scan-drafts T1, S4).
+ * INV-TRX-SPLIT-01 is enforced by the domain aggregate; `position` keeps
+ * the collection's order stable across save/load.
+ */
+export const ledgerTransactionSplits = pgTable(
+  "ledger_transaction_splits",
+  {
+    id: text("id").primaryKey(),
+    transactionId: text("transactionId").notNull(),
+    categoryId: text("categoryId").notNull(),
+    amountMinor: bigint("amountMinor", { mode: "bigint" }).notNull(),
+    position: integer("position").notNull(),
+  },
+  (table) => [
+    uniqueIndex("ledger_transaction_splits_transactionId_position_key").on(
+      table.transactionId,
+      table.position,
+    ),
+    index("ledger_transaction_splits_transactionId_idx").on(
+      table.transactionId,
+    ),
+    foreignKey({
+      name: "ledger_transaction_splits_transactionId_fkey",
+      columns: [table.transactionId],
+      foreignColumns: [ledgerTransactions.id],
+    }).onDelete("cascade").onUpdate("cascade"),
+    foreignKey({
+      name: "ledger_transaction_splits_categoryId_fkey",
+      columns: [table.categoryId],
+      foreignColumns: [categories.id],
+    }).onDelete("restrict").onUpdate("cascade"),
+  ],
+);
+
+/**
+ * Quarantined receipt uploads (receipt-scan-drafts T3, S9). The object
+ * lives in storage under `storageKey`; the row tracks the async pipeline
+ * status (`pending` → `extracted` → `draft_ready` → `confirmed`, or
+ * `rejected`/`failed`) and carries the extraction/draft payloads plus
+ * the confirmed transaction once the user approves the draft (T6).
+ */
+export const receiptScans = pgTable(
+  "receipts_receipt_scans",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspaceId").notNull(),
+    uploaderSubject: text("uploaderSubject").notNull(),
+    storageKey: text("storageKey").notNull(),
+    originalFilename: text("originalFilename").notNull(),
+    mimeType: text("mimeType").notNull(),
+    sizeBytes: integer("sizeBytes").notNull(),
+    status: text("status").notNull().default("pending"),
+    extractedPayload: jsonb("extractedPayload"),
+    draftPayload: jsonb("draftPayload"),
+    transactionId: text("transactionId"),
+    // receipt-scan-drafts T13 (S12): SHA-256 hex of the uploaded bytes —
+    // exact-hash dedup at upload time. Nullable: rows created before T13
+    // have no hash and never collide (NULLs don't match in unique indexes).
+    fileHash: text("fileHash"),
+    error: text("error"),
+    createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("receipts_receipt_scans_workspaceId_idx").on(table.workspaceId),
+    uniqueIndex("receipts_receipt_scans_workspaceId_fileHash_key").on(
+      table.workspaceId,
+      table.fileHash,
+    ),
+    foreignKey({
+      name: "receipts_receipt_scans_transactionId_fkey",
+      columns: [table.transactionId],
+      foreignColumns: [ledgerTransactions.id],
+    }).onDelete("set null").onUpdate("cascade"),
   ],
 );
 

@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { createDrizzleDb, type DrizzleDb } from "../../../drizzle/db.js";
 import { categories } from "../../../drizzle/schema.js";
 import { WorkspaceId } from "../../shared-kernel/index.js";
 import { Category } from "../domain/category.js";
-import { DrizzleCategoryRepository } from "./drizzle-category.repository.js";
+import {
+  DrizzleCategoryRepository,
+  SYSTEM_UNCATEGORIZED_ID,
+} from "./drizzle-category.repository.js";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ??
@@ -298,5 +301,63 @@ describe("DrizzleCategoryRepository (integration, real Postgres)", () => {
     await repository.ensureSeedCategories(workspaceId(WS_A));
 
     expect(await ownedRows(db, WS_A, "spec_seed_idem")).toHaveLength(1);
+  });
+
+  it("ensureUncategorized returns a single protected global fallback (T6)", async () => {
+    const first = await repository.ensureUncategorized();
+    GLOBAL_IDS.push(first.id);
+
+    expect(first.key).toBe("uncategorized");
+    expect(first.custom).toBe(false);
+    const [row] = await db
+      .select()
+      .from(categories)
+      .where(eq(categories.id, first.id));
+    expect(row!.workspaceId).toBeNull();
+
+    // Idempotent: a second call resolves the same row.
+    const second = await repository.ensureUncategorized();
+    expect(second.id).toBe(first.id);
+
+    // It stays a system row: no workspace copy appears.
+    expect(await ownedRows(db, WS_A, "uncategorized")).toHaveLength(0);
+  });
+
+  it("ensureUncategorized provisions the row when absent, race-safe by deterministic id", async () => {
+    // Only rows this spec/repository may have created — never a foreign
+    // fixture that happens to share the key.
+    await db
+      .delete(categories)
+      .where(
+        and(
+          eq(categories.id, SYSTEM_UNCATEGORIZED_ID),
+          isNull(categories.workspaceId),
+        ),
+      );
+
+    const created = await repository.ensureUncategorized();
+    GLOBAL_IDS.push(created.id);
+
+    // Either the deterministic system row or a pre-existing fallback.
+    expect(created.key).toBe("uncategorized");
+    expect(created.custom).toBe(false);
+  });
+
+  it("ensureUncategorized reuses a pre-existing global fallback row", async () => {
+    const countGlobals = () =>
+      db.$count(
+        categories,
+        and(eq(categories.key, "uncategorized"), isNull(categories.workspaceId)),
+      );
+    const before = await countGlobals();
+    // At least one fallback row already exists (this suite seeds them).
+    expect(before).toBeGreaterThan(0);
+
+    const found = await repository.ensureUncategorized();
+
+    expect(found.key).toBe("uncategorized");
+    expect(found.custom).toBe(false);
+    // Reuse, not duplication: no additional global row is written.
+    expect(await countGlobals()).toBe(before);
   });
 });

@@ -10,6 +10,13 @@ export interface BalanceItemView {
   readonly balance: string;
 }
 
+/** One category-level split line inside {@link TransactionView.splits}. */
+export interface TransactionSplitView {
+  categoryId: string;
+  /** Decimal string in the transaction currency, never a float. */
+  amount: string;
+}
+
 export interface TransactionView {
   id: string;
   workspaceId: string;
@@ -26,6 +33,8 @@ export interface TransactionView {
   origin: "manual" | "ticket" | "voice";
   confirmedAt: string;
   revisionCount: number;
+  /** Category breakdown in stored order; empty when the transaction has none. */
+  splits: TransactionSplitView[];
 }
 
 /** Table row: a confirmed server transaction or a locally queued one. */
@@ -71,7 +80,6 @@ export interface ReviseAccountInput {
 
 export interface WorkspaceView {
   workspaceId: string;
-  locale: string;
   timezone: string;
   defaultCurrency: string;
 }

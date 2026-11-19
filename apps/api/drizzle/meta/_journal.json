@@ -22,6 +22,34 @@
       "when": 1794024853236,
       "tag": "0002_smiling_sunfire",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794943389550,
+      "tag": "0003_sudden_maria_hill",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794966600384,
+      "tag": "0004_yummy_juggernaut",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795054572814,
+      "tag": "0005_wealthy_ultragirl",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795057395443,
+      "tag": "0006_spooky_luminals",
+      "breakpoints": true
     }
   ]
 }

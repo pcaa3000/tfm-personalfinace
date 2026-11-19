@@ -98,7 +98,7 @@ Entregar el núcleo financiero sin depender de OCR o voz.
 ### Unidades de trabajo
 
 1. Integrar OIDC mediante Supabase Auth: usuario/contraseña, al menos un proveedor social (Google o Facebook) y passkey; validación de tokens y aprovisionamiento por issuer–subject.
-2. Crear workspace con idioma, locale, zona horaria y moneda predeterminada.
+2. Crear workspace con idioma, zona horaria y moneda predeterminada.
 3. Crear el catálogo inicial de categorías (Hogar, Comida, Transporte, Salud, Sueldo, etc.) y categorías personalizadas.
 4. Registrar ingresos y gastos manuales con dinero exacto y fecha de negocio.
 5. Implementar la cola local de la PWA y el endpoint de sincronización idempotente para registros manuales.
@@ -142,6 +142,8 @@ Entregar el núcleo financiero sin depender de OCR o voz.
 - El balance general por moneda muestra ingresos, gastos y saldo actual; balance y filtros permanecen visibles al desplazarse en móvil, tablet y escritorio.
 
 ## Fase 2 — Tickets, archivos y OCR
+
+> **Estado (feature `receipt-scan-drafts`, odd/tasks/receipt-scan-drafts.md):** implementado un MVP más acotado que esta fase — unidades 1 (estados), 3 parcial (cuarentena + tipo real por magic bytes + límite de tamaño; sin EXIF/GPS ni malware scan), 4 parcial (encolado pg-boss; sin reconciliación de jobs estancados), 6-8 (adaptador `ReceiptScanPort` + Gemini en lugar de OCR determinista/Azure, normalización zod + confianza por ítem), 9 (revisión/confirmación/descarte). **Pendientes de esta fase:** 2 (subida firmada Supabase + checksum + cuotas), 5 (capturas encoladas offline — hoy el upload exige conexión), 7 (Azure DI opt-in), 10 (consentimiento + retención 30 días), 11 (métricas). Variables de entorno nuevas (`.env.example` pendiente por política de seguridad): `STORAGE_DRIVER` (`local`|`s3`), `RECEIPT_STORAGE_DIR`, `RECEIPT_MAX_BYTES`, `S3_ENDPOINT`/`S3_REGION`/`S3_BUCKET`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` (driver s3), `GEMINI_API_KEY` (requerida en worker), `GEMINI_MODEL` (default `gemini-3.5-flash-lite`).
 
 ### Objetivo
 

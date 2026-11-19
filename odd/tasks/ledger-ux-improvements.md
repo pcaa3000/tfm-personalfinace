@@ -26,6 +26,9 @@ El usuario autorizó implementar de la más alta a la más baja prioridad.
 - S12: el theme define `:focus-visible` visible (outline estilo artboard `3px solid var(--focus)`).
 - S13: los dots del carrusel tienen área táctil mayor (padding/hit-area ≥ ~24px manteniendo el tamaño visual del indicador).
 
+### Unidad E — fixes de formulario (posterior)
+- S14 (L4): el label flotante del primer campo del `TransactionForm` ("Tipo") no queda recortado por el borde superior del `DialogContent` (MUI pone `padding-top: 0` tras `DialogTitle`); el form reserva headroom propio (`pt: 1.5` en el Stack raíz).
+
 ## Tasks
 
 | ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
@@ -34,9 +37,12 @@ El usuario autorizó implementar de la más alta a la más baja prioridad.
 | T2 | Unidad B: filtros mobile + atajos + período + placeholder | S4-S7 | worker | done | caa94af; RED→GREEN 10fail/31pass → 41/41; suite 242/242; tsc+eslint limpios. Riesgo: none. |
 | T3 | Unidad C: tabla min-width + color transfer + auto-mini rail | S8-S10 | worker | done | cc43724; RED→GREEN 8fail/37pass → 45/45; suite 255/255; tsc+eslint limpios. Ajuste del padre: overflowX:auto solo <1180px para preservar sticky header. Riesgo: none. |
 | T4 | Unidad D: target del ojo + focus-visible + dots | S11-S13 | worker | done | e46f39b (S12-S13); S11 aplicado en feat/hide-balance-amounts como fix propio (el ojo vive en esa rama, aún sin mergear). RED→GREEN 3fail/8pass → 11/11; suite 258/258; tsc+eslint limpios. Riesgo: none. |
+| T5 | Unidad E: label "Tipo" recortado en diálogos de movimiento | S14 | inline | done | 94c4e1d + a6cc472 (fix: comentario `//` dentro de JSX se renderizaba como texto → pasado a `{/* */}`); RED no aplicable (jsdom no mide layout — fix visual); TransactionForm 20/20 + ReceiptFlow 12/12 verdes; tsc limpio. Riesgo: none. |
 
 ## Log
 
 - L1: «puedes revisar la UI/UX y decirme que puedo mejorar» — revisión read-only con skill gentle-ui-design (refs composition-and-feedback + adaptive-interfaces) + exploración de la UI por subagente. Se reportaron 12 hallazgos priorizados.
 - L2: «si proceder de la mas alta a la mas baja» — autoriza implementar las mejoras en orden de prioridad.
 - L3: T4: el worker detectó que S11 no existía en esta rama (el ojo está en feat/hide-balance-amounts); se aplicó ahí como fix. S12/S13 en e46f39b. Estrategia de entrega: cada unidad T# es un commit/PR propio; la rama supera las ~400 líneas por ser 4 unidades.
+- L4: «puedes ajustar el label "Tipo" en el formulario de moviento, que esta cortado.» + confirmación: recorte **visual** (label flotante tapado por el borde del DialogContent, `pt:0` tras DialogTitle). Diagnóstico: el primer campo del form necesita ~9px de aire; fix `pt:1.5` en el Stack raíz de TransactionForm — cubre NewMovementDialog y EditTransactionDialog. T5 registrada en Unidad E.
+- L5: el usuario reportó que el comentario `//` agregado en T5 se mostraba como texto en el form (defecto del orquestador: comentario estilo línea dentro de JSX) → fix a6cc472 a sintaxis `{/* */}`. TransactionForm 20/20 tras el fix.

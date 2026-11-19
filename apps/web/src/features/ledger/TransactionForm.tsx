@@ -2,6 +2,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Alert,
   Button,
+  Chip,
   MenuItem,
   Stack,
   TextField,
@@ -9,11 +10,20 @@ import {
 import { useEffect, useMemo } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import { z } from "zod";
 
+import { CategorySelect } from "./CategorySelect";
+import { categoryLabel } from "./category-label";
+import { suggestCategoryForConcept } from "./category-suggestion";
 import { todayInTimeZone } from "./format";
-import type { AccountView, CategoryView, TransactionType } from "./types";
+import type {
+  AccountView,
+  CategoryView,
+  CreateCategoryInput,
+  TransactionType,
+} from "./types";
+
+export { categoryLabel } from "./category-label";
 
 type FormValues = {
   type: TransactionType;
@@ -35,14 +45,6 @@ export interface TransactionFormValues
 
 const FALLBACK_CURRENCIES = ["PEN", "USD", "EUR", "ARS", "JPY", "BHD"];
 
-/** Stable catalog key → localized label; custom categories keep their label. */
-export function categoryLabel(
-  category: CategoryView,
-  t: TFunction,
-): string {
-  return t(`categories.${category.key}`, { defaultValue: category.label });
-}
-
 interface Props {
   categories: CategoryView[];
   accounts: AccountView[];
@@ -55,6 +57,10 @@ interface Props {
   submitLabel?: string;
   /** Workspace IANA zone; falls back to the browser zone, then "UTC". */
   timezone?: string | undefined;
+  /** Inline category creation inside the category select (T8, S8). */
+  onCreateCategory?:
+    | ((input: CreateCategoryInput) => Promise<CategoryView>)
+    | undefined;
   onSubmit: (values: TransactionFormValues) => void;
 }
 
@@ -68,6 +74,7 @@ export function TransactionForm({
   initialValues,
   submitLabel,
   timezone,
+  onCreateCategory,
   onSubmit,
 }: Props) {
   const { t } = useTranslation();
@@ -142,6 +149,8 @@ export function TransactionForm({
   const selectedType = watch("type");
   const selectedCurrency = watch("currency");
   const selectedAccountId = watch("accountId");
+  const conceptValue = watch("concept");
+  const selectedCategoryId = watch("categoryId");
   const currencyAccounts = accounts.filter(
     (a) => a.currency === selectedCurrency,
   );
@@ -149,6 +158,22 @@ export function TransactionForm({
     (a) => a.id !== selectedAccountId,
   );
   const isTransfer = selectedType === "transfer";
+
+  // D1b (T8): match the concept against the *localized* category
+  // names so a Spanish user typing "comida" hits the "Comida"
+  // catalog entry too — the suggestion is offered, never auto-set.
+  const localizedCategories = useMemo(
+    () =>
+      categories.map((category) => ({
+        ...category,
+        label: categoryLabel(category, t),
+      })),
+    [categories, t],
+  );
+  const categorySuggestion =
+    !isTransfer && !selectedCategoryId
+      ? suggestCategoryForConcept(conceptValue ?? "", localizedCategories)
+      : null;
 
   useEffect(() => {
     if (initialValues?.currency === undefined && !isDirty) {
@@ -192,7 +217,10 @@ export function TransactionForm({
 
   return (
     <form onSubmit={submit} aria-label={t("form.newTransaction")}>
-      <Stack spacing={2} sx={{ maxWidth: 480 }}>
+      {/* pt: the first field's floating label sits ~9px above the
+          input; DialogContent after DialogTitle zeroes padding-top
+          and clips it, so the form reserves its own headroom. */}
+      <Stack spacing={2} sx={{ maxWidth: 480, pt: 2 }}>
         {error ? <Alert severity="error">{error}</Alert> : null}
         <Controller
           name="type"
@@ -319,29 +347,46 @@ export function TransactionForm({
           fullWidth
         />
         {!isTransfer ? (
-          <Controller
-            name="categoryId"
-            control={control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                select
-                label={t("form.category")}
-                value={field.value ?? ""}
-                onChange={(event) =>
-                  field.onChange(event.target.value === "" ? null : event.target.value)
+          <Stack spacing={0.75}>
+            <Controller
+              name="categoryId"
+              control={control}
+              render={({ field }) => (
+                <CategorySelect
+                  name={field.name}
+                  onBlur={field.onBlur}
+                  inputRef={field.ref}
+                  label={t("form.category")}
+                  categories={categories}
+                  value={field.value ?? ""}
+                  onChange={(next) =>
+                    field.onChange(next === "" ? null : next)
+                  }
+                  leadingOptions={
+                    <MenuItem value="">{t("form.uncategorized")}</MenuItem>
+                  }
+                  onCreateCategory={onCreateCategory}
+                  fullWidth
+                />
+              )}
+            />
+            {categorySuggestion ? (
+              <Chip
+                size="small"
+                variant="outlined"
+                color="primary"
+                sx={{ alignSelf: "flex-start" }}
+                onClick={() =>
+                  setValue("categoryId", categorySuggestion.id, {
+                    shouldDirty: true,
+                  })
                 }
-                fullWidth
-              >
-                <MenuItem value="">{t("form.uncategorized")}</MenuItem>
-                {categories.map((category) => (
-                  <MenuItem key={category.id} value={category.id}>
-                    {categoryLabel(category, t)}
-                  </MenuItem>
-                ))}
-              </TextField>
-            )}
-          />
+                label={t("form.categorySuggestion", {
+                  name: categorySuggestion.label,
+                })}
+              />
+            ) : null}
+          </Stack>
         ) : null}
         <Button
           type="submit"
