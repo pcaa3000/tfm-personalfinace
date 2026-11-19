@@ -98,4 +98,46 @@ describe("InlineReceiptScanDispatcher (T14, S13)", () => {
     await closing;
     expect(closed).toBe(true);
   });
+
+  it("refuses new scans once close() started — the pending row is recoverable via retry", async () => {
+    const runner = vi.fn(async () => undefined);
+    const logger = { error: vi.fn() };
+    const dispatcher = new InlineReceiptScanDispatcher(runner, { logger });
+
+    const closing = dispatcher.close();
+    await dispatcher.enqueueScan("r-late", "ws-1");
+    await flush();
+    await closing;
+
+    expect(runner).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("r-late"),
+    );
+  });
+
+  it("close() resolves after the drain deadline even if a scan hangs", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      const dispatcher = new InlineReceiptScanDispatcher(
+        () => new Promise<void>(() => {}), // never resolves
+        { drainMs: 50 },
+      );
+
+      await dispatcher.enqueueScan("r-hung", "ws-1");
+      await flush(); // deferred task started
+
+      let closed = false;
+      const closing = dispatcher.close().then(() => {
+        closed = true;
+      });
+      await flush();
+      expect(closed).toBe(false);
+
+      vi.advanceTimersByTime(51);
+      await closing;
+      expect(closed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

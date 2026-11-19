@@ -17,6 +17,12 @@ export interface InlineReceiptScanDispatcherOptions {
   /** Deferral primitive — production uses setImmediate; specs inject sync. */
   readonly defer?: (task: () => void) => void;
   readonly logger?: Pick<Console, "error">;
+  /**
+   * Graceful-shutdown budget: close() waits for in-flight scans at most
+   * this long, then resolves so the process can exit. A hung scanner
+   * call must not block shutdown forever. Default 5s.
+   */
+  readonly drainMs?: number;
 }
 
 /**
@@ -34,7 +40,9 @@ export interface InlineReceiptScanDispatcherOptions {
 export class InlineReceiptScanDispatcher implements ReceiptScanDispatcher {
   private readonly defer: (task: () => void) => void;
   private readonly logger: Pick<Console, "error">;
+  private readonly drainMs: number;
   private readonly inFlight = new Set<Promise<void>>();
+  private closing = false;
 
   constructor(
     private readonly run: InlineScanRunner,
@@ -42,9 +50,19 @@ export class InlineReceiptScanDispatcher implements ReceiptScanDispatcher {
   ) {
     this.defer = options.defer ?? ((task) => setImmediate(task));
     this.logger = options.logger ?? console;
+    this.drainMs = options.drainMs ?? 5_000;
   }
 
   async enqueueScan(receiptId: string, workspaceId: string): Promise<void> {
+    if (this.closing) {
+      // Shutdown in progress: refuse instead of launching a scan the
+      // process cannot finish. The row stays `pending` — POST retry
+      // recovers it on the next boot.
+      this.logger.error(
+        `[receipts] inline scan ${receiptId} refused during shutdown`,
+      );
+      return;
+    }
     const job: InlineScanJob = { receiptId, workspaceId };
     const tracked = new Promise<void>((resolve) => {
       this.defer(() => {
@@ -69,8 +87,22 @@ export class InlineReceiptScanDispatcher implements ReceiptScanDispatcher {
     this.inFlight.add(tracked);
   }
 
-  /** Drains scans already running before shutdown. */
+  /**
+   * Drains scans already running before shutdown, bounded by
+   * `drainMs` — a hung scanner request must not stall the exit. Scans
+   * cut short die with the process; their rows stay `pending` and the
+   * retry endpoint is the recovery path.
+   */
   async close(): Promise<void> {
-    await Promise.allSettled([...this.inFlight]);
+    this.closing = true;
+    let deadline: NodeJS.Timeout | undefined;
+    await Promise.race([
+      Promise.allSettled([...this.inFlight]),
+      new Promise<void>((resolve) => {
+        deadline = setTimeout(resolve, this.drainMs);
+        deadline.unref?.();
+      }),
+    ]);
+    if (deadline) clearTimeout(deadline);
   }
 }
