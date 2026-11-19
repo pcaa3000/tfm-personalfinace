@@ -69,6 +69,24 @@ describe("RetryReceiptScanUseCase — retry without re-upload (T12, S11)", () =>
     expect(dispatcher.enqueueScan).toHaveBeenCalledWith("scan-1", "ws-a");
   });
 
+  it("a dispatch failure marks the scan failed again — it never sticks pending without a job (R4-RETRY-LOST-JOB)", async () => {
+    const scan = scanWithStatus("failed");
+    const { scans, dispatcher } = buildDeps(scan);
+    vi.mocked(dispatcher.enqueueScan).mockRejectedValueOnce(
+      new Error("boss down"),
+    );
+    const useCase = new RetryReceiptScanUseCase(scans, dispatcher, clock);
+
+    const result = await useCase.execute(WS_A, "scan-1");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.status).toBe("failed");
+    }
+    expect(scan.status).toBe("failed");
+    expect(scans.save).toHaveBeenCalledTimes(2);
+  });
+
   it.each(["pending", "extracted", "draft_ready"] as const)(
     "returns a scan still in flight or reviewable (%s) unchanged, without re-enqueueing",
     async (status) => {

@@ -66,7 +66,7 @@ function makeDeps() {
 /** A stored scan as the dedup lookup would return it. */
 function storedScan(overrides: Partial<{
   id: string;
-  status: "pending" | "failed";
+  status: "pending" | "failed" | "rejected";
 }> = {}): ReceiptScan {
   const scan = ReceiptScan.quarantine({
     id: overrides.id ?? "scan-existing",
@@ -82,6 +82,9 @@ function storedScan(overrides: Partial<{
   if (!scan.ok) throw scan.error;
   if (overrides.status === "failed") {
     scan.value.markFailed("pipeline blew up", NOW);
+  }
+  if (overrides.status === "rejected") {
+    scan.value.markRejected(NOW);
   }
   return scan.value;
 }
@@ -261,6 +264,43 @@ describe("UploadReceiptUseCase — exact-hash dedup (T13, S12)", () => {
     expect(storage.save).not.toHaveBeenCalled();
     expect(scans.save).not.toHaveBeenCalled();
     expect(dispatcher.enqueueScan).not.toHaveBeenCalled();
+  });
+
+  it("a rejected dedup hit is reused: pending + re-enqueued over the original storageKey (R4-DEDUP-FINAL-STATUS)", async () => {
+    const { useCase, storage, scans, fileHashes, dispatcher } = makeDeps();
+    const rejected = storedScan({ id: "scan-rej", status: "rejected" });
+    vi.mocked(fileHashes.findByFileHash).mockResolvedValueOnce(rejected);
+
+    const result = await useCase.execute(command());
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.id).toBe("scan-rej");
+      expect(result.value.status).toBe("pending");
+    }
+    expect(rejected.status).toBe("pending");
+    expect(scans.save).toHaveBeenCalledWith(rejected);
+    expect(dispatcher.enqueueScan).toHaveBeenCalledWith(
+      "scan-rej",
+      WS.value,
+    );
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it("a rejected dedup hit whose re-enqueue fails is marked failed — never stuck pending (R4-RETRY-LOST-JOB)", async () => {
+    const { useCase, scans, fileHashes, dispatcher } = makeDeps();
+    const rejected = storedScan({ id: "scan-rej2", status: "rejected" });
+    vi.mocked(fileHashes.findByFileHash).mockResolvedValueOnce(rejected);
+    vi.mocked(dispatcher.enqueueScan).mockRejectedValueOnce(new Error("boss down"));
+
+    const result = await useCase.execute(command());
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.status).toBe("failed");
+    }
+    expect(rejected.status).toBe("failed");
+    expect(scans.save).toHaveBeenCalledTimes(2);
   });
 
   it("a second upload of DIFFERENT bytes stores a fresh scan", async () => {

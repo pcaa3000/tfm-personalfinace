@@ -59,6 +59,15 @@ export class RetryReceiptScanUseCase {
           `[receipts] failed to re-enqueue receipt-scan job for ${scan.id}:`,
           cause,
         );
+        // R4-RETRY-LOST-JOB: a pending row without a job is a dead end —
+        // retry treats `pending` as a no-op and upload dedup returns it
+        // unchanged, so nothing would ever re-enqueue. Mark the scan
+        // `failed` instead so the retry endpoint stays reachable.
+        scan.markFailed(
+          "receipt-scan dispatch failed",
+          this.clock.now(),
+        );
+        await this.scans.save(scan);
       }
     }
     return ok(toReceiptScanView(scan));

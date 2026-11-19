@@ -1,4 +1,6 @@
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   createApp,
@@ -350,6 +352,20 @@ export function envFromProcess(): AppEnv {
  * settings is missing — a half-configured object store must never
  * silently downgrade.
  */
+/**
+ * Default local receipt dir = `<api package root>/s3/tickets` (L18).
+ * Resolved by walking up from this module to the nearest package.json —
+ * correct from `src/hono` (tsx dev) and `dist/src/hono` (built worker),
+ * independent of the process cwd (R4-STORAGE-CWD).
+ */
+function defaultLocalReceiptDir(): string {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 8 && !existsSync(join(dir, "package.json")); i += 1) {
+    dir = dirname(dir);
+  }
+  return join(dir, "s3", "tickets");
+}
+
 function receiptsFromProcess(): AppEnv["receipts"] {
   return {
     maxBytes: parsePositiveInt(
@@ -373,9 +389,7 @@ export function receiptStorageFromProcess(): ReceiptStorageEnv {
       driver: "local",
       dir:
         process.env.RECEIPT_STORAGE_DIR ??
-        // Default: repo-local apps/api/s3/tickets (L18) — resuelto desde
-        // el cwd del proceso (dev/qa/dev:worker corren con cwd=apps/api).
-        join(process.cwd(), "s3", "tickets"),
+        defaultLocalReceiptDir(),
     };
   }
   if (driver === "s3") {

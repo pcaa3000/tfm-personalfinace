@@ -74,6 +74,33 @@ export class UploadReceiptUseCase {
       fileHash,
     );
     if (existing) {
+      // R4-DEDUP-FINAL-STATUS: returning a terminal scan makes the same
+      // bytes unprocessable forever. `rejected` is user-discard — reuse
+      // the row: back to pending + re-enqueue over the original
+      // storageKey (same recovery semantics as T12 retry; a dispatch
+      // failure marks the scan failed so it never sticks pending).
+      // `confirmed` stays returned as-is — the voucher already
+      // materialized a transaction, that IS the dedup.
+      if (existing.status === "rejected") {
+        existing.resetToPending(this.clock.now());
+        await this.scans.save(existing);
+        try {
+          await this.dispatcher.enqueueScan(
+            existing.id,
+            command.workspaceId.value,
+          );
+        } catch (cause) {
+          console.error(
+            `[receipts] failed to re-enqueue receipt-scan job for ${existing.id}:`,
+            cause,
+          );
+          existing.markFailed(
+            "receipt-scan dispatch failed",
+            this.clock.now(),
+          );
+          await this.scans.save(existing);
+        }
+      }
       return ok(toReceiptScanView(existing));
     }
 
