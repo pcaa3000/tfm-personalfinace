@@ -1,5 +1,5 @@
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   createApp,
@@ -330,9 +330,10 @@ export function envFromProcess(): AppEnv {
 /**
  * Receipt storage + quarantine config (receipt-scan-drafts T3, D2).
  * `STORAGE_DRIVER` fails closed like AUTH_MODE; `local` needs no config
- * in dev (RECEIPT_STORAGE_DIR defaults to an OS temp dir, outside the
- * repo) while `s3` fails fast when any of its settings is missing — a
- * half-configured object store must never silently downgrade.
+ * in dev (RECEIPT_STORAGE_DIR defaults to the repo-local
+ * apps/api/s3/tickets, gitignored) while `s3` fails fast when any of its
+ * settings is missing — a half-configured object store must never
+ * silently downgrade.
  */
 function receiptsFromProcess(): AppEnv["receipts"] {
   return {
@@ -357,7 +358,16 @@ export function receiptStorageFromProcess(): ReceiptStorageEnv {
       driver: "local",
       dir:
         process.env.RECEIPT_STORAGE_DIR ??
-        join(tmpdir(), "tfm-receipts"),
+        // Default: repo-local apps/api/s3/tickets (L18) — resuelto desde el
+        // módulo (src/hono o dist/src/hono → 3 niveles arriba = apps/api).
+        join(
+          dirname(fileURLToPath(import.meta.url)),
+          "..",
+          "..",
+          "..",
+          "s3",
+          "tickets",
+        ),
     };
   }
   if (driver === "s3") {

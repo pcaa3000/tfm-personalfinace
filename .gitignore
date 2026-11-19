@@ -21,3 +21,6 @@ coverage/
 .idea/
 .vscode/
 .DS_Store
+
+# receipt uploads (local storage driver, L18)
+apps/api/s3/

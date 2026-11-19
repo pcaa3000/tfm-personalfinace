@@ -222,6 +222,10 @@ describe("envFromProcess — receipt storage + upload limits (receipt-scan-draft
     expect(env.receipts.storage.driver).toBe("local");
     if (env.receipts.storage.driver === "local") {
       expect(env.receipts.storage.dir.length).toBeGreaterThan(0);
+      // Default local dir is the repo-local s3/tickets (L18); absolute
+      // because composition resolves it against apps/api.
+      expect(env.receipts.storage.dir).toContain("s3");
+      expect(env.receipts.storage.dir).toContain("tickets");
     }
     expect(env.receipts.maxBytes).toBe(5 * 1024 * 1024);
   });
