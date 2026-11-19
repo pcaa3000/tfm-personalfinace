@@ -94,5 +94,12 @@ export { PgBossReceiptScanDispatcher } from "./infrastructure/pgboss-receipt-sca
 export {
   GeminiReceiptScanAdapter,
   GEMINI_DEFAULT_BASE_URL,
+  GEMINI_DEFAULT_MODEL,
   type GeminiReceiptScanConfig,
 } from "./infrastructure/gemini-receipt-scan.adapter.js";
+export {
+  InlineReceiptScanDispatcher,
+  type InlineReceiptScanDispatcherOptions,
+  type InlineScanJob,
+  type InlineScanRunner,
+} from "./infrastructure/inline-receipt-scan.dispatcher.js";

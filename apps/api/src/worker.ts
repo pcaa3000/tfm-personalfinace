@@ -21,10 +21,9 @@ import { SystemClock } from "./modules/ledger/infrastructure/system-clock.adapte
 import {
   DrizzleReceiptScanRepository,
   GeminiReceiptScanAdapter,
+  GEMINI_DEFAULT_MODEL,
   RECEIPT_SCAN_QUEUE,
 } from "./modules/receipts/index.js";
-
-export const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
 const DRAIN_INTERVAL_MS = Number(process.env.WORKER_DRAIN_MS ?? 2_000);
 

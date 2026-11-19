@@ -49,6 +49,17 @@ import { CryptoFileHasher } from "../modules/receipts/infrastructure/crypto-file
 import { LocalReceiptStorage } from "../modules/receipts/infrastructure/local-receipt-storage.js";
 import { S3ReceiptStorage } from "../modules/receipts/infrastructure/s3-receipt-storage.js";
 import { PgBossReceiptScanDispatcher } from "../modules/receipts/infrastructure/pgboss-receipt-scan.dispatcher.js";
+import { InlineReceiptScanDispatcher } from "../modules/receipts/infrastructure/inline-receipt-scan.dispatcher.js";
+import {
+  GeminiReceiptScanAdapter,
+  GEMINI_DEFAULT_MODEL,
+} from "../modules/receipts/infrastructure/gemini-receipt-scan.adapter.js";
+import type { ReceiptScanDispatcher } from "../modules/receipts/application/ports/receipt-scan-dispatcher.port.js";
+import type { ReceiptScanPort } from "../modules/receipts/application/ports/receipt-scan.port.js";
+import {
+  handleReceiptScan,
+  type ReceiptScanJobDeps,
+} from "../jobs/receipt-scan.js";
 import { UploadReceiptUseCase } from "../modules/receipts/application/upload-receipt.use-case.js";
 import { GetReceiptScanUseCase } from "../modules/receipts/application/get-receipt-scan.use-case.js";
 import { GetReceiptFileUseCase } from "../modules/receipts/application/get-receipt-file.use-case.js";
@@ -80,6 +91,28 @@ export type ReceiptStorageEnv =
       readonly secretAccessKey: string;
     };
 
+/**
+ * Scan dispatcher selection (receipt-scan-drafts T14, S13): `pgboss`
+ * keeps the API→queue→worker topology; `inline` runs the same
+ * handleReceiptScan pipeline in-process for single-component deploys
+ * (Render free tier — no background worker). Inline mode needs the
+ * Gemini config at API boot, identical to the worker's fail-fast.
+ */
+export type ReceiptScanDispatcherEnv =
+  | { readonly mode: "pgboss" }
+  | {
+      readonly mode: "inline";
+      readonly gemini: {
+        readonly apiKey: string;
+        readonly model: string;
+      };
+      /**
+       * Test seam: e2e specs inject a fake ReceiptScanPort instead of
+       * the real Gemini adapter. Unset → GeminiReceiptScanAdapter.
+       */
+      readonly scanner?: ReceiptScanPort;
+    };
+
 export interface AppEnv {
   readonly databaseUrl: string;
   readonly authMode: "dev" | "oidc";
@@ -92,6 +125,7 @@ export interface AppEnv {
   readonly receipts: {
     readonly maxBytes: number;
     readonly storage: ReceiptStorageEnv;
+    readonly scanDispatcher: ReceiptScanDispatcherEnv;
   };
 }
 
@@ -128,8 +162,15 @@ export function buildApp(env: AppEnv): BuiltApp {
   // receipt-scan-drafts D2: storage driver selected via STORAGE_DRIVER.
   const receiptStorage = createReceiptStorage(env.receipts.storage);
   const receiptScans = new DrizzleReceiptScanRepository(db);
-  const receiptDispatcher = new PgBossReceiptScanDispatcher(
-    env.databaseUrl,
+  const receiptDispatcher = createReceiptScanDispatcher(
+    env.receipts.scanDispatcher,
+    {
+      databaseUrl: env.databaseUrl,
+      scans: receiptScans,
+      storage: receiptStorage,
+      categories: categoryValidation,
+      clock,
+    },
   );
 
   const recordManual = new RecordManualTransactionUseCase(
@@ -374,7 +415,70 @@ function receiptsFromProcess(): AppEnv["receipts"] {
       RECEIPT_MAX_BYTES_DEFAULT,
     ),
     storage: receiptStorageFromProcess(),
+    scanDispatcher: receiptScanDispatcherFromProcess(),
   };
+}
+
+/**
+ * Dispatcher env parsing (receipt-scan-drafts T14, S13): Render free
+ * tier runs ONE web service — `inline` processes the scan in-process
+ * and therefore requires GEMINI_API_KEY at API boot (fail-fast, same
+ * policy the worker applies); in `pgboss` mode the key stays
+ * worker-only and the API must NOT require it. Fails closed on any
+ * other value, like STORAGE_DRIVER.
+ */
+function receiptScanDispatcherFromProcess(): ReceiptScanDispatcherEnv {
+  const mode = process.env.RECEIPT_SCAN_DISPATCHER ?? "pgboss";
+  if (mode === "pgboss") {
+    return { mode: "pgboss" };
+  }
+  if (mode === "inline") {
+    return {
+      mode: "inline",
+      gemini: {
+        apiKey: requiredEnv("GEMINI_API_KEY"),
+        model: process.env.GEMINI_MODEL ?? GEMINI_DEFAULT_MODEL,
+      },
+    };
+  }
+  throw new Error(
+    `RECEIPT_SCAN_DISPATCHER must be "inline" or "pgboss"; got ${JSON.stringify(mode)}`,
+  );
+}
+
+/**
+ * Builds the dispatcher for the parsed mode (receipt-scan-drafts T14,
+ * S13). `inline` wires the EXACT same job deps the worker builds
+ * (worker.ts) — shared scans repo, storage, category catalog and clock
+ * instances — and reuses `handleReceiptScan` verbatim; nothing is
+ * duplicated. The scan runs fire-and-forget: if the process dies
+ * mid-scan the row stays `pending` and T12's retry is the recovery.
+ */
+function createReceiptScanDispatcher(
+  config: ReceiptScanDispatcherEnv,
+  context: { readonly databaseUrl: string } & Omit<
+    ReceiptScanJobDeps,
+    "scanner"
+  >,
+): ReceiptScanDispatcher & { close(): Promise<void> } {
+  if (config.mode === "pgboss") {
+    return new PgBossReceiptScanDispatcher(context.databaseUrl);
+  }
+  const deps: ReceiptScanJobDeps = {
+    scans: context.scans,
+    storage: context.storage,
+    categories: context.categories,
+    scanner:
+      config.scanner ??
+      new GeminiReceiptScanAdapter({
+        apiKey: config.gemini.apiKey,
+        model: config.gemini.model,
+      }),
+    clock: context.clock,
+  };
+  return new InlineReceiptScanDispatcher((job) =>
+    handleReceiptScan(deps, job),
+  );
 }
 
 /**

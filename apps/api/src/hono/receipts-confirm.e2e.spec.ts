@@ -94,9 +94,14 @@ interface ApiJson {
 
 async function json(
   path: string,
-  options: { method?: string; headers?: Record<string, string>; body?: unknown } = {},
+  options: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+    base?: string;
+  } = {},
 ): Promise<ApiJson> {
-  const res = await fetch(`${baseUrl}${path}`, {
+  const res = await fetch(`${options.base ?? baseUrl}${path}`, {
     method: options.method ?? "GET",
     headers: {
       "content-type": "application/json",
@@ -111,10 +116,11 @@ async function json(
 async function uploadReceipt(
   headers: Record<string, string>,
   bytes: Uint8Array = uniqueJpeg(),
+  base: string = baseUrl,
 ) {
   const form = new FormData();
   form.append("file", new File([bytes], "ticket.jpg", { type: "image/jpeg" }));
-  const res = await fetch(`${baseUrl}/api/v1/receipts`, {
+  const res = await fetch(`${base}/api/v1/receipts`, {
     method: "POST",
     headers,
     body: form,
@@ -148,6 +154,41 @@ async function countScanJobs(receiptId: string): Promise<number> {
   `);
   const row = Array.isArray(rows) ? rows[0] : rows.rows[0];
   return Number(row?.count ?? 0);
+}
+
+/**
+ * T14 (S13): countScanJobs variant that tolerates a database where the
+ * pgboss schema was never created (inline dispatcher, no worker ever
+ * booted) — a missing queue table means zero enqueued jobs.
+ */
+async function countScanJobsIfQueueExists(receiptId: string): Promise<number> {
+  try {
+    return await countScanJobs(receiptId);
+  } catch (error) {
+    if ((error as { code?: string }).code === "42P01") return 0; // undefined_table
+    throw error;
+  }
+}
+
+/** Polls GET /receipts/:id until it reports `wanted` (T14 inline pipeline). */
+async function waitForScanStatus(
+  base: string,
+  scanId: string,
+  headers: Record<string, string>,
+  wanted: string,
+  timeoutMs: number,
+): Promise<{ status: string }> {
+  const deadline = Date.now() + timeoutMs;
+  let last: { status: string } | null = null;
+  while (Date.now() < deadline) {
+    const res = await fetch(`${base}/api/v1/receipts/${scanId}`, { headers });
+    last = (await res.json()) as { status: string };
+    if (last.status === wanted) return last;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(
+    `scan ${scanId} never reached ${wanted}; last=${JSON.stringify(last)}`,
+  );
 }
 
 /** Drives the worker pipeline for one scan with the fake port. */
@@ -233,7 +274,6 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
       .where(eq(categories.id, "sys-uncategorized"));
     await closeApp();
     rmSync(storageDir, { recursive: true, force: true });
-    await closeTestDb();
   });
 
   it("upload → fake scan → draft → confirm creates a split transaction (origin ticket)", async () => {
@@ -594,6 +634,100 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
     });
     expect(reject.status).toBe(404);
   });
+});
+
+describe("inline scan dispatcher e2e (T14, S13)", () => {
+  let inlineUrl = "";
+  let inlineStorageDir = "";
+  let closeInline: () => Promise<void>;
+
+  beforeAll(async () => {
+    inlineStorageDir = mkdtempSync(join(tmpdir(), "tfm-receipts-inline-"));
+    // envFromProcess parses the dispatcher selector at boot; the fake
+    // scanner is injected through the AppEnv seam below so no Gemini
+    // call is made. GEMINI_API_KEY is still required — the API must
+    // fail fast without it exactly like the worker does.
+    const savedDispatcher = process.env.RECEIPT_SCAN_DISPATCHER;
+    const savedApiKey = process.env.GEMINI_API_KEY;
+    process.env.RECEIPT_SCAN_DISPATCHER = "inline";
+    process.env.GEMINI_API_KEY = "e2e-inline-fake-key";
+    try {
+      const env = envFromProcess();
+      const scanDispatcher = env.receipts.scanDispatcher;
+      if (scanDispatcher.mode !== "inline") {
+        throw new Error("RECEIPT_SCAN_DISPATCHER=inline was not parsed");
+      }
+      const built = buildApp({
+        ...env,
+        receipts: {
+          ...env.receipts,
+          storage: { driver: "local", dir: inlineStorageDir },
+          scanDispatcher: { ...scanDispatcher, scanner: fakeScanner },
+        },
+      });
+      const server = serve({ fetch: built.app.fetch, port: 0 });
+      const address = server.address() as AddressInfo;
+      inlineUrl = `http://127.0.0.1:${address.port}`;
+      closeInline = async () => {
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
+        await built.close();
+      };
+    } finally {
+      if (savedDispatcher === undefined) delete process.env.RECEIPT_SCAN_DISPATCHER;
+      else process.env.RECEIPT_SCAN_DISPATCHER = savedDispatcher;
+      if (savedApiKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = savedApiKey;
+    }
+    await cleanE2eData(MARKER);
+    await cleanupScans();
+  });
+
+  afterAll(async () => {
+    await cleanupScans();
+    await cleanE2eData(MARKER);
+    await closeInline();
+    rmSync(inlineStorageDir, { recursive: true, force: true });
+  });
+
+  it("upload → in-process scan reaches draft_ready with no worker and no queued job", async () => {
+    const upload = await uploadReceipt(ALICE, uniqueJpeg(), inlineUrl);
+    expect(upload.status).toBe(201);
+    expect(upload.body.status).toBe("pending");
+    const scanId = upload.body.id as string;
+
+    // Nothing was enqueued — the pipeline runs in this same process.
+    expect(await countScanJobsIfQueueExists(scanId)).toBe(0);
+
+    // The API contract is unchanged: poll the same scan until the
+    // inline pipeline persists draft_ready.
+    const scan = await waitForScanStatus(
+      inlineUrl,
+      scanId,
+      ALICE,
+      "draft_ready",
+      10_000,
+    );
+    expect(scan.status).toBe("draft_ready");
+
+    const draft = await json(`/api/v1/receipts/${scanId}/draft`, {
+      headers: ALICE,
+      base: inlineUrl,
+    });
+    expect(draft.status).toBe(200);
+    expect((draft.body as { merchant: string }).merchant).toBe(
+      "Bodega Central",
+    );
+    expect(
+      (draft.body as { splits: unknown[] }).splits,
+    ).toHaveLength(3);
+  });
+});
+
+// Root-level: the shared test pool outlives every describe's cleanup.
+afterAll(async () => {
+  await closeTestDb();
 });
 
 async function createPenAccount(): Promise<string> {

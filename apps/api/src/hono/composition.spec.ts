@@ -28,6 +28,9 @@ const ENV_KEYS = [
   "S3_BUCKET",
   "S3_ACCESS_KEY_ID",
   "S3_SECRET_ACCESS_KEY",
+  "RECEIPT_SCAN_DISPATCHER",
+  "GEMINI_API_KEY",
+  "GEMINI_MODEL",
 ] as const;
 
 const DATABASE_URL = "postgresql://u:p@db:5432/spec";
@@ -282,5 +285,67 @@ describe("envFromProcess — receipt storage + upload limits (receipt-scan-draft
       accessKeyId: "ak",
       secretAccessKey: "sk",
     });
+  });
+});
+
+describe("envFromProcess — RECEIPT_SCAN_DISPATCHER (receipt-scan-drafts T14, S13)", () => {
+  it("defaults to pgboss when unset and does NOT require GEMINI_API_KEY", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    // GEMINI_API_KEY stays worker-only in pgboss mode.
+    const env = envFromProcess();
+    expect(env.receipts.scanDispatcher).toEqual({ mode: "pgboss" });
+  });
+
+  it("accepts the explicit pgboss value", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.RECEIPT_SCAN_DISPATCHER = "pgboss";
+    expect(envFromProcess().receipts.scanDispatcher).toEqual({
+      mode: "pgboss",
+    });
+  });
+
+  it("fails closed on an unknown dispatcher value", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.RECEIPT_SCAN_DISPATCHER = "sqs";
+    expect(() => envFromProcess()).toThrow(/RECEIPT_SCAN_DISPATCHER/);
+  });
+
+  it("parses inline with the required GEMINI_API_KEY and the default model", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.RECEIPT_SCAN_DISPATCHER = "inline";
+    process.env.GEMINI_API_KEY = "sk-inline";
+    expect(envFromProcess().receipts.scanDispatcher).toEqual({
+      mode: "inline",
+      gemini: {
+        apiKey: "sk-inline",
+        model: "gemini-3.5-flash-lite",
+      },
+    });
+  });
+
+  it("honours GEMINI_MODEL override in inline mode", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.RECEIPT_SCAN_DISPATCHER = "inline";
+    process.env.GEMINI_API_KEY = "sk-inline";
+    process.env.GEMINI_MODEL = "gemini-custom";
+    expect(envFromProcess().receipts.scanDispatcher).toEqual({
+      mode: "inline",
+      gemini: {
+        apiKey: "sk-inline",
+        model: "gemini-custom",
+      },
+    });
+  });
+
+  it("fails fast at boot when inline is set without GEMINI_API_KEY", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.RECEIPT_SCAN_DISPATCHER = "inline";
+    expect(() => envFromProcess()).toThrow(/GEMINI_API_KEY/);
   });
 });

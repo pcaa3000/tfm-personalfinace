@@ -15,6 +15,9 @@ import {
 export const GEMINI_DEFAULT_BASE_URL =
   "https://generativelanguage.googleapis.com";
 
+/** Default model when GEMINI_MODEL is unset (D1: Gemini Flash-Lite free tier). */
+export const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite";
+
 export interface GeminiReceiptScanConfig {
   /** GEMINI_API_KEY — sent as `x-goog-api-key` header (never in the URL). */
   readonly apiKey: string;
