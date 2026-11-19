@@ -217,7 +217,10 @@ export function TransactionForm({
 
   return (
     <form onSubmit={submit} aria-label={t("form.newTransaction")}>
-      <Stack spacing={2} sx={{ maxWidth: 480 }}>
+      // pt: the first field's floating label sits ~9px above the
+      // input; DialogContent after DialogTitle zeroes padding-top
+      // and clips it, so the form reserves its own headroom.
+      <Stack spacing={2} sx={{ maxWidth: 480, pt: 1.5 }}>
         {error ? <Alert severity="error">{error}</Alert> : null}
         <Controller
           name="type"
