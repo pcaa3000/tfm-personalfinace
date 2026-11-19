@@ -396,6 +396,20 @@ describe("TransactionForm — inline category creation (T8, S8)", () => {
     });
   });
 
+  it("opens the inline dialog from a visible button beside the field", async () => {
+    renderForm({ categories: formCategories, onCreateCategory: vi.fn() });
+
+    // The dropdown item is role `option`; this button is always visible.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Nueva categoría" }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByLabelText("Nombre de la categoría"),
+    ).toBeTruthy();
+  });
+
   it("keeps the dialog open with a localized error on other failures", async () => {
     const onCreateCategory = vi
       .fn()

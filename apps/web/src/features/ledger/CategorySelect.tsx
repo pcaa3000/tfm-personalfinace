@@ -6,9 +6,11 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
   MenuItem,
   Stack,
   TextField,
+  Tooltip,
   type TextFieldProps,
 } from "@mui/material";
 import { useState } from "react";
@@ -72,6 +74,7 @@ export function CategorySelect({
   leadingOptions,
   categoryValuePrefix = "",
   onCreateCategory,
+  sx,
   ...textFieldProps
 }: CategorySelectProps) {
   const { t } = useTranslation();
@@ -129,42 +132,76 @@ export function CategorySelect({
       });
   };
 
+  const selectField = (
+    <TextField
+      {...textFieldProps}
+      select
+      value={value}
+      // `sx` styles the component root: the wrapping Stack when the
+      // inline-create button is rendered, the field itself otherwise.
+      sx={onCreateCategory ? { flex: 1, minWidth: 0 } : sx}
+      onChange={(event) => {
+        const next = event.target.value;
+        if (next === CREATE_CATEGORY_VALUE) {
+          setDialogOpen(true);
+          return;
+        }
+        onChange(next);
+      }}
+    >
+      {leadingOptions}
+      {categories.map((category) => (
+        <MenuItem key={category.id} value={`${prefix}${category.id}`}>
+          {categoryLabel(category, t)}
+        </MenuItem>
+      ))}
+      {shownExtra ? (
+        <MenuItem value={`${prefix}${shownExtra.id}`}>
+          {categoryLabel(shownExtra, t)}
+        </MenuItem>
+      ) : null}
+      {onCreateCategory ? (
+        <Divider key="create-divider" />
+      ) : null}
+      {onCreateCategory ? (
+        <MenuItem value={CREATE_CATEGORY_VALUE} sx={{ color: "primary.main" }}>
+          <PlusIcon fontSize="small" sx={{ mr: 1 }} />
+          {t("categories.inline.action")}
+        </MenuItem>
+      ) : null}
+    </TextField>
+  );
+
   return (
     <>
-      <TextField
-        {...textFieldProps}
-        select
-        value={value}
-        onChange={(event) => {
-          const next = event.target.value;
-          if (next === CREATE_CATEGORY_VALUE) {
-            setDialogOpen(true);
-            return;
-          }
-          onChange(next);
-        }}
-      >
-        {leadingOptions}
-        {categories.map((category) => (
-          <MenuItem key={category.id} value={`${prefix}${category.id}`}>
-            {categoryLabel(category, t)}
-          </MenuItem>
-        ))}
-        {shownExtra ? (
-          <MenuItem value={`${prefix}${shownExtra.id}`}>
-            {categoryLabel(shownExtra, t)}
-          </MenuItem>
-        ) : null}
-        {onCreateCategory ? (
-          <Divider key="create-divider" />
-        ) : null}
-        {onCreateCategory ? (
-          <MenuItem value={CREATE_CATEGORY_VALUE} sx={{ color: "primary.main" }}>
-            <PlusIcon fontSize="small" sx={{ mr: 1 }} />
-            {t("categories.inline.action")}
-          </MenuItem>
-        ) : null}
-      </TextField>
+      {onCreateCategory ? (
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={[
+            { alignItems: "flex-start" },
+            ...(sx ? (Array.isArray(sx) ? sx : [sx]) : []),
+          ]}
+        >
+          {selectField}
+          <Tooltip title={t("categories.inline.action")}>
+            {/* span keeps the tooltip working while the button is disabled */}
+            <span>
+              <IconButton
+                aria-label={t("categories.inline.action")}
+                color="primary"
+                disabled={textFieldProps.disabled}
+                onClick={() => setDialogOpen(true)}
+                sx={{ mt: 0.5 }}
+              >
+                <PlusIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Stack>
+      ) : (
+        selectField
+      )}
       {onCreateCategory ? (
         <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="xs" fullWidth>
           <DialogTitle>{t("categories.inline.title")}</DialogTitle>
