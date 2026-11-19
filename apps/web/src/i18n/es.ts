@@ -56,6 +56,8 @@ export const es = {
     lowConfidence: "Confianza baja",
     totalMismatch:
       "La suma de los ítems no coincide con el total del ticket. Ajustá los importes.",
+    possibleDuplicates:
+      "Posible duplicado: registraste un movimiento similar el {{date}} ({{concept}}, {{amount}} {{currency}})",
     newCategoryOption: "nueva: {{name}}",
     total: "Total",
     confirm: "Aprobar y registrar",

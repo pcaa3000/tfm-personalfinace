@@ -185,6 +185,7 @@ describe("ReceiptScan pipeline transitions (T4+T5)", () => {
       originalFilename: "ticket.jpg",
       mimeType: "image/jpeg",
       sizeBytes: 10,
+      fileHash: "a".repeat(64),
       now: T0,
     });
     if (!result.ok) throw new Error("scan setup failed");

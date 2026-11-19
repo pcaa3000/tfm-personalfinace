@@ -99,6 +99,7 @@ function draftReadyScan(): ReceiptScan {
     originalFilename: "ticket.jpg",
     mimeType: "image/jpeg",
     sizeBytes: 123,
+    fileHash: "a".repeat(64),
     now: new Date("2026-11-10T12:00:00.000Z"),
   });
   if (!scan.ok) throw scan.error;
@@ -376,6 +377,7 @@ describe("ConfirmReceiptDraftUseCase — draft approval (T6, S2+S4+S7+S10)", () 
       originalFilename: "t.jpg",
       mimeType: "image/jpeg",
       sizeBytes: 10,
+      fileHash: "a".repeat(64),
       now: NOW,
     });
     if (!pending.ok) throw pending.error;

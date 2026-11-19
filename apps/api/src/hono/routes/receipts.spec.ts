@@ -8,12 +8,19 @@ import {
   ok,
   type Result,
 } from "../../modules/shared-kernel/index.js";
-import type {
-  ConfirmReceiptDraftCommand,
-  ConfirmReceiptDraftResult,
-  ReceiptDraftPayload,
-  ReceiptScanView,
-  UploadReceiptCommand,
+import {
+  CryptoFileHasher,
+  UploadReceiptUseCase,
+  type ConfirmReceiptDraftCommand,
+  type ConfirmReceiptDraftResult,
+  type ReceiptDraftPayload,
+  type ReceiptFileHashPort,
+  type ReceiptScan,
+  type ReceiptScanDispatcher,
+  type ReceiptScanRepositoryPort,
+  type ReceiptScanView,
+  type ReceiptStoragePort,
+  type UploadReceiptCommand,
 } from "../../modules/receipts/index.js";
 import { httpErrorHandler } from "../middleware/errors.js";
 import type { HonoEnv } from "../middleware/auth.js";
@@ -93,6 +100,8 @@ const SCAN_VIEW: ReceiptScanView = {
 function buildApp(options: {
   authenticated?: boolean;
   uploadResult?: ReturnType<typeof ok<ReceiptScanView>> | ReturnType<typeof err<DomainError>>;
+  /** T13: inject the real use case (dedup specs) instead of the mock. */
+  uploadReceipt?: Pick<UploadReceiptUseCase, "execute">;
 } = {}) {
   const authenticated = options.authenticated ?? true;
   const deps = {
@@ -109,7 +118,7 @@ function buildApp(options: {
         defaultCurrency: "PEN",
       })),
     },
-    uploadReceipt: {
+    uploadReceipt: options.uploadReceipt ?? {
       execute: vi.fn(
         async (_command: UploadReceiptCommand) =>
           options.uploadResult ?? ok(SCAN_VIEW),
@@ -175,6 +184,57 @@ function uploadRequest(file?: { bytes: Uint8Array; name: string; type: string })
   } satisfies RequestInit;
 }
 
+/**
+ * T13 (S12): the dedup behavior lives in the real use case — this app
+ * wires it with in-memory fakes so the route spec exercises the actual
+ * SHA-256 + lookup path instead of a mocked execute.
+ */
+function buildDedupApp() {
+  const storedById = new Map<string, ReceiptScan>();
+  const storedByHash = new Map<string, ReceiptScan>();
+  const storage: ReceiptStoragePort = {
+    save: vi.fn(async (key: string) => key),
+    open: vi.fn(async () => null),
+  };
+  const scans: ReceiptScanRepositoryPort = {
+    save: vi.fn(async (scan: ReceiptScan) => {
+      storedById.set(scan.id, scan);
+      if (scan.fileHash) {
+        storedByHash.set(`${scan.workspaceId.value}:${scan.fileHash}`, scan);
+      }
+    }),
+    findById: vi.fn(async (workspaceId: WorkspaceId, id: string) => {
+      const scan = storedById.get(id) ?? null;
+      return scan && scan.workspaceId.value === workspaceId.value
+        ? scan
+        : null;
+    }),
+  };
+  const fileHashes: ReceiptFileHashPort = {
+    findByFileHash: vi.fn(
+      async (workspaceId: WorkspaceId, fileHash: string) =>
+        storedByHash.get(`${workspaceId.value}:${fileHash}`) ?? null,
+    ),
+  };
+  const dispatcher: ReceiptScanDispatcher = {
+    enqueueScan: vi.fn(async () => undefined),
+  };
+  let nextId = 0;
+  const { app } = buildApp({
+    uploadReceipt: new UploadReceiptUseCase(
+      storage,
+      scans,
+      fileHashes,
+      new CryptoFileHasher(),
+      dispatcher,
+      { now: () => new Date("2026-11-10T12:00:00.000Z") },
+      { next: () => `scan-${++nextId}` },
+      { maxBytes: 1024 },
+    ),
+  });
+  return { app, storage, scans, dispatcher, storedById };
+}
+
 describe("POST /api/v1/receipts (receipt-scan-drafts T3, S1+S9)", () => {
   it("accepts a multipart image and returns 201 with the pending scan", async () => {
     const { app, deps } = buildApp();
@@ -238,6 +298,45 @@ describe("POST /api/v1/receipts (receipt-scan-drafts T3, S1+S9)", () => {
 
     expect(res.status).toBe(401);
     expect(deps.uploadReceipt.execute).not.toHaveBeenCalled();
+  });
+
+  it("duplicate upload of the same bytes returns the same scan id without storing again (T13, S12)", async () => {
+    const { app, storage, scans, dispatcher, storedById } = buildDedupApp();
+
+    const first = await app.request(
+      "/api/v1/receipts",
+      uploadRequest({ bytes: JPEG, name: "a.jpg", type: "image/jpeg" }),
+    );
+    const second = await app.request(
+      "/api/v1/receipts",
+      uploadRequest({ bytes: JPEG, name: "b.jpg", type: "image/jpeg" }),
+    );
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    const firstBody = (await first.json()) as { id: string };
+    const secondBody = (await second.json()) as { id: string };
+    expect(secondBody.id).toBe(firstBody.id);
+
+    // Idempotent: exactly one stored object, one row, one job.
+    expect(storage.save).toHaveBeenCalledTimes(1);
+    expect(scans.save).toHaveBeenCalledTimes(1);
+    expect(dispatcher.enqueueScan).toHaveBeenCalledTimes(1);
+    expect(storedById.size).toBe(1);
+
+    // Different bytes → a brand-new scan.
+    const third = await app.request(
+      "/api/v1/receipts",
+      uploadRequest({
+        bytes: Uint8Array.from([...JPEG, 0xaa]),
+        name: "c.jpg",
+        type: "image/jpeg",
+      }),
+    );
+    expect(third.status).toBe(201);
+    const thirdBody = (await third.json()) as { id: string };
+    expect(thirdBody.id).not.toBe(firstBody.id);
+    expect(storage.save).toHaveBeenCalledTimes(2);
   });
 });
 

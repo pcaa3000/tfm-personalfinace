@@ -162,6 +162,29 @@ describe("parseSplitAmount", () => {
   });
 });
 
+describe("possibleDuplicates (T13, S12)", () => {
+  it("carries the read-time duplicates into the review state, defaulting to []", () => {
+    const duplicates = [
+      {
+        transactionId: "trx-dup-1",
+        concept: "Plaza Vea",
+        amount: 9000,
+        occurredOn: "2026-10-02",
+      },
+    ];
+
+    const state = draftToReviewState(
+      { ...payload, possibleDuplicates: duplicates },
+      baseOptions,
+    );
+    expect(state.possibleDuplicates).toEqual(duplicates);
+
+    // Drafts without the field (older payloads) render no warning.
+    const without = draftToReviewState(payload, baseOptions);
+    expect(without.possibleDuplicates).toEqual([]);
+  });
+});
+
 describe("reviewStateToConfirmInput (S4+S7)", () => {
   const state: ReceiptReviewState = {
     type: "expense",
@@ -170,6 +193,7 @@ describe("reviewStateToConfirmInput (S4+S7)", () => {
     currency: "PEN",
     accountId: "acc-pen",
     totalMismatch: false,
+    possibleDuplicates: [],
     splits: [
       {
         selection: { kind: "category", categoryId: "cat-food" },

@@ -33,6 +33,19 @@ export {
   RECEIPT_SCANNER,
   type ReceiptScanPort,
 } from "./application/ports/receipt-scan.port.js";
+export {
+  FILE_HASHER,
+  type FileHasherPort,
+} from "./application/ports/file-hasher.port.js";
+export {
+  RECEIPT_FILE_HASH,
+  type ReceiptFileHashPort,
+} from "./application/ports/receipt-file-hash.port.js";
+export {
+  TRANSACTION_DUPLICATES,
+  type TransactionDuplicateCriteria,
+  type TransactionDuplicatesPort,
+} from "./application/ports/transaction-duplicates.port.js";
 export type {
   ReceiptScanExtraction,
   ReceiptScanItem,
@@ -43,6 +56,7 @@ export {
   RECEIPT_LOW_CONFIDENCE,
   type ReceiptDraftNewCategory,
   type ReceiptDraftPayload,
+  type ReceiptDraftPossibleDuplicate,
   type ReceiptDraftSplit,
 } from "./domain/receipt-draft.js";
 export {
@@ -74,6 +88,8 @@ export {
   type S3ReceiptStorageConfig,
 } from "./infrastructure/s3-receipt-storage.js";
 export { DrizzleReceiptScanRepository } from "./infrastructure/drizzle-receipt-scan.repository.js";
+export { DrizzleTransactionDuplicatesAdapter } from "./infrastructure/drizzle-transaction-duplicates.adapter.js";
+export { CryptoFileHasher } from "./infrastructure/crypto-file-hasher.adapter.js";
 export { PgBossReceiptScanDispatcher } from "./infrastructure/pgboss-receipt-scan.dispatcher.js";
 export {
   GeminiReceiptScanAdapter,

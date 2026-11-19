@@ -21,6 +21,7 @@ function pendingScan(): ReceiptScan {
     originalFilename: "ticket.jpg",
     mimeType: "image/jpeg",
     sizeBytes: 123,
+    fileHash: "a".repeat(64),
     now: new Date("2026-11-10T12:00:00.000Z"),
   });
   if (!scan.ok) throw scan.error;

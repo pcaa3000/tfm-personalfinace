@@ -231,6 +231,10 @@ export const receiptScans = pgTable(
     extractedPayload: jsonb("extractedPayload"),
     draftPayload: jsonb("draftPayload"),
     transactionId: text("transactionId"),
+    // receipt-scan-drafts T13 (S12): SHA-256 hex of the uploaded bytes —
+    // exact-hash dedup at upload time. Nullable: rows created before T13
+    // have no hash and never collide (NULLs don't match in unique indexes).
+    fileHash: text("fileHash"),
     error: text("error"),
     createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
       .notNull()
@@ -241,6 +245,10 @@ export const receiptScans = pgTable(
   },
   (table) => [
     index("receipts_receipt_scans_workspaceId_idx").on(table.workspaceId),
+    uniqueIndex("receipts_receipt_scans_workspaceId_fileHash_key").on(
+      table.workspaceId,
+      table.fileHash,
+    ),
     foreignKey({
       name: "receipts_receipt_scans_transactionId_fkey",
       columns: [table.transactionId],

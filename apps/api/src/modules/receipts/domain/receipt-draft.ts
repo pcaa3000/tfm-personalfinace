@@ -30,6 +30,21 @@ export interface ReceiptDraftSplit {
 }
 
 /**
+ * A workspace expense that may already record this voucher (T13, S12 —
+ * "nivel 3" semantic dedup): computed at draft-read time by
+ * `GetReceiptDraftUseCase`, NEVER persisted inside `draft_payload` so
+ * the warning always reflects the current ledger.
+ */
+export interface ReceiptDraftPossibleDuplicate {
+  readonly transactionId: string;
+  readonly concept: string;
+  /** Absolute amount in minor units. */
+  readonly amount: number;
+  /** YYYY-MM-DD. */
+  readonly occurredOn: string;
+}
+
+/**
  * Draft payload persisted on `receipts_receipt_scans.draft_payload`
  * (T4+T5, S2+S6). `items` keeps the raw extraction as evidence.
  */
@@ -43,6 +58,8 @@ export interface ReceiptDraftPayload {
   readonly totalMismatch: boolean;
   readonly splits: readonly ReceiptDraftSplit[];
   readonly items: readonly ReceiptScanItem[];
+  /** T13 (S12): read-time only — absent in the stored payload. */
+  readonly possibleDuplicates?: readonly ReceiptDraftPossibleDuplicate[];
 }
 
 interface SplitAcc {

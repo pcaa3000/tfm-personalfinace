@@ -274,6 +274,54 @@ describe("ReceiptFlow — capture → poll → review (T7, S1+S2+S7+S10)", () =>
     ).toBeTruthy();
   });
 
+  it("warns about possible duplicates without blocking the confirm (T13, S12)", async () => {
+    vi.mocked(uploadReceipt).mockResolvedValue(scanView("pending"));
+    vi.mocked(getReceiptScan).mockResolvedValue(scanView("draft_ready"));
+    vi.mocked(getReceiptDraft).mockResolvedValue(
+      draftPayload({
+        possibleDuplicates: [
+          {
+            transactionId: "trx-dup-1",
+            concept: "Plaza Vea",
+            amount: 9000,
+            occurredOn: "2026-10-02",
+          },
+        ],
+      }),
+    );
+    renderFlow();
+
+    pickFile();
+
+    expect(
+      await screen.findByText(/Posible duplicado/i),
+    ).toBeTruthy();
+    // The warning lists the candidate (concept + amount + date) and the
+    // confirm action stays available — it is informational, not a block.
+    expect(
+      screen.getByText(/Plaza Vea, 90\.00 PEN/),
+    ).toBeTruthy();
+    // Non-blocking: once the required account is picked, the confirm is
+    // enabled exactly as without the warning.
+    fireEvent.mouseDown(screen.getByRole("combobox", { name: "Cuenta" }));
+    fireEvent.click(await screen.findByRole("option", { name: "BCP soles" }));
+    expect(
+      screen.getByRole("button", { name: /Aprobar y registrar/i }),
+    ).toHaveProperty("disabled", false);
+  });
+
+  it("renders no duplicate warning when the draft has none", async () => {
+    vi.mocked(uploadReceipt).mockResolvedValue(scanView("pending"));
+    vi.mocked(getReceiptScan).mockResolvedValue(scanView("draft_ready"));
+    vi.mocked(getReceiptDraft).mockResolvedValue(draftPayload());
+    renderFlow();
+
+    pickFile();
+
+    await screen.findByLabelText("Concepto");
+    expect(screen.queryByText(/Posible duplicado/i)).toBeNull();
+  });
+
   it("shows the failed status with a retry action", async () => {
     vi.mocked(uploadReceipt).mockResolvedValue(scanView("pending"));
     vi.mocked(getReceiptScan).mockResolvedValue(

@@ -42,6 +42,8 @@ import { GetWorkspaceBalanceUseCase } from "../modules/ledger/application/get-wo
 import { DrizzleNotificationRepository } from "../modules/notifications/infrastructure/drizzle-notification.repository.js";
 import { ListNotificationsUseCase } from "../modules/notifications/application/list-notifications.use-case.js";
 import { DrizzleReceiptScanRepository } from "../modules/receipts/infrastructure/drizzle-receipt-scan.repository.js";
+import { DrizzleTransactionDuplicatesAdapter } from "../modules/receipts/infrastructure/drizzle-transaction-duplicates.adapter.js";
+import { CryptoFileHasher } from "../modules/receipts/infrastructure/crypto-file-hasher.adapter.js";
 import { LocalReceiptStorage } from "../modules/receipts/infrastructure/local-receipt-storage.js";
 import { S3ReceiptStorage } from "../modules/receipts/infrastructure/s3-receipt-storage.js";
 import { PgBossReceiptScanDispatcher } from "../modules/receipts/infrastructure/pgboss-receipt-scan.dispatcher.js";
@@ -179,6 +181,9 @@ export function buildApp(env: AppEnv): BuiltApp {
     uploadReceipt: new UploadReceiptUseCase(
       receiptStorage,
       receiptScans,
+      // T13 (S12): exact-hash dedup index + SHA-256 hasher.
+      receiptScans,
+      new CryptoFileHasher(),
       receiptDispatcher,
       clock,
       ids,
@@ -186,8 +191,12 @@ export function buildApp(env: AppEnv): BuiltApp {
     ),
     getReceiptScan: new GetReceiptScanUseCase(receiptScans),
     getReceiptFile: new GetReceiptFileUseCase(receiptScans, receiptStorage),
-    // receipt draft review + confirm (receipt-scan-drafts T6)
-    getReceiptDraft: new GetReceiptDraftUseCase(receiptScans),
+    // receipt draft review + confirm (receipt-scan-drafts T6);
+    // T13 (S12): read-time semantic duplicates over ledger expenses.
+    getReceiptDraft: new GetReceiptDraftUseCase(
+      receiptScans,
+      new DrizzleTransactionDuplicatesAdapter(db),
+    ),
     confirmReceiptDraft: new ConfirmReceiptDraftUseCase(
       receiptScans,
       transactions,

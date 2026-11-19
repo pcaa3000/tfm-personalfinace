@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -108,15 +108,34 @@ async function json(
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
-async function uploadReceipt(headers: Record<string, string>) {
+async function uploadReceipt(
+  headers: Record<string, string>,
+  bytes: Uint8Array = uniqueJpeg(),
+) {
   const form = new FormData();
-  form.append("file", new File([JPEG], "ticket.jpg", { type: "image/jpeg" }));
+  form.append("file", new File([bytes], "ticket.jpg", { type: "image/jpeg" }));
   const res = await fetch(`${baseUrl}/api/v1/receipts`, {
     method: "POST",
     headers,
     body: form,
   });
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+}
+
+/**
+ * T13 (S12): every test upload carries distinct trailing bytes so the
+ * fileHash differs — the dedup test below is the only case that uploads
+ * the SAME bytes twice. The JPEG signature is in the header, so the
+ * appended tag keeps the sniffed mime image/jpeg.
+ */
+function uniqueJpeg(tag: string = randomUUID()): Uint8Array {
+  return Uint8Array.from([...JPEG, ...new TextEncoder().encode(tag)]);
+}
+
+/** Stored quarantine objects under the local driver dir. */
+function storedFileCount(): number {
+  return readdirSync(storageDir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile()).length;
 }
 
 /** Rows enqueued for one scan on the receipt-scan pg-boss queue. */
@@ -234,6 +253,25 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
     const scan = await json(`/api/v1/receipts/${scanId}`, { headers: ALICE });
     expect((scan.body as { status: string }).status).toBe("draft_ready");
 
+    // T13 (S12): a same-amount same-merchant expense already recorded →
+    // the draft read flags it as a possible duplicate (computed fresh).
+    const prior = await json("/api/v1/transactions", {
+      method: "POST",
+      headers: ALICE,
+      body: {
+        type: "expense",
+        amount: "35.50",
+        currency: "PEN",
+        businessDate: "2026-11-10",
+        timezone: "UTC",
+        concept: "Bodega Central",
+        accountId: await createPenAccount(),
+        idempotencyKey: `e2e-dup-${randomUUID()}`,
+      },
+    });
+    expect(prior.status).toBe(201);
+    const priorTxId = (prior.body as { id: string }).id;
+
     const draft = await json(`/api/v1/receipts/${scanId}/draft`, { headers: ALICE });
     expect(draft.status).toBe(200);
     const payload = draft.body as {
@@ -246,9 +284,23 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
         newCategory: { name: string; nature: string } | null;
         amountMinorUnits: number;
       }>;
+      possibleDuplicates: Array<{
+        transactionId: string;
+        concept: string;
+        amount: number;
+        occurredOn: string;
+      }>;
     };
     expect(payload.merchant).toBe("Bodega Central");
     expect(payload.splits).toHaveLength(3);
+    expect(payload.possibleDuplicates).toEqual([
+      {
+        transactionId: priorTxId,
+        concept: "Bodega Central",
+        amount: 3550,
+        occurredOn: "2026-11-10",
+      },
+    ]);
 
     const foodId = await categoryIdByKey(ALICE, "food");
     const confirm = await json(`/api/v1/receipts/${scanId}/confirm`, {
@@ -492,6 +544,29 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
     expect((conflict.body as { code: string }).code).toBe(
       "RECEIPT_ALREADY_FINAL",
     );
+  });
+
+  it("duplicate upload of the same bytes returns the same scan — one file, one job (T13, S12)", async () => {
+    const bytes = uniqueJpeg("dup-same-voucher");
+    const filesBefore = storedFileCount();
+
+    const first = await uploadReceipt(ALICE, bytes);
+    const second = await uploadReceipt(ALICE, bytes);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    const scanId = first.body.id as string;
+    expect(second.body.id).toBe(scanId);
+
+    // One new quarantine object — not two.
+    expect(storedFileCount()).toBe(filesBefore + 1);
+    // One row for this scan, one enqueued job total.
+    const rows = await db
+      .select({ id: receiptScans.id })
+      .from(receiptScans)
+      .where(eq(receiptScans.id, scanId));
+    expect(rows).toHaveLength(1);
+    expect(await countScanJobs(scanId)).toBe(1);
   });
 
   it("a foreign workspace cannot see, confirm or reject the scan", async () => {

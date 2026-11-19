@@ -60,6 +60,8 @@ export const en: TranslationShape = {
     lowConfidence: "Low confidence",
     totalMismatch:
       "The item sum does not match the receipt total. Adjust the amounts.",
+    possibleDuplicates:
+      "Possible duplicate: you recorded a similar movement on {{date}} ({{concept}}, {{amount}} {{currency}})",
     newCategoryOption: "new: {{name}}",
     total: "Total",
     confirm: "Approve & record",

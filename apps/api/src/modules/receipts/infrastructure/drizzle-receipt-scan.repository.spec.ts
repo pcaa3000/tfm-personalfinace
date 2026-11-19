@@ -25,6 +25,7 @@ function makeScan(overrides: Partial<{
   id: string;
   workspaceId: WorkspaceId;
   storageKey: string;
+  fileHash: string;
 }> = {}): ReceiptScan {
   const scan = ReceiptScan.quarantine({
     id: overrides.id ?? "scan-spec-1",
@@ -34,6 +35,11 @@ function makeScan(overrides: Partial<{
     originalFilename: "ticket.jpg",
     mimeType: "image/jpeg",
     sizeBytes: 1234,
+    // Unique hash per scan id by default — the UNIQUE(workspaceId,
+    // fileHash) index (T13) would collide otherwise within a test.
+    fileHash:
+      overrides.fileHash ??
+      (overrides.id ?? "scan-spec-1").padEnd(64, "0").slice(0, 64),
     now: new Date("2026-11-10T12:00:00.000Z"),
   });
   if (!scan.ok) throw scan.error;
@@ -94,5 +100,55 @@ describe("DrizzleReceiptScanRepository (integration, real Postgres)", () => {
     expect(
       await repository.findById(workspaceId(WS_A), "scan-spec-scope"),
     ).not.toBeNull();
+  });
+
+  it("findByFileHash returns the workspace-scoped scan for a stored hash (T13, S12)", async () => {
+    const hashA = "b".repeat(64);
+    const hashB = "c".repeat(64);
+    await repository.save(
+      makeScan({ id: "scan-hash-a", fileHash: hashA }),
+    );
+    // Same hash may legitimately exist in ANOTHER workspace.
+    await repository.save(
+      makeScan({
+        id: "scan-hash-b",
+        workspaceId: workspaceId(WS_B),
+        fileHash: hashA,
+      }),
+    );
+    await repository.save(
+      makeScan({ id: "scan-hash-c", fileHash: hashB }),
+    );
+
+    const found = await repository.findByFileHash(workspaceId(WS_A), hashA);
+    expect(found?.id).toBe("scan-hash-a");
+    expect(found?.fileHash).toBe(hashA);
+    // Other workspace → its own row; unknown hash → null.
+    expect(
+      (await repository.findByFileHash(workspaceId(WS_B), hashA))?.id,
+    ).toBe("scan-hash-b");
+    expect(
+      await repository.findByFileHash(
+        workspaceId(WS_A),
+        "d".repeat(64),
+      ),
+    ).toBeNull();
+  });
+
+  it("UNIQUE(workspaceId, fileHash) rejects a second row with the same hash", async () => {
+    const hash = "e".repeat(64);
+    await repository.save(
+      makeScan({ id: "scan-uniq-1", fileHash: hash }),
+    );
+
+    await expect(
+      repository.save(
+        makeScan({
+          id: "scan-uniq-2",
+          fileHash: hash,
+          storageKey: `quarantine/${WS_A}/scan-uniq-2.jpg`,
+        }),
+      ),
+    ).rejects.toThrow();
   });
 });

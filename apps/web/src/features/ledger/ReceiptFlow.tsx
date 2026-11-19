@@ -381,6 +381,24 @@ export function ReceiptFlow({
         {review.totalMismatch ? (
           <Alert severity="warning">{t("receipt.totalMismatch")}</Alert>
         ) : null}
+        {/* T13 (S12): semantic dedup — informational, confirm still allowed. */}
+        {review.possibleDuplicates.length > 0 ? (
+          <Alert severity="warning" data-part="receipt-possible-duplicates">
+            {review.possibleDuplicates.map((duplicate) => (
+              <Box key={duplicate.transactionId}>
+                {t("receipt.possibleDuplicates", {
+                  date: duplicate.occurredOn,
+                  concept: duplicate.concept,
+                  amount: minorToDecimalString(
+                    BigInt(duplicate.amount),
+                    exponentOf(review.currency),
+                  ),
+                  currency: review.currency,
+                })}
+              </Box>
+            ))}
+          </Alert>
+        ) : null}
         <TextField
           select
           label={t("form.type")}

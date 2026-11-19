@@ -38,6 +38,8 @@ export interface QuarantineScanInput {
   readonly originalFilename: string;
   readonly mimeType: string;
   readonly sizeBytes: number;
+  /** SHA-256 hex of the stored bytes — exact-hash dedup (T13, S12). */
+  readonly fileHash: string;
   readonly now: Date;
 }
 
@@ -54,6 +56,8 @@ export interface ReceiptScanState {
   readonly extractedPayload: unknown | null;
   readonly draftPayload: unknown | null;
   readonly transactionId: string | null;
+  /** Optional: rows written before T13 carry no hash. */
+  readonly fileHash?: string | null;
   readonly error: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -82,6 +86,7 @@ export class ReceiptScan {
     readonly originalFilename: string,
     readonly mimeType: string,
     readonly sizeBytes: number,
+    readonly fileHash: string | null,
     private _status: ReceiptScanStatus,
     private _extractedPayload: unknown | null,
     private _draftPayload: unknown | null,
@@ -133,6 +138,7 @@ export class ReceiptScan {
       [input.uploaderSubject, "uploaderSubject"],
       [input.storageKey, "storageKey"],
       [input.mimeType, "mimeType"],
+      [input.fileHash, "fileHash"],
     ] as const) {
       const check = nonEmpty(value, field);
       if (!check.ok) return check;
@@ -171,6 +177,7 @@ export class ReceiptScan {
         filename,
         input.mimeType,
         input.sizeBytes,
+        input.fileHash,
         "pending",
         null,
         null,
@@ -250,6 +257,7 @@ export class ReceiptScan {
       state.originalFilename,
       state.mimeType,
       state.sizeBytes,
+      state.fileHash ?? null,
       state.status,
       state.extractedPayload,
       state.draftPayload,

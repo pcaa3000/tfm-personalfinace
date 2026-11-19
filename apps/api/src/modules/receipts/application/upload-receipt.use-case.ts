@@ -10,6 +10,8 @@ import {
   extensionForMime,
   validateReceiptUpload,
 } from "../domain/receipt-upload.js";
+import type { FileHasherPort } from "./ports/file-hasher.port.js";
+import type { ReceiptFileHashPort } from "./ports/receipt-file-hash.port.js";
 import type { ReceiptScanDispatcher } from "./ports/receipt-scan-dispatcher.port.js";
 import type { ReceiptScanRepositoryPort } from "./ports/receipt-scan-repository.port.js";
 import type { ReceiptStoragePort } from "./ports/receipt-storage.port.js";
@@ -43,6 +45,8 @@ export class UploadReceiptUseCase {
   constructor(
     private readonly storage: ReceiptStoragePort,
     private readonly scans: ReceiptScanRepositoryPort,
+    private readonly fileHashes: ReceiptFileHashPort,
+    private readonly hasher: FileHasherPort,
     private readonly dispatcher: ReceiptScanDispatcher,
     private readonly clock: Clock,
     private readonly ids: IdGenerator,
@@ -58,6 +62,19 @@ export class UploadReceiptUseCase {
     });
     if (!valid.ok) {
       return valid;
+    }
+
+    // T13 (S12) nivel 1: exact-hash dedup — the SAME bytes already
+    // uploaded in this workspace return the existing scan unchanged
+    // (idempotent: no second file, row or job). A `failed` scan is
+    // returned as-is too — POST /:id/retry owns the re-enqueue.
+    const fileHash = this.hasher.sha256Hex(command.bytes);
+    const existing = await this.fileHashes.findByFileHash(
+      command.workspaceId,
+      fileHash,
+    );
+    if (existing) {
+      return ok(toReceiptScanView(existing));
     }
 
     const id = this.ids.next();
@@ -78,12 +95,28 @@ export class UploadReceiptUseCase {
       originalFilename: filename,
       mimeType: valid.value.mimeType,
       sizeBytes: command.bytes.byteLength,
+      fileHash,
       now: this.clock.now(),
     });
     if (!scan.ok) {
       return scan;
     }
-    await this.scans.save(scan.value);
+    try {
+      await this.scans.save(scan.value);
+    } catch (cause) {
+      // T13 (S12): a concurrent identical upload can race past the
+      // lookup above and hit UNIQUE(workspaceId, fileHash) on insert.
+      // Best-effort: re-read the winner and return it — the response is
+      // identical to the serialized dedup path. Any other insert
+      // failure propagates unchanged.
+      const winner = await this.fileHashes
+        .findByFileHash(command.workspaceId, fileHash)
+        .catch(() => null);
+      if (winner) {
+        return ok(toReceiptScanView(winner));
+      }
+      throw cause;
+    }
 
     try {
       await this.dispatcher.enqueueScan(id, command.workspaceId.value);

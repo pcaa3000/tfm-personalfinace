@@ -8,6 +8,7 @@ import {
   type ReceiptScanState,
   type ReceiptScanStatus,
 } from "../domain/receipt-scan.js";
+import type { ReceiptFileHashPort } from "../application/ports/receipt-file-hash.port.js";
 import type { ReceiptScanRepositoryPort } from "../application/ports/receipt-scan-repository.port.js";
 
 type Row = typeof receiptScans.$inferSelect;
@@ -25,14 +26,17 @@ function toState(row: Row): ReceiptScanState {
     extractedPayload: row.extractedPayload,
     draftPayload: row.draftPayload,
     transactionId: row.transactionId,
+    fileHash: row.fileHash,
     error: row.error,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
 }
 
-/** Drizzle adapter over `receipts_receipt_scans`. */
-export class DrizzleReceiptScanRepository implements ReceiptScanRepositoryPort {
+/** Drizzle adapter over `receipts_receipt_scans` (T13: also the fileHash dedup index). */
+export class DrizzleReceiptScanRepository
+  implements ReceiptScanRepositoryPort, ReceiptFileHashPort
+{
   constructor(private readonly db: DrizzleDb) {}
 
   async save(scan: ReceiptScan): Promise<void> {
@@ -47,6 +51,7 @@ export class DrizzleReceiptScanRepository implements ReceiptScanRepositoryPort {
         mimeType: scan.mimeType,
         sizeBytes: scan.sizeBytes,
         status: scan.status,
+        fileHash: scan.fileHash,
         extractedPayload:
           scan.extractedPayload === null
             ? null
@@ -90,6 +95,27 @@ export class DrizzleReceiptScanRepository implements ReceiptScanRepositoryPort {
         and(
           eq(receiptScans.id, id),
           eq(receiptScans.workspaceId, workspaceId.value),
+        ),
+      )
+      .limit(1);
+    return row ? ReceiptScan.reconstitute(toState(row)) : null;
+  }
+
+  /**
+   * T13 (S12): exact-hash dedup lookup — UNIQUE(workspaceId, fileHash)
+   * backs this; NULL hashes (pre-T13 rows) never match.
+   */
+  async findByFileHash(
+    workspaceId: WorkspaceId,
+    fileHash: string,
+  ): Promise<ReceiptScan | null> {
+    const [row] = await this.db
+      .select()
+      .from(receiptScans)
+      .where(
+        and(
+          eq(receiptScans.workspaceId, workspaceId.value),
+          eq(receiptScans.fileHash, fileHash),
         ),
       )
       .limit(1);

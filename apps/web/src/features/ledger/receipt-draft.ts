@@ -62,6 +62,19 @@ export interface ReceiptDraftItem {
   confidence: number;
 }
 
+/**
+ * A workspace expense that may already record this voucher (T13, S12 —
+ * semantic dedup warning). Computed by the API at draft-read time.
+ */
+export interface ReceiptDraftPossibleDuplicate {
+  transactionId: string;
+  concept: string;
+  /** Absolute amount in minor units. */
+  amount: number;
+  /** YYYY-MM-DD. */
+  occurredOn: string;
+}
+
 /** `GET /api/v1/receipts/:id/draft` payload — the stored draft. */
 export interface ReceiptDraftPayload {
   merchant: string | null;
@@ -73,6 +86,8 @@ export interface ReceiptDraftPayload {
   totalMismatch: boolean;
   splits: ReceiptDraftSplit[];
   items: ReceiptDraftItem[];
+  /** T13 (S12): read-time only — absent on older payloads. */
+  possibleDuplicates?: ReceiptDraftPossibleDuplicate[];
 }
 
 /** What a review row's category select resolves to at confirm time. */
@@ -98,6 +113,8 @@ export interface ReceiptReviewState {
   currency: string;
   accountId: string;
   totalMismatch: boolean;
+  /** T13 (S12): shown as a non-blocking warning in the review step. */
+  possibleDuplicates: ReceiptDraftPossibleDuplicate[];
   splits: ReviewSplitRow[];
 }
 
@@ -151,6 +168,7 @@ export function draftToReviewState(
     currency,
     accountId: "",
     totalMismatch: payload.totalMismatch,
+    possibleDuplicates: payload.possibleDuplicates ?? [],
     splits,
   };
 }
