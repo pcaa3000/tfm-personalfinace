@@ -28,7 +28,6 @@ vi.mock("./features/ledger/api", async (importOriginal) => {
     listCurrencyCatalog: vi.fn(empty),
     getWorkspace: vi.fn(async () => ({
       workspaceId: "ws-1",
-      locale: "es-PE",
       timezone: "UTC",
       defaultCurrency: "PEN",
     })),

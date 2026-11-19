@@ -11,7 +11,6 @@ import type { WorkspaceContext } from "./workspace-context.port.js";
 /** Preference fields the workspace owner can change (RF-003, RF-004). */
 export interface WorkspacePreferencesPatch {
   readonly defaultCurrency?: string;
-  readonly locale?: string;
   readonly timezone?: string;
 }
 
@@ -27,9 +26,8 @@ export const WORKSPACE_SETTINGS = Symbol("WORKSPACE_SETTINGS");
 
 /**
  * Changes workspace preferences — input aids for new transactions
- * (currency), display conventions (locale) and business-day boundaries
- * (timezone). Never rewrites historical transaction data (RF-004,
- * INV-DIN-06).
+ * (currency) and business-day boundaries (timezone). Never rewrites
+ * historical transaction data (RF-004, INV-DIN-06).
  */
 export class UpdateWorkspacePreferencesUseCase {
   constructor(private readonly settings: WorkspaceSettingsPort) {}
@@ -40,7 +38,6 @@ export class UpdateWorkspacePreferencesUseCase {
   ): Promise<Result<WorkspaceContext, DomainError>> {
     const normalized: {
       defaultCurrency?: string;
-      locale?: string;
       timezone?: string;
     } = {};
 
@@ -61,20 +58,6 @@ export class UpdateWorkspacePreferencesUseCase {
           new DomainError(
             "TIMEZONE_INVALID",
             `Not a valid IANA timezone: ${JSON.stringify(patch.timezone)}`,
-          ),
-        );
-      }
-    }
-
-    if (patch.locale !== undefined) {
-      try {
-        new Intl.Locale(patch.locale);
-        normalized.locale = patch.locale;
-      } catch {
-        return err(
-          new DomainError(
-            "LOCALE_INVALID",
-            `Not a valid locale: ${JSON.stringify(patch.locale)}`,
           ),
         );
       }

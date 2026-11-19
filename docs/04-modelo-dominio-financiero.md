@@ -16,7 +16,7 @@ El dominio transforma datos confirmados en una descripción explicable de la sit
 
 | Contexto | Conceptos principales |
 |---|---|
-| Workspace | Propietario lógico, locale, zona horaria, moneda predeterminada, consentimientos y parámetros personales |
+| Workspace | Propietario lógico, zona horaria, moneda predeterminada, consentimientos y parámetros personales |
 | Libro | Transacción, revisión, tipo, fecha de negocio y origen |
 | Captura | Activo, ejecución, extracción, confianza y borrador |
 | Categorización | Categoría, naturaleza financiera, regla y preferencia por comercio |

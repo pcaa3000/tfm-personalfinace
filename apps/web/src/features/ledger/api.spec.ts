@@ -386,14 +386,13 @@ describe("workspace currencies (S12-4)", () => {
 
 describe("workspace preferences (RF-003)", () => {
   it("sends the preference patch with PATCH /workspace", async () => {
-    await updateWorkspace({ timezone: "America/Lima", locale: "es-PE" });
+    await updateWorkspace({ timezone: "America/Lima" });
 
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(String(url)).toBe("/api/v1/workspace");
     expect(init?.method).toBe("PATCH");
     expect(JSON.parse(String(init?.body))).toEqual({
       timezone: "America/Lima",
-      locale: "es-PE",
     });
   });
 

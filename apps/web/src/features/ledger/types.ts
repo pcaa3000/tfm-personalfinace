@@ -80,7 +80,6 @@ export interface ReviseAccountInput {
 
 export interface WorkspaceView {
   workspaceId: string;
-  locale: string;
   timezone: string;
   defaultCurrency: string;
 }

@@ -148,7 +148,6 @@ export const en: TranslationShape = {
   settings: {
     defaultCurrency: "Default currency",
     timezone: "Timezone",
-    locale: "Locale",
   },
   balance: {
     title: "Overall balance by currency",
@@ -375,7 +374,6 @@ export const en: TranslationShape = {
     RECEIPT_TYPE_NOT_ALLOWED: "The image format is not valid.",
     RECEIPT_SPLITS_REQUIRED: "The draft needs at least one row.",
     RECEIPT_DRAFT_INVALID: "The receipt draft is not valid.",
-    LOCALE_INVALID: "The locale is not valid.",
     WORKSPACE_NO_CHANGES: "There are no changes to save.",
     WORKSPACE_ID_INVALID: "Internal workspace error.",
   },

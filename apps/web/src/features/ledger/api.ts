@@ -234,7 +234,6 @@ export function getWorkspace(): Promise<WorkspaceView> {
 }
 export interface WorkspacePreferencesPatch {
   defaultCurrency?: string;
-  locale?: string;
   timezone?: string;
 }
 

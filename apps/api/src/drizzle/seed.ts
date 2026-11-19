@@ -43,7 +43,6 @@ async function main(): Promise<void> {
           id: "ws-local-dev",
           identityKey: "local|dev-user",
           kind: "personal",
-          locale: "en-US",
           timezone: "UTC",
           defaultCurrency: "PEN",
         })

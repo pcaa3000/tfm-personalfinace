@@ -26,8 +26,6 @@ const TIMEZONES = [
   "Europe/Madrid",
 ];
 
-const LOCALES = ["es-PE", "es-ES", "es-MX", "en-US", "en-GB"];
-
 interface Props {
   open: boolean;
   workspace: WorkspaceView | undefined;
@@ -42,14 +40,12 @@ interface Props {
 interface Draft {
   defaultCurrency: string;
   timezone: string;
-  locale: string;
 }
 
 function draftFrom(workspace: WorkspaceView | undefined): Draft {
   return {
     defaultCurrency: workspace?.defaultCurrency ?? "PEN",
     timezone: workspace?.timezone ?? "UTC",
-    locale: workspace?.locale ?? "es-PE",
   };
 }
 
@@ -89,9 +85,6 @@ export function PreferencesDialog({
   }
   if (draft.timezone !== baseline.timezone) {
     patch.timezone = draft.timezone;
-  }
-  if (draft.locale !== baseline.locale) {
-    patch.locale = draft.locale;
   }
   const dirty = Object.keys(patch).length > 0;
 
@@ -137,22 +130,6 @@ export function PreferencesDialog({
             {TIMEZONES.map((timezone) => (
               <MenuItem key={timezone} value={timezone}>
                 {timezone}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            select
-            size="small"
-            label={t("settings.locale")}
-            value={draft.locale}
-            disabled={submitting}
-            onChange={(e) =>
-              setDraft((current) => ({ ...current, locale: e.target.value }))
-            }
-          >
-            {LOCALES.map((locale) => (
-              <MenuItem key={locale} value={locale}>
-                {locale}
               </MenuItem>
             ))}
           </TextField>

@@ -98,7 +98,7 @@ Entregar el núcleo financiero sin depender de OCR o voz.
 ### Unidades de trabajo
 
 1. Integrar OIDC mediante Supabase Auth: usuario/contraseña, al menos un proveedor social (Google o Facebook) y passkey; validación de tokens y aprovisionamiento por issuer–subject.
-2. Crear workspace con idioma, locale, zona horaria y moneda predeterminada.
+2. Crear workspace con idioma, zona horaria y moneda predeterminada.
 3. Crear el catálogo inicial de categorías (Hogar, Comida, Transporte, Salud, Sueldo, etc.) y categorías personalizadas.
 4. Registrar ingresos y gastos manuales con dinero exacto y fecha de negocio.
 5. Implementar la cola local de la PWA y el endpoint de sincronización idempotente para registros manuales.

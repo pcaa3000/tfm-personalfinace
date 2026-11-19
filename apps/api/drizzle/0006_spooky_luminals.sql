@@ -1,0 +1,1 @@
+ALTER TABLE "identity_workspace_workspaces" DROP COLUMN "locale";

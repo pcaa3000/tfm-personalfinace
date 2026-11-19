@@ -18,13 +18,11 @@ import { sanitizeZodIssues } from "../middleware/zod-details.js";
 const updateSchema = z
   .object({
     defaultCurrency: z.string().length(3).optional(),
-    locale: z.string().min(2).max(35).optional(),
     timezone: z.string().min(1).max(64).optional(),
   })
   .refine(
     (data) =>
       data.defaultCurrency !== undefined ||
-      data.locale !== undefined ||
       data.timezone !== undefined,
   );
 
@@ -40,7 +38,6 @@ function toHttpError(error: DomainError): HttpError {
 function toWorkspaceView(context: WorkspaceContext) {
   return {
     workspaceId: context.workspaceId.value,
-    locale: context.locale,
     timezone: context.timezone,
     defaultCurrency: context.defaultCurrency,
   };
@@ -55,7 +52,7 @@ export interface WorkspaceRouteDeps extends AuthDeps {
 
 /**
  * Registers the `/api/v1/workspace` surface. GET/PATCH → 200 and the
- * `{workspaceId, locale, timezone, defaultCurrency}` projection mirror
+ * `{workspaceId, timezone, defaultCurrency}` projection mirror
  * WorkspaceController.
  */
 export function registerWorkspaceRoutes(
@@ -87,9 +84,6 @@ export function registerWorkspaceRoutes(
       {
         ...(parsed.data.defaultCurrency !== undefined
           ? { defaultCurrency: parsed.data.defaultCurrency }
-          : {}),
-        ...(parsed.data.locale !== undefined
-          ? { locale: parsed.data.locale }
           : {}),
         ...(parsed.data.timezone !== undefined
           ? { timezone: parsed.data.timezone }

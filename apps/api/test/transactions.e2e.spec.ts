@@ -1017,31 +1017,32 @@ describe("/api/v1/workspace", () => {
     expect(res.body.code).toBe("CURRENCY_INVALID_CODE");
   });
 
-  it("updates timezone and locale and persists them (RF-003)", async () => {
-    const patch = await api<{ timezone: string; locale: string }>(
+  it("updates timezone and persists it (RF-003)", async () => {
+    const patch = await api<{ timezone: string }>(
       "/api/v1/workspace",
       {
         method: "PATCH",
         headers: ALICE,
-        body: { timezone: "America/Lima", locale: "es-PE" },
+        body: { timezone: "America/Lima" },
       },
     );
     expect(patch.status).toBe(200);
     expect(patch.body.timezone).toBe("America/Lima");
-    expect(patch.body.locale).toBe("es-PE");
+    expect(patch.body).not.toHaveProperty("locale");
 
-    const get = await api<{ timezone: string; locale: string }>(
+    const get = await api<{ timezone: string }>(
       "/api/v1/workspace",
       { headers: ALICE },
     );
     expect(get.body.timezone).toBe("America/Lima");
-    expect(get.body.locale).toBe("es-PE");
+    expect(get.body).not.toHaveProperty("locale");
   });
 
-  it("rejects invalid timezone, locale and empty patches", async () => {
+  it("rejects invalid timezone, locale-only and empty patches", async () => {
     for (const [body, code] of [
       [{ timezone: "Mars/Olympus_Mons" }, "TIMEZONE_INVALID"],
-      [{ locale: "!!bad!!" }, "LOCALE_INVALID"],
+      // locale was removed (S1): a locale-only patch is an empty body.
+      [{ locale: "es-PE" }, "INVALID_BODY"],
       [{}, "INVALID_BODY"],
     ] as const) {
       const res = await api<ApiError>("/api/v1/workspace", {

@@ -23,7 +23,6 @@ export const workspaces = pgTable(
     id: text("id").primaryKey(),
     identityKey: text("identityKey").notNull(),
     kind: text("kind").notNull().default("personal"),
-    locale: text("locale").notNull().default("en-US"),
     timezone: text("timezone").notNull().default("UTC"),
     defaultCurrency: text("defaultCurrency").notNull().default("USD"),
     createdAt: timestamp("createdAt", { mode: "date", precision: 3 })

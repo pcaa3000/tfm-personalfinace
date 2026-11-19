@@ -113,7 +113,6 @@ function buildApp(options: {
     workspaceContext: {
       resolve: vi.fn(async () => ({
         workspaceId: WS,
-        locale: "en",
         timezone: "UTC",
         defaultCurrency: "PEN",
       })),

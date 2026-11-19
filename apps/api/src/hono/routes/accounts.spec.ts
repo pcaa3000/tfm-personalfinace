@@ -40,7 +40,6 @@ const WS = wsResult.value;
 const CALLER: CallerIdentity = { issuer: "test", subject: "user-1" };
 const WORKSPACE: WorkspaceContext = {
   workspaceId: WS,
-  locale: "en",
   timezone: "UTC",
   defaultCurrency: "EUR",
 };

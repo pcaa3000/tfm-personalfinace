@@ -32,7 +32,6 @@ const WS = wsResult.value;
 const CALLER: CallerIdentity = { issuer: "test", subject: "user-1" };
 const WORKSPACE: WorkspaceContext = {
   workspaceId: WS,
-  locale: "en",
   timezone: "UTC",
   defaultCurrency: "EUR",
 };
@@ -262,7 +261,6 @@ describe("GET /api/v1/workspace", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       workspaceId: "ws-1",
-      locale: "en",
       timezone: "UTC",
       defaultCurrency: "EUR",
     });
@@ -289,26 +287,22 @@ describe("PATCH /api/v1/workspace", () => {
     const updated: WorkspaceContext = {
       ...WORKSPACE,
       defaultCurrency: "USD",
-      locale: "es-PE",
       timezone: "America/Lima",
     };
     deps.updatePreferences.execute.mockResolvedValue(ok(updated));
 
     const res = await patchJson(app, "/api/v1/workspace", {
       defaultCurrency: "USD",
-      locale: "es-PE",
       timezone: "America/Lima",
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       workspaceId: "ws-1",
-      locale: "es-PE",
       timezone: "America/Lima",
       defaultCurrency: "USD",
     });
     expect(deps.updatePreferences.execute).toHaveBeenCalledWith(WS, {
       defaultCurrency: "USD",
-      locale: "es-PE",
       timezone: "America/Lima",
     });
   });
@@ -317,16 +311,29 @@ describe("PATCH /api/v1/workspace", () => {
     const deps = makeDeps();
     const app = createApp(deps);
     deps.updatePreferences.execute.mockResolvedValue(
-      ok({ ...WORKSPACE, locale: "es-PE" }),
+      ok({ ...WORKSPACE, timezone: "America/Lima" }),
     );
+
+    const res = await patchJson(app, "/api/v1/workspace", {
+      timezone: "America/Lima",
+    });
+    expect(res.status).toBe(200);
+    expect(deps.updatePreferences.execute).toHaveBeenCalledWith(WS, {
+      timezone: "America/Lima",
+    });
+  });
+
+  it("rejects a locale-only patch as INVALID_BODY (locale removed, S1)", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
 
     const res = await patchJson(app, "/api/v1/workspace", {
       locale: "es-PE",
     });
-    expect(res.status).toBe(200);
-    expect(deps.updatePreferences.execute).toHaveBeenCalledWith(WS, {
-      locale: "es-PE",
-    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.code).toBe("INVALID_BODY");
+    expect(deps.updatePreferences.execute).not.toHaveBeenCalled();
   });
 
   it("maps a TIMEZONE_INVALID DomainError to 400", async () => {
@@ -359,7 +366,7 @@ describe("PATCH /api/v1/workspace", () => {
     );
 
     const res = await patchJson(app, "/api/v1/workspace", {
-      locale: "es-PE",
+      timezone: "America/Lima",
     });
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({
@@ -376,7 +383,7 @@ describe("PATCH /api/v1/workspace", () => {
     );
 
     const res = await patchJson(app, "/api/v1/workspace", {
-      locale: "es-PE",
+      timezone: "America/Lima",
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({

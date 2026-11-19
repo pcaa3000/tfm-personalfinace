@@ -76,7 +76,6 @@ describe("DrizzleWorkspaceAdapter (integration, real Postgres)", () => {
 
     const context = await adapter.resolve(caller("alice"));
 
-    expect(context.locale).toBe("en-US");
     expect(context.timezone).toBe("UTC");
     expect(context.defaultCurrency).toBe("PEN");
 
@@ -103,7 +102,6 @@ describe("DrizzleWorkspaceAdapter (integration, real Postgres)", () => {
     const second = await adapter.resolve(caller("bob"));
 
     expect(second.workspaceId.value).toBe(first.workspaceId.value);
-    expect(second.locale).toBe(first.locale);
     const rows = await db
       .select()
       .from(workspaces)
@@ -139,11 +137,9 @@ describe("DrizzleWorkspaceAdapter (integration, real Postgres)", () => {
     const context = await adapter.resolve(caller("carol"));
 
     const updated = await adapter.updatePreferences(context.workspaceId, {
-      locale: "es-PE",
       timezone: "America/Lima",
     });
     expect(updated.workspaceId.value).toBe(context.workspaceId.value);
-    expect(updated.locale).toBe("es-PE");
     expect(updated.timezone).toBe("America/Lima");
     // Untouched fields keep their values.
     expect(updated.defaultCurrency).toBe("PEN");
@@ -152,13 +148,11 @@ describe("DrizzleWorkspaceAdapter (integration, real Postgres)", () => {
       .select()
       .from(workspaces)
       .where(eq(workspaces.id, context.workspaceId.value));
-    expect(row!.locale).toBe("es-PE");
     expect(row!.timezone).toBe("America/Lima");
     expect(row!.defaultCurrency).toBe("PEN");
 
     // A later resolve observes the persisted preferences.
     const again = await adapter.resolve(caller("carol"));
-    expect(again.locale).toBe("es-PE");
     expect(again.timezone).toBe("America/Lima");
   });
 
@@ -169,7 +163,6 @@ describe("DrizzleWorkspaceAdapter (integration, real Postgres)", () => {
     const updated = await adapter.updatePreferences(context.workspaceId, {});
 
     expect(updated.workspaceId.value).toBe(context.workspaceId.value);
-    expect(updated.locale).toBe(context.locale);
     expect(updated.timezone).toBe(context.timezone);
     expect(updated.defaultCurrency).toBe(context.defaultCurrency);
   });
@@ -179,7 +172,7 @@ describe("DrizzleWorkspaceAdapter (integration, real Postgres)", () => {
 
     await expect(
       adapter.updatePreferences(workspaceId(`${ISSUER}|ghost`), {
-        locale: "fr-FR",
+        timezone: "Europe/Madrid",
       }),
     ).rejects.toThrow();
   });

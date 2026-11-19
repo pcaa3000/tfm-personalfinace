@@ -43,6 +43,13 @@
       "when": 1795054572814,
       "tag": "0005_wealthy_ultragirl",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795057395443,
+      "tag": "0006_spooky_luminals",
+      "breakpoints": true
     }
   ]
 }

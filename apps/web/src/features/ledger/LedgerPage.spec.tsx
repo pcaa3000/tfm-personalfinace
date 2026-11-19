@@ -53,13 +53,11 @@ vi.mock("./api", async (importOriginal) => {
     listCurrencyCatalog: vi.fn(async () => []),
     getWorkspace: vi.fn(async () => ({
       workspaceId: "ws-1",
-      locale: "es-PE",
       timezone: "UTC",
       defaultCurrency: "PEN",
     })),
     updateWorkspace: vi.fn(async () => ({
       workspaceId: "ws-1",
-      locale: "es-PE",
       timezone: "UTC",
       defaultCurrency: "PEN",
     })),

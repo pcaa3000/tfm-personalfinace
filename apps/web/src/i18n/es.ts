@@ -144,7 +144,6 @@ export const es = {
   settings: {
     defaultCurrency: "Moneda por defecto",
     timezone: "Zona horaria",
-    locale: "Locale",
   },
   balance: {
     title: "Balance general por moneda",
@@ -371,7 +370,6 @@ export const es = {
     RECEIPT_TYPE_NOT_ALLOWED: "El formato de la imagen no es válido.",
     RECEIPT_SPLITS_REQUIRED: "El borrador necesita al menos una fila.",
     RECEIPT_DRAFT_INVALID: "El borrador del ticket no es válido.",
-    LOCALE_INVALID: "El locale no es válido.",
     WORKSPACE_NO_CHANGES: "No hay cambios para guardar.",
     WORKSPACE_ID_INVALID: "Error interno de espacio de trabajo.",
   },
