@@ -220,7 +220,7 @@ export function TransactionForm({
       {/* pt: the first field's floating label sits ~9px above the
           input; DialogContent after DialogTitle zeroes padding-top
           and clips it, so the form reserves its own headroom. */}
-      <Stack spacing={2} sx={{ maxWidth: 480, pt: 1.5 }}>
+      <Stack spacing={2} sx={{ maxWidth: 480, pt: 2 }}>
         {error ? <Alert severity="error">{error}</Alert> : null}
         <Controller
           name="type"

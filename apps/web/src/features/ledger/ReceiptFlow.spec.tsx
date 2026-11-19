@@ -15,6 +15,7 @@ import {
   getReceiptDraft,
   getReceiptScan,
   rejectReceipt,
+  retryReceiptScan,
   uploadReceipt,
 } from "./api";
 import type { ReceiptDraftPayload, ReceiptScanView } from "./receipt-draft";
@@ -30,6 +31,7 @@ vi.mock("./api", async (importOriginal) => {
     getReceiptDraft: vi.fn(),
     confirmReceipt: vi.fn(),
     rejectReceipt: vi.fn(),
+    retryReceiptScan: vi.fn(),
   };
 });
 
@@ -129,6 +131,8 @@ interface RenderOptions {
   onCreateCategory?: (
     input: import("./types").CreateCategoryInput,
   ) => Promise<CategoryView>;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
 }
 
 function renderFlow(options: RenderOptions = {}) {
@@ -141,8 +145,8 @@ function renderFlow(options: RenderOptions = {}) {
       defaultCurrency="PEN"
       currencies={["PEN"]}
       timezone="UTC"
-      pollIntervalMs={5}
-      timeoutMs={5_000}
+      pollIntervalMs={options.pollIntervalMs ?? 5}
+      timeoutMs={options.timeoutMs ?? 5_000}
       onConfirmed={onConfirmed}
       onClose={onClose}
       {...(options.onCreateCategory
@@ -175,6 +179,7 @@ beforeEach(() => {
   vi.mocked(getReceiptDraft).mockReset();
   vi.mocked(confirmReceipt).mockReset();
   vi.mocked(rejectReceipt).mockReset();
+  vi.mocked(retryReceiptScan).mockReset();
 });
 
 afterEach(cleanup);
@@ -284,6 +289,82 @@ describe("ReceiptFlow — capture → poll → review (T7, S1+S2+S7+S10)", () =>
     expect(
       screen.getByRole("button", { name: "Reintentar" }),
     ).toBeTruthy();
+  });
+
+  it("resumes polling the same scan on retry after a poll timeout — no re-upload (T12, S11)", async () => {
+    vi.mocked(uploadReceipt).mockResolvedValue(scanView("pending"));
+    vi.mocked(getReceiptScan).mockResolvedValue(scanView("pending"));
+    renderFlow({ timeoutMs: 30 });
+
+    pickFile();
+
+    expect(
+      await screen.findByText("El análisis tardó demasiado. Reintentá."),
+    ).toBeTruthy();
+    expect(uploadReceipt).toHaveBeenCalledTimes(1);
+
+    // Second polling round completes over the SAME scan id.
+    vi.mocked(getReceiptScan).mockResolvedValue(scanView("draft_ready"));
+    vi.mocked(getReceiptDraft).mockResolvedValue(draftPayload());
+
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+
+    expect(await screen.findByLabelText("Concepto")).toBeTruthy();
+    expect(uploadReceipt).toHaveBeenCalledTimes(1);
+    expect(retryReceiptScan).not.toHaveBeenCalled();
+    expect(getReceiptScan).toHaveBeenCalledWith("rc-1");
+  });
+
+  it("retries a failed scan via POST retry and polls the same id — no re-upload (T12, S11)", async () => {
+    vi.mocked(uploadReceipt).mockResolvedValue(scanView("pending"));
+    vi.mocked(getReceiptScan).mockResolvedValue(
+      scanView("failed", "llm exploded"),
+    );
+    renderFlow();
+
+    pickFile();
+
+    expect(
+      await screen.findByText("No se pudo analizar el ticket."),
+    ).toBeTruthy();
+
+    // The retry endpoint resets the scan to pending; polling resumes
+    // over the same scan id until the draft arrives.
+    vi.mocked(retryReceiptScan).mockResolvedValue(scanView("pending"));
+    vi.mocked(getReceiptScan).mockResolvedValue(scanView("draft_ready"));
+    vi.mocked(getReceiptDraft).mockResolvedValue(draftPayload());
+
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+
+    await waitFor(() => {
+      expect(retryReceiptScan).toHaveBeenCalledWith("rc-1");
+    });
+    expect(await screen.findByLabelText("Concepto")).toBeTruthy();
+    expect(uploadReceipt).toHaveBeenCalledTimes(1);
+    expect(getReceiptScan).toHaveBeenCalledWith("rc-1");
+  });
+
+  it("shows the already-final message when the retry endpoint rejects a final scan", async () => {
+    const { ApiError } = await import("./api");
+    vi.mocked(uploadReceipt).mockResolvedValue(scanView("pending"));
+    vi.mocked(getReceiptScan).mockResolvedValue(
+      scanView("failed", "llm exploded"),
+    );
+    renderFlow();
+
+    pickFile();
+    await screen.findByText("No se pudo analizar el ticket.");
+
+    vi.mocked(retryReceiptScan).mockRejectedValue(
+      new ApiError("RECEIPT_ALREADY_FINAL", "conflict", 409),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+
+    expect(
+      await screen.findByText("El ticket ya fue confirmado o descartado."),
+    ).toBeTruthy();
+    expect(uploadReceipt).toHaveBeenCalledTimes(1);
   });
 
   it("shows the connection message when upload fails with a network TypeError", async () => {

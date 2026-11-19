@@ -218,6 +218,18 @@ export class ReceiptScan {
     this._updatedAt = now;
   }
 
+  /**
+   * T12 (S11): a terminal `failed` scan returns to `pending` so the
+   * re-enqueued job re-runs extraction over the ORIGINAL storageKey —
+   * the image is never re-uploaded. Callers gate on `status ===
+   * "failed"`.
+   */
+  resetToPending(now: Date): void {
+    this._status = "pending";
+    this._error = null;
+    this._updatedAt = now;
+  }
+
   /** T6: the user discards the scan; allowed only from non-terminal states. */
   markRejected(now: Date): void {
     this._status = "rejected";

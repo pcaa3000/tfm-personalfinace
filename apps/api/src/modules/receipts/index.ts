@@ -53,6 +53,7 @@ export {
 export { GetReceiptScanUseCase } from "./application/get-receipt-scan.use-case.js";
 export { GetReceiptDraftUseCase } from "./application/get-receipt-draft.use-case.js";
 export { RejectReceiptScanUseCase } from "./application/reject-receipt-scan.use-case.js";
+export { RetryReceiptScanUseCase } from "./application/retry-receipt-scan.use-case.js";
 export {
   ConfirmReceiptDraftUseCase,
   type ConfirmReceiptDraftCommand,

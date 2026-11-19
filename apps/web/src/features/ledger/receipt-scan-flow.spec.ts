@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ReceiptDraftPayload, ReceiptScanView } from "./receipt-draft";
 import {
+  awaitDraft,
   ReceiptPollTimeoutError,
   ReceiptScanFailedError,
   uploadAndAwaitDraft,
@@ -147,5 +148,73 @@ describe("uploadAndAwaitDraft (receipt-scan-drafts T7, S1+S2)", () => {
     }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(TypeError);
+  });
+});
+
+describe("awaitDraft — resume polling an existing scan (T12, S11)", () => {
+  it("polls the same scan id until draft_ready without any upload", async () => {
+    const getScan = vi
+      .fn()
+      .mockResolvedValueOnce(scanView("pending"))
+      .mockResolvedValueOnce(scanView("draft_ready"));
+    const getDraft = vi.fn(async () => draft);
+
+    const result = await awaitDraft(scanView("pending"), {
+      getScan,
+      getDraft,
+      sleep: async () => {},
+      now: () => 0,
+    });
+
+    expect(getScan).toHaveBeenCalledTimes(2);
+    expect(getScan).toHaveBeenCalledWith("rc-1");
+    expect(result.scan.status).toBe("draft_ready");
+    expect(result.draft).toBe(draft);
+  });
+
+  it("reports every observed scan through onScan so the caller keeps the scanId", async () => {
+    const seen: string[] = [];
+    const getScan = vi.fn(async () => scanView("draft_ready"));
+
+    await awaitDraft(scanView("pending"), {
+      getScan,
+      getDraft: vi.fn(async () => draft),
+      sleep: async () => {},
+      now: () => 0,
+      onScan: (scan) => seen.push(`${scan.id}:${scan.status}`),
+    });
+
+    expect(seen).toEqual(["rc-1:pending", "rc-1:draft_ready"]);
+  });
+
+  it("attaches the scanId to the poll timeout error", async () => {
+    let clock = 0;
+
+    const error = await awaitDraft(scanView("pending"), {
+      getScan: vi.fn(async () => scanView("pending")),
+      getDraft: vi.fn(),
+      sleep: async (ms: number) => {
+        clock += ms;
+      },
+      now: () => clock,
+      pollIntervalMs: 2000,
+      timeoutMs: 5000,
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ReceiptPollTimeoutError);
+    expect((error as ReceiptPollTimeoutError).scanId).toBe("rc-1");
+  });
+
+  it("attaches the scanId to the scan failure error", async () => {
+    const error = await awaitDraft(scanView("failed", "boom"), {
+      getScan: vi.fn(),
+      getDraft: vi.fn(),
+      sleep: async () => {},
+      now: () => 0,
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ReceiptScanFailedError);
+    expect((error as ReceiptScanFailedError).scanId).toBe("rc-1");
+    expect((error as ReceiptScanFailedError).scanError).toBe("boom");
   });
 });

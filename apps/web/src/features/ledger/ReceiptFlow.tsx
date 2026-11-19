@@ -12,7 +12,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { confirmReceipt, rejectReceipt } from "./api";
+import { confirmReceipt, rejectReceipt, retryReceiptScan } from "./api";
 import { CategorySelect } from "./CategorySelect";
 import { errorMessage } from "./errors";
 import { minorToDecimalString, todayInTimeZone } from "./format";
@@ -21,11 +21,13 @@ import {
   draftToReviewState,
   reviewSplitsTotalMinorUnits,
   reviewStateToConfirmInput,
+  type ReceiptDraftPayload,
   type ReceiptReviewState,
   type ReceiptScanView,
   type SplitSelection,
 } from "./receipt-draft";
 import {
+  awaitDraft,
   ReceiptPollTimeoutError,
   ReceiptScanFailedError,
   uploadAndAwaitDraft,
@@ -104,6 +106,11 @@ export function ReceiptFlow({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [scan, setScan] = useState<ReceiptScanView | null>(null);
   const [review, setReview] = useState<ReceiptReviewState | null>(null);
+  // T12 (S11): the latest scan observed + the thrown flow error let a
+  // retry resume the SAME scan (or reset it via POST retry) instead of
+  // re-uploading the image.
+  const [lastScan, setLastScan] = useState<ReceiptScanView | null>(null);
+  const [failure, setFailure] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState<"confirm" | "reject" | null>(
     null,
   );
@@ -143,31 +150,71 @@ export function ReceiptFlow({
     return errorMessage(cause, t);
   };
 
+  const flowOptions = () => ({
+    ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {}),
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+    onPhase: setPhase,
+    onScan: setLastScan,
+  });
+
+  const showReview = (result: {
+    scan: ReceiptScanView;
+    draft: ReceiptDraftPayload;
+  }) => {
+    setScan(result.scan);
+    setReview(
+      draftToReviewState(result.draft, {
+        categories,
+        defaultCurrency,
+        fallbackDate: todayInTimeZone(effectiveTimezone),
+        exponentOf,
+      }),
+    );
+    setStep("review");
+  };
+
+  const showFlowError = (cause: unknown) => {
+    setFailure(cause);
+    setError(flowError(cause));
+    setStep("pick");
+  };
+
   const startScan = (picked: File) => {
     setStep("working");
     setPhase("uploading");
     setError(null);
-    void uploadAndAwaitDraft(picked, {
-      ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {}),
-      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-      onPhase: setPhase,
-    })
-      .then((result) => {
-        setScan(result.scan);
-        setReview(
-          draftToReviewState(result.draft, {
-            categories,
-            defaultCurrency,
-            fallbackDate: todayInTimeZone(effectiveTimezone),
-            exponentOf,
-          }),
-        );
-        setStep("review");
-      })
-      .catch((cause: unknown) => {
-        setError(flowError(cause));
-        setStep("pick");
-      });
+    setFailure(null);
+    setLastScan(null);
+    void uploadAndAwaitDraft(picked, flowOptions())
+      .then(showReview)
+      .catch(showFlowError);
+  };
+
+  /**
+   * T12 (S11): retry NEVER re-uploads. A poll timeout resumes polling
+   * the same scan (the job may still be running); a `failed` scan first
+   * calls POST /receipts/:id/retry to reset it server-side, then polls
+   * the same id again. Only when no scan exists yet (upload itself
+   * failed) does a retry upload the picked file again.
+   */
+  const onRetry = () => {
+    if (!lastScan) {
+      if (file) startScan(file);
+      return;
+    }
+    setStep("working");
+    setPhase("analyzing");
+    setError(null);
+    const resume = async () => {
+      const seed =
+        failure instanceof ReceiptScanFailedError
+          ? await retryReceiptScan(lastScan.id)
+          : lastScan;
+      return awaitDraft(seed, flowOptions());
+    };
+    void resume()
+      .then(showReview)
+      .catch(showFlowError);
   };
 
   const acceptFile = (picked: File) => {
@@ -584,7 +631,7 @@ export function ReceiptFlow({
         </Button>
       </Stack>
       {file && error ? (
-        <Button variant="contained" onClick={() => startScan(file)}>
+        <Button variant="contained" onClick={onRetry}>
           {t("receipt.retry")}
         </Button>
       ) : null}

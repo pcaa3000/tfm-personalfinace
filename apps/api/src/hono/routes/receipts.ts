@@ -8,6 +8,7 @@ import type {
   GetReceiptFileUseCase,
   GetReceiptScanUseCase,
   RejectReceiptScanUseCase,
+  RetryReceiptScanUseCase,
   UploadReceiptUseCase,
 } from "../../modules/receipts/index.js";
 import { DomainError } from "../../modules/shared-kernel/index.js";
@@ -82,6 +83,7 @@ export interface ReceiptRouteDeps extends AuthDeps {
   readonly getReceiptDraft: Pick<GetReceiptDraftUseCase, "execute">;
   readonly confirmReceiptDraft: Pick<ConfirmReceiptDraftUseCase, "execute">;
   readonly rejectReceiptScan: Pick<RejectReceiptScanUseCase, "execute">;
+  readonly retryReceiptScan: Pick<RetryReceiptScanUseCase, "execute">;
 }
 
 /** True for the multipart field shapes Hono yields (File, or File-like). */
@@ -100,6 +102,8 @@ function isUploadedFile(value: unknown): value is File {
  *   POST /api/v1/receipts          multipart `file` field → 201 pending scan
  *   GET  /api/v1/receipts/:id      scan row for status polling
  *   GET  /api/v1/receipts/:id/file stored bytes (interim for signed URLs)
+ *   POST /api/v1/receipts/:id/retry re-queue a failed scan without
+ *        re-uploading the image (T12, S11)
  * Quarantine codes (RECEIPT_EMPTY / RECEIPT_TOO_LARGE /
  * RECEIPT_TYPE_NOT_ALLOWED) arrive as 400 {code, message} envelopes.
  */
@@ -209,6 +213,18 @@ export function registerReceiptRoutes(
   app.post("/api/v1/receipts/:id/reject", auth, async (c) => {
     const { workspace } = authContext(c);
     const result = await deps.rejectReceiptScan.execute(
+      workspace.workspaceId,
+      c.req.param("id"),
+    );
+    if (!result.ok) {
+      throw toHttpError(result.error);
+    }
+    return c.json(result.value);
+  });
+
+  app.post("/api/v1/receipts/:id/retry", auth, async (c) => {
+    const { workspace } = authContext(c);
+    const result = await deps.retryReceiptScan.execute(
       workspace.workspaceId,
       c.req.param("id"),
     );

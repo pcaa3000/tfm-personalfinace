@@ -149,6 +149,13 @@ function buildApp(options: {
           : err(new DomainError("RECEIPT_NOT_FOUND", "not found")),
       ),
     },
+    retryReceiptScan: {
+      execute: vi.fn(async (workspaceId: WorkspaceId, id: string) =>
+        id === "scan-1"
+          ? ok({ ...SCAN_VIEW, status: "pending" })
+          : err(new DomainError("RECEIPT_NOT_FOUND", "not found")),
+      ),
+    },
   };
   const app = new Hono<HonoEnv>();
   registerReceiptRoutes(app, deps);
@@ -499,6 +506,49 @@ describe("POST /api/v1/receipts/:id/reject (T6, S2)", () => {
     const { app } = buildApp();
 
     const res = await app.request("/api/v1/receipts/nope/reject", {
+      method: "POST",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/v1/receipts/:id/retry (T12, S11)", () => {
+  it("re-queues a failed scan and returns the pending scan view", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request("/api/v1/receipts/scan-1/retry", {
+      method: "POST",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ReceiptScanView;
+    expect(body.status).toBe("pending");
+    expect(deps.retryReceiptScan.execute).toHaveBeenCalledWith(WS, "scan-1");
+  });
+
+  it("maps RECEIPT_ALREADY_FINAL to 409 on a user-final scan", async () => {
+    const { app, deps } = buildApp();
+    vi.mocked(deps.retryReceiptScan.execute).mockResolvedValueOnce(
+      err(new DomainError("RECEIPT_ALREADY_FINAL", "already confirmed")),
+    );
+
+    const res = await app.request("/api/v1/receipts/scan-1/retry", {
+      method: "POST",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("RECEIPT_ALREADY_FINAL");
+  });
+
+  it("returns 404 for a missing scan", async () => {
+    const { app } = buildApp();
+
+    const res = await app.request("/api/v1/receipts/nope/retry", {
       method: "POST",
       headers: { "x-dev-user": "t" },
     });

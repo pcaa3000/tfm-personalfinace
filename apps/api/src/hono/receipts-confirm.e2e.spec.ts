@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 
 import { serve } from "@hono/node-server";
-import { eq, inArray, like } from "drizzle-orm";
+import { eq, inArray, like, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -27,7 +27,7 @@ import {
   LocalReceiptStorage,
   type ReceiptScanPort,
 } from "../modules/receipts/index.js";
-import { ok } from "../modules/shared-kernel/index.js";
+import { ok, WorkspaceId } from "../modules/shared-kernel/index.js";
 
 /**
  * Receipt draft approval e2e (receipt-scan-drafts T6, S2+S4+S7+S10):
@@ -117,6 +117,18 @@ async function uploadReceipt(headers: Record<string, string>) {
     body: form,
   });
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+}
+
+/** Rows enqueued for one scan on the receipt-scan pg-boss queue. */
+async function countScanJobs(receiptId: string): Promise<number> {
+  const rows = await db.execute<{ count: string }>(sql`
+    select count(*)::text as count
+    from pgboss.job
+    where name = 'receipt-scan'
+      and data->>'receiptId' = ${receiptId}
+  `);
+  const row = Array.isArray(rows) ? rows[0] : rows.rows[0];
+  return Number(row?.count ?? 0);
 }
 
 /** Drives the worker pipeline for one scan with the fake port. */
@@ -424,6 +436,60 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
     });
     expect(rejectConfirmed.status).toBe(409);
     expect((rejectConfirmed.body as { code: string }).code).toBe(
+      "RECEIPT_ALREADY_FINAL",
+    );
+  });
+
+  it("retry re-queues a failed scan over the same storageKey without a new upload (T12, S11)", async () => {
+    const upload = await uploadReceipt(ALICE);
+    expect(upload.status).toBe(201);
+    const scanId = upload.body.id as string;
+    const wsId = await workspaceIdOf(ALICE);
+    const ws = WorkspaceId.create(wsId);
+    if (!ws.ok) throw ws.error;
+
+    // Force the terminal failure exactly how the worker persists it.
+    const repo = new DrizzleReceiptScanRepository(db);
+    const failed = await repo.findById(ws.value, scanId);
+    if (!failed) throw new Error("scan missing after upload");
+    const storageKey = failed.storageKey;
+    failed.markFailed("forced pipeline failure", new Date());
+    await repo.save(failed);
+
+    const jobsBefore = await countScanJobs(scanId);
+
+    const retry = await json(`/api/v1/receipts/${scanId}/retry`, {
+      method: "POST",
+      headers: ALICE,
+    });
+    expect(retry.status).toBe(200);
+    expect((retry.body as { status: string }).status).toBe("pending");
+
+    // Same row back to pending over the original storageKey — no new file.
+    const reloaded = await repo.findById(ws.value, scanId);
+    expect(reloaded?.status).toBe("pending");
+    expect(reloaded?.error).toBeNull();
+    expect(reloaded?.storageKey).toBe(storageKey);
+
+    // The scan job was re-enqueued: one extra row on the receipt-scan queue.
+    expect(await countScanJobs(scanId)).toBe(jobsBefore + 1);
+
+    // The retried job is processable end-to-end and reaches draft_ready.
+    await runScanJob(scanId, wsId);
+    const done = await json(`/api/v1/receipts/${scanId}`, { headers: ALICE });
+    expect((done.body as { status: string }).status).toBe("draft_ready");
+
+    // A user-final scan conflicts instead of re-queueing.
+    const final = await repo.findById(ws.value, scanId);
+    if (!final) throw new Error("scan missing after draft_ready");
+    final.markRejected(new Date());
+    await repo.save(final);
+    const conflict = await json(`/api/v1/receipts/${scanId}/retry`, {
+      method: "POST",
+      headers: ALICE,
+    });
+    expect(conflict.status).toBe(409);
+    expect((conflict.body as { code: string }).code).toBe(
       "RECEIPT_ALREADY_FINAL",
     );
   });

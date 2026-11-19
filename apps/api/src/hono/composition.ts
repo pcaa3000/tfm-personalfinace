@@ -1,5 +1,4 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import {
   createApp,
@@ -52,6 +51,7 @@ import { GetReceiptFileUseCase } from "../modules/receipts/application/get-recei
 import { GetReceiptDraftUseCase } from "../modules/receipts/application/get-receipt-draft.use-case.js";
 import { ConfirmReceiptDraftUseCase } from "../modules/receipts/application/confirm-receipt-draft.use-case.js";
 import { RejectReceiptScanUseCase } from "../modules/receipts/application/reject-receipt-scan.use-case.js";
+import { RetryReceiptScanUseCase } from "../modules/receipts/application/retry-receipt-scan.use-case.js";
 import { RECEIPT_MAX_BYTES_DEFAULT } from "../modules/receipts/domain/receipt-upload.js";
 
 /**
@@ -198,6 +198,12 @@ export function buildApp(env: AppEnv): BuiltApp {
       clock,
     ),
     rejectReceiptScan: new RejectReceiptScanUseCase(receiptScans, clock),
+    // retry without re-upload (receipt-scan-drafts T12, S11)
+    retryReceiptScan: new RetryReceiptScanUseCase(
+      receiptScans,
+      receiptDispatcher,
+      clock,
+    ),
   };
 
   return {
@@ -358,16 +364,9 @@ export function receiptStorageFromProcess(): ReceiptStorageEnv {
       driver: "local",
       dir:
         process.env.RECEIPT_STORAGE_DIR ??
-        // Default: repo-local apps/api/s3/tickets (L18) — resuelto desde el
-        // módulo (src/hono o dist/src/hono → 3 niveles arriba = apps/api).
-        join(
-          dirname(fileURLToPath(import.meta.url)),
-          "..",
-          "..",
-          "..",
-          "s3",
-          "tickets",
-        ),
+        // Default: repo-local apps/api/s3/tickets (L18) — resuelto desde
+        // el cwd del proceso (dev/qa/dev:worker corren con cwd=apps/api).
+        join(process.cwd(), "s3", "tickets"),
     };
   }
   if (driver === "s3") {

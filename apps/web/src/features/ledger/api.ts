@@ -335,3 +335,15 @@ export function rejectReceipt(id: string): Promise<ReceiptScanView> {
     method: "POST",
   });
 }
+
+/**
+ * `POST /receipts/:id/retry` — reset a `failed` scan to `pending` and
+ * re-queue its job over the original image, never re-uploading
+ * (receipt-scan-drafts T12, S11). Non-final scans are an idempotent
+ * no-op; `confirmed`/`rejected` scans answer 409 RECEIPT_ALREADY_FINAL.
+ */
+export function retryReceiptScan(id: string): Promise<ReceiptScanView> {
+  return request<ReceiptScanView>(`/receipts/${id}/retry`, {
+    method: "POST",
+  });
+}

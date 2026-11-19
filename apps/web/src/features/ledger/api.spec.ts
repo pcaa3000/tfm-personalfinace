@@ -21,6 +21,7 @@ import {
   reviseCategory,
   reviseCurrency,
   reviseTransaction,
+  retryReceiptScan,
   unarchiveAccount,
   updateWorkspace,
   voidTransaction,
@@ -420,6 +421,16 @@ describe("unarchive accounts (T25)", () => {
     expect(String(url)).toBe("/api/v1/accounts/acc-9");
     expect(init?.method).toBe("PATCH");
     expect(String(init?.body)).toBe(JSON.stringify({ archived: false }));
+  });
+});
+
+describe("receipt scan retry (receipt-scan-drafts T12, S11)", () => {
+  it("posts to /receipts/:id/retry without re-uploading the image", async () => {
+    await retryReceiptScan("rc-1");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/receipts/rc-1/retry");
+    expect(init?.method).toBe("POST");
   });
 });
 
