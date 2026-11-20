@@ -562,6 +562,12 @@ export function LedgerPage() {
           void queryClient.invalidateQueries({ queryKey: ["categories"] });
           void invalidateLedger().then(() => setMovementOpen(false));
         }}
+        onVoiceConfirmed={() => {
+          // Same confirm side effects as the receipt flow (voice-drafts
+          // T4): the draft may create categories and the movement.
+          void queryClient.invalidateQueries({ queryKey: ["categories"] });
+          void invalidateLedger().then(() => setMovementOpen(false));
+        }}
       />
       <AccountsDialog
         open={management === "accounts"}

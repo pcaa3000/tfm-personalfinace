@@ -11,13 +11,13 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import i18n from "../../i18n";
 import { buildAppTheme } from "../../theme";
-import { getReceiptFile } from "./api";
+import { getReceiptFile, getVoiceFile } from "./api";
 import { TransactionTable } from "./TransactionTable";
 import type { LedgerRow } from "./types";
 
 vi.mock("./api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./api")>();
-  return { ...actual, getReceiptFile: vi.fn() };
+  return { ...actual, getReceiptFile: vi.fn(), getVoiceFile: vi.fn() };
 });
 
 const baseRow: LedgerRow = {
@@ -243,11 +243,11 @@ describe("TransactionTable (es)", () => {
     expect(img.getAttribute("src")).toBe("blob:ticket-image");
   });
 
-  it("shows no ticket badge for manual or voice origins (receipt-review-link T3, S2)", () => {
+  it("shows no ticket badge for manual origin and the voice badge for voice origin (voice-drafts T4)", () => {
     renderTable({
       transactions: [
         { ...baseRow, id: "tx-manual", origin: "manual", concept: "manual" },
-        { ...baseRow, id: "tx-voice", origin: "voice", concept: "voz" },
+        { ...baseRow, id: "tx-voice", origin: "voice", concept: "dictado" },
       ],
     });
 
@@ -255,6 +255,37 @@ describe("TransactionTable (es)", () => {
       screen.queryByRole("button", { name: "Ver ticket escaneado" }),
     ).toBeNull();
     expect(screen.queryByText("ticket")).toBeNull();
+    expect(screen.getByText("voz")).toBeTruthy();
+  });
+
+  it("opens the authenticated audio player from the voice badge (voice-drafts T4)", async () => {
+    vi.mocked(getVoiceFile).mockResolvedValue(
+      new Blob(["audio"], { type: "audio/webm" }),
+    );
+    renderTable({
+      transactions: [
+        {
+          ...baseRow,
+          origin: "voice",
+          originReference: "vn-9",
+          concept: "Dictado",
+        },
+      ],
+    });
+
+    const badge = screen.getByRole("button", {
+      name: "Escuchar nota de voz",
+    });
+    expect(
+      screen.queryByRole("link", { name: "Escuchar nota de voz" }),
+    ).toBeNull();
+
+    fireEvent.click(badge);
+
+    expect(getVoiceFile).toHaveBeenCalledWith("vn-9");
+    await screen.findByRole("dialog", {
+      name: "Audio de la nota de voz",
+    });
   });
 
   it("keeps the badge without a link when originReference is missing (receipt-review-link T3, S2)", () => {
