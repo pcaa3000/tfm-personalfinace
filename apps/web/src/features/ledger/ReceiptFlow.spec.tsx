@@ -135,6 +135,32 @@ interface RenderOptions {
   timeoutMs?: number;
 }
 
+/**
+ * jsdom does not implement `window.matchMedia`; the component guards
+ * with `?.`, but the pointer-branch specs stub it explicitly so the
+ * coarse/fine pointer decision is deterministic (T15).
+ */
+function stubMatchMedia(matches: (query: string) => boolean) {
+  Object.defineProperty(window, "matchMedia", {
+    value: (query: string) => ({
+      matches: matches(query),
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }),
+    configurable: true,
+    writable: true,
+  });
+}
+
+function unstubMatchMedia() {
+  delete (window as { matchMedia?: unknown }).matchMedia;
+}
+
 function renderFlow(options: RenderOptions = {}) {
   const onConfirmed = options.onConfirmed ?? vi.fn();
   const onClose = options.onClose ?? vi.fn();
@@ -528,6 +554,56 @@ describe("ReceiptFlow — capture → poll → review (T7, S1+S2+S7+S10)", () =>
   });
 });
 
+describe("ReceiptFlow — mobile pick step (T15, S1)", () => {
+  beforeEach(() => {
+    stubMatchMedia((query) => query === "(pointer: coarse)");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    unstubMatchMedia();
+    delete (window.navigator as { mediaDevices?: unknown }).mediaDevices;
+  });
+
+  it("keeps the gallery picker free of `capture` so mobile opens files, not the camera", () => {
+    renderFlow();
+
+    const chooseButton = screen.getByRole("button", {
+      name: "Elegir imagen",
+    });
+    const galleryInput =
+      chooseButton.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(galleryInput).toBeTruthy();
+    expect(galleryInput?.hasAttribute("capture")).toBe(false);
+    expect(galleryInput?.getAttribute("accept")).toBe("image/*");
+  });
+
+  it("routes \"Capturar con cámara\" to a hidden capture input (native camera), never getUserMedia", () => {
+    const getUserMedia = vi.fn();
+    Object.defineProperty(window.navigator, "mediaDevices", {
+      value: { getUserMedia },
+      configurable: true,
+    });
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, "click");
+    renderFlow();
+
+    const cameraInput = document.querySelector<HTMLInputElement>(
+      'input[type="file"][capture]',
+    );
+    expect(cameraInput).toBeTruthy();
+    expect(cameraInput?.getAttribute("capture")).toBe("environment");
+    expect(cameraInput?.getAttribute("accept")).toBe("image/*");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Capturar con cámara" }),
+    );
+
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(clickSpy.mock.contexts[0]).toBe(cameraInput);
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+});
+
 describe("ReceiptFlow — desktop camera capture (T11, S1)", () => {
   const trackStop = vi.fn();
 
@@ -547,6 +623,8 @@ describe("ReceiptFlow — desktop camera capture (T11, S1)", () => {
 
   beforeEach(() => {
     trackStop.mockClear();
+    // Fine pointer (desktop): the getUserMedia path stays the default.
+    stubMatchMedia(() => false);
     // jsdom does not implement canvas rendering.
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
       drawImage: vi.fn(),
@@ -560,6 +638,7 @@ describe("ReceiptFlow — desktop camera capture (T11, S1)", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    unstubMatchMedia();
     delete (window.navigator as { mediaDevices?: unknown }).mediaDevices;
   });
 
@@ -650,10 +729,12 @@ describe("ReceiptFlow — desktop camera capture (T11, S1)", () => {
         "No se pudo acceder a la cámara. Elegí una imagen.",
       ),
     ).toBeTruthy();
-    expect(document.querySelector('input[type="file"]')).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Elegir imagen" }),
-    ).toBeTruthy();
+    // Two file inputs exist now (gallery + native camera) — assert the
+    // GALLERY picker specifically is still offered.
+    const chooseButton = screen.getByRole("button", {
+      name: "Elegir imagen",
+    });
+    expect(chooseButton.querySelector('input[type="file"]')).toBeTruthy();
   });
 
   it("cancel closes the camera view and stops the tracks", async () => {

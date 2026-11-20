@@ -115,10 +115,15 @@ export function ReceiptFlow({
     null,
   );
   const previewRef = useRef<string | null>(null);
-  // Desktop camera capture (T11): `capture="environment"` is ignored by
-  // desktop browsers, so the pick step offers a getUserMedia fallback.
+  // Camera capture (T11+T15): `capture="environment"` on the gallery
+  // input hijacked mobile into the camera app; the gallery input stays
+  // capture-free and mobile gets a dedicated hidden capture input
+  // instead. The getUserMedia preview only runs on fine pointers — on
+  // mobile prod it fails permission checks, so the native camera app
+  // handles capture.
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -230,6 +235,9 @@ export function ReceiptFlow({
 
   const onFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const picked = event.target.files?.[0];
+    // Clear the selection so re-picking the same file re-fires `change`
+    // while the input stays mounted (e.g. after a flow error).
+    event.target.value = "";
     if (!picked) return;
     acceptFile(picked);
   };
@@ -238,6 +246,23 @@ export function ReceiptFlow({
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     setCameraActive(false);
+  };
+
+  /**
+   * T15: coarse pointers (touch/mobile) route "Capturar con cámara" to
+   * the hidden `capture="environment"` input — the native camera app,
+   * no getUserMedia permission round-trip. `matchMedia` may be absent
+   * (jsdom): fall back to the desktop getUserMedia preview.
+   */
+  const isCoarsePointer = () =>
+    window.matchMedia?.("(pointer: coarse)")?.matches === true;
+
+  const onCaptureCamera = () => {
+    if (isCoarsePointer()) {
+      cameraInputRef.current?.click();
+      return;
+    }
+    void openCamera();
   };
 
   const openCamera = async () => {
@@ -640,11 +665,20 @@ export function ReceiptFlow({
             hidden
             type="file"
             accept="image/*"
-            capture="environment"
             onChange={onFileChange}
           />
         </Button>
-        <Button variant="outlined" onClick={() => void openCamera()}>
+        {/* T15: mobile-only native camera entry — `capture` lives here,
+            never on the gallery input. */}
+        <input
+          ref={cameraInputRef}
+          hidden
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={onFileChange}
+        />
+        <Button variant="outlined" onClick={onCaptureCamera}>
           {t("receipt.captureCamera")}
         </Button>
       </Stack>
