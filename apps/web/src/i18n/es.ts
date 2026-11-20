@@ -225,6 +225,19 @@ export const es = {
       "Se eliminará el archivo almacenado de forma permanente. El ticket y el movimiento vinculado no se verán afectados.",
     deleteConfirm: "Eliminar",
     deleting: "Eliminando…",
+    purgeMedia: "Depurar medios",
+    purgePeriod: {
+      days30: "más de 30 días",
+      days15: "más de 15 días",
+      days7: "más de 1 semana",
+    },
+    purgeTitle: "Depurar medios de tickets",
+    purgeBody:
+      "Se eliminarán permanentemente las imágenes almacenadas con {{period}} de antigüedad. Los tickets y los movimientos vinculados no se verán afectados.",
+    purgeConfirm: "Depurar",
+    purging: "Depurando…",
+    purgeResult_one: "{{count}} medio eliminado",
+    purgeResult_other: "{{count}} medios eliminados",
     status: {
       pending: "Pendiente",
       extracted: "Extrayendo…",

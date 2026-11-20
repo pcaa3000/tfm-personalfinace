@@ -18,6 +18,7 @@ import {
   listCurrencies,
   listCurrencyCatalog,
   listReceipts,
+  purgeReceiptMedia,
   listTransactionRevisions,
   listTransactions,
   reviseAccount,
@@ -489,6 +490,25 @@ describe("receipt media deletion (receipt-retention-30d T5, S3)", () => {
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(String(url)).toBe("/api/v1/receipts/rc-1/file");
     expect(init?.method).toBe("DELETE");
+  });
+});
+
+describe("receipt media bulk purge (receipt-retention-30d T7, S6)", () => {
+  it("posts {olderThanDays} to /receipts/purge-media and returns the count", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ deleted: 3 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const result = await purgeReceiptMedia(30);
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/receipts/purge-media");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ olderThanDays: 30 });
+    expect(result).toEqual({ deleted: 3 });
   });
 });
 

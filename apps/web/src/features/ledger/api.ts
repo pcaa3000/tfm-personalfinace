@@ -376,6 +376,25 @@ export function deleteReceiptFile(id: string): Promise<void> {
   return request<void>(`/receipts/${id}/file`, { method: "DELETE" });
 }
 
+/** Retention windows the bulk purge endpoint accepts (S6). */
+export type PurgePeriodDays = 7 | 15 | 30;
+
+/**
+ * `POST /receipts/purge-media` — manual bulk media purge
+ * (receipt-retention-30d T7, S6): deletes the stored objects of every
+ * scan older than the chosen window and answers `{deleted: n}`. Like
+ * the per-scan early deletion only the medium goes away — the scan rows
+ * and any confirmed transactions survive (CA-012).
+ */
+export function purgeReceiptMedia(
+  olderThanDays: PurgePeriodDays,
+): Promise<{ deleted: number }> {
+  return request<{ deleted: number }>("/receipts/purge-media", {
+    method: "POST",
+    body: JSON.stringify({ olderThanDays }),
+  });
+}
+
 /** `POST /receipts/:id/reject` — discard the draft without registering. */
 export function rejectReceipt(id: string): Promise<ReceiptScanView> {
   return request<ReceiptScanView>(`/receipts/${id}/reject`, {

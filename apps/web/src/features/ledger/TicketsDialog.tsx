@@ -17,6 +17,8 @@ import {
   List,
   ListItem,
   ListItemText,
+  Menu,
+  MenuItem,
   Stack,
   Typography,
   useMediaQuery,
@@ -24,7 +26,12 @@ import {
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { deleteReceiptFile, listReceipts } from "./api";
+import {
+  deleteReceiptFile,
+  listReceipts,
+  purgeReceiptMedia,
+  type PurgePeriodDays,
+} from "./api";
 import { errorMessage } from "./errors";
 import { formatInstant } from "./format";
 import { EyeIcon, TrashIcon } from "./icons";
@@ -48,6 +55,9 @@ const RECEIPTS_PAGE_SIZE = 20;
  * LedgerPage — also lets specs drive the breakpoint via matchMedia.
  */
 const COMPACT_QUERY = "(max-width:599.95px)";
+
+/** Retention windows offered by the bulk purge menu (S6), longest first. */
+const PURGE_PERIODS: readonly PurgePeriodDays[] = [30, 15, 7];
 
 interface RowProps {
   scan: ReceiptListItemView;
@@ -181,6 +191,12 @@ function TicketRow({ scan, compact, onView, onDelete }: RowProps) {
  * scan row and any linked transaction survive (CA-012) — so the row
  * switches to a "medio eliminado" state in place. Rows already listing
  * `mediaDeletedAt` render that state directly.
+ *
+ * Bulk purge (receipt-retention-30d T7, S6): a "Depurar medios" menu
+ * offers the 30d/15d/1w retention windows; the choice goes through the
+ * same inline-confirm pattern before `POST /receipts/purge-media`
+ * fires. The success alert reports how many media were deleted and the
+ * list invalidates so purged scans disappear.
  */
 export function TicketsDialog({ open, onClose }: Props) {
   const { t } = useTranslation();
@@ -192,6 +208,9 @@ export function TicketsDialog({ open, onClose }: Props) {
   const [viewerScan, setViewerScan] = useState<ReceiptListItemView | null>(
     null,
   );
+  const [purgeAnchor, setPurgeAnchor] = useState<HTMLElement | null>(null);
+  const [purgeDays, setPurgeDays] = useState<PurgePeriodDays | null>(null);
+  const [purgeResult, setPurgeResult] = useState<number | null>(null);
   const receiptsQuery = useInfiniteQuery({
     queryKey: ["receipts"],
     queryFn: ({ pageParam }) =>
@@ -228,6 +247,17 @@ export function TicketsDialog({ open, onClose }: Props) {
     },
   });
 
+  const purgeMutation = useMutation({
+    mutationFn: (days: PurgePeriodDays) => purgeReceiptMedia(days),
+    onSuccess: (result) => {
+      // Purged rows are excluded server-side (S6): refetch instead of
+      // patching pages — any page may contain affected scans.
+      setPurgeResult(result.deleted);
+      void queryClient.invalidateQueries({ queryKey: ["receipts"] });
+      setPurgeDays(null);
+    },
+  });
+
   const openDeleteDialog = (scan: ReceiptListItemView) => {
     deleteMutation.reset();
     setDeleteTarget(scan);
@@ -239,6 +269,18 @@ export function TicketsDialog({ open, onClose }: Props) {
     setDeleteTarget(null);
   };
 
+  const choosePurgePeriod = (days: PurgePeriodDays) => {
+    setPurgeAnchor(null);
+    purgeMutation.reset();
+    setPurgeDays(days);
+  };
+
+  const closePurgeDialog = () => {
+    if (purgeMutation.isPending) return;
+    purgeMutation.reset();
+    setPurgeDays(null);
+  };
+
   return (
     <>
       <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -248,6 +290,19 @@ export function TicketsDialog({ open, onClose }: Props) {
             <Typography>{t("tickets.loading")}</Typography>
           ) : (
             <>
+              <Stack direction="row" sx={{ justifyContent: "flex-end" }}>
+                <Button
+                  size="small"
+                  onClick={(event) => setPurgeAnchor(event.currentTarget)}
+                >
+                  {t("tickets.purgeMedia")}
+                </Button>
+              </Stack>
+              {purgeResult !== null ? (
+                <Alert severity="success" sx={{ mb: 1 }}>
+                  {t("tickets.purgeResult", { count: purgeResult })}
+                </Alert>
+              ) : null}
               {receiptsQuery.isError ? (
                 <Alert
                   severity="error"
@@ -305,6 +360,64 @@ export function TicketsDialog({ open, onClose }: Props) {
         title={viewerScan?.originalFilename}
         onClose={() => setViewerScan(null)}
       />
+
+      {/* Bulk purge period picker (S6): the choice itself is harmless;
+          the confirm below gates the destructive POST. */}
+      <Menu
+        anchorEl={purgeAnchor}
+        open={purgeAnchor !== null}
+        onClose={() => setPurgeAnchor(null)}
+      >
+        {PURGE_PERIODS.map((days) => (
+          <MenuItem key={days} onClick={() => choosePurgePeriod(days)}>
+            {t(`tickets.purgePeriod.days${days}`)}
+          </MenuItem>
+        ))}
+      </Menu>
+
+      {/* Bulk media purge confirm (S6): same inline-confirm pattern as
+          the per-row delete — copy names the window and warns that only
+          the stored images go away, never the transactions (CA-012). */}
+      <Dialog
+        open={purgeDays !== null}
+        onClose={closePurgeDialog}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>{t("tickets.purgeTitle")}</DialogTitle>
+        <DialogContent>
+          {purgeMutation.isError ? (
+            <Alert severity="error">
+              {errorMessage(purgeMutation.error, t)}
+            </Alert>
+          ) : null}
+          <DialogContentText>
+            {t("tickets.purgeBody", {
+              period: purgeDays
+                ? t(`tickets.purgePeriod.days${purgeDays}`)
+                : "",
+            })}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={closePurgeDialog}
+            disabled={purgeMutation.isPending}
+          >
+            {t("dialog.cancel")}
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={purgeMutation.isPending}
+            onClick={() => purgeDays && purgeMutation.mutate(purgeDays)}
+          >
+            {purgeMutation.isPending
+              ? t("tickets.purging")
+              : t("tickets.purgeConfirm")}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Early media deletion confirm (S3): same inline-confirm pattern
           as VoidTransactionDialog. */}

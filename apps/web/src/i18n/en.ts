@@ -229,6 +229,19 @@ export const en: TranslationShape = {
       "The stored file will be permanently deleted. The receipt and its linked transaction are not affected.",
     deleteConfirm: "Delete",
     deleting: "Deleting…",
+    purgeMedia: "Purge media",
+    purgePeriod: {
+      days30: "more than 30 days",
+      days15: "more than 15 days",
+      days7: "more than 1 week",
+    },
+    purgeTitle: "Purge receipt media",
+    purgeBody:
+      "Stored images {{period}} old will be permanently deleted. Receipts and their linked transactions are not affected.",
+    purgeConfirm: "Purge",
+    purging: "Purging…",
+    purgeResult_one: "{{count}} media file deleted",
+    purgeResult_other: "{{count}} media files deleted",
     status: {
       pending: "Pending",
       extracted: "Extracting…",

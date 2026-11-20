@@ -16,6 +16,7 @@ import {
   deleteReceiptFile,
   getReceiptFile,
   listReceipts,
+  purgeReceiptMedia,
 } from "./api";
 import { TicketsDialog } from "./TicketsDialog";
 import type {
@@ -31,6 +32,7 @@ vi.mock("./api", async (importOriginal) => {
     listReceipts: vi.fn(),
     getReceiptFile: vi.fn(),
     deleteReceiptFile: vi.fn(),
+    purgeReceiptMedia: vi.fn(),
   };
 });
 
@@ -123,6 +125,7 @@ beforeEach(() => {
   vi.mocked(listReceipts).mockReset();
   vi.mocked(getReceiptFile).mockReset();
   vi.mocked(deleteReceiptFile).mockReset();
+  vi.mocked(purgeReceiptMedia).mockReset();
   createObjectURL.mockClear();
   revokeObjectURL.mockClear();
 });
@@ -519,5 +522,148 @@ describe("media retention (receipt-retention-30d T5, S3+S5)", () => {
       within(stillLive).getByRole("button", { name: "Ver imagen" }),
     ).toBeTruthy();
     expect(within(stillLive).getByText(/Vence:/)).toBeTruthy();
+  });
+});
+
+describe("bulk media purge (receipt-retention-30d T7, S6)", () => {
+  it("offers the three retention periods in the purge menu", async () => {
+    vi.mocked(listReceipts).mockResolvedValue(page([linked]));
+
+    renderDialog();
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Tickets cargados",
+    });
+    await within(dialog).findByText(/boleta\.jpg/);
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Depurar medios" }),
+    );
+
+    const menu = await screen.findByRole("menu");
+    expect(
+      within(menu).getByRole("menuitem", { name: "más de 30 días" }),
+    ).toBeTruthy();
+    expect(
+      within(menu).getByRole("menuitem", { name: "más de 15 días" }),
+    ).toBeTruthy();
+    expect(
+      within(menu).getByRole("menuitem", { name: "más de 1 semana" }),
+    ).toBeTruthy();
+    // Choosing nothing fires nothing.
+    expect(purgeReceiptMedia).not.toHaveBeenCalled();
+  });
+
+  it("purges only after confirming, sends the chosen period and refreshes", async () => {
+    vi.mocked(listReceipts).mockResolvedValue(page([linked]));
+    vi.mocked(purgeReceiptMedia).mockResolvedValue({ deleted: 2 });
+
+    renderDialog();
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Tickets cargados",
+    });
+    await within(dialog).findByText(/boleta\.jpg/);
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Depurar medios" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "más de 15 días" }),
+    );
+
+    const confirm = await screen.findByRole("dialog", {
+      name: "Depurar medios de tickets",
+    });
+    // The copy names the chosen period and warns that only the stored
+    // images go away — never the transactions (CA-012).
+    expect(within(confirm).getByText(/más de 15 días/)).toBeTruthy();
+    expect(purgeReceiptMedia).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      within(confirm).getByRole("button", { name: "Depurar" }),
+    );
+
+    await waitFor(() =>
+      expect(purgeReceiptMedia).toHaveBeenCalledWith(15),
+    );
+
+    // Localized result + the list refetches so purged scans disappear.
+    expect(
+      await within(dialog).findByText("2 medios eliminados"),
+    ).toBeTruthy();
+    await waitFor(() => expect(listReceipts).toHaveBeenCalledTimes(2));
+  });
+
+  it("surfaces the API error inside the confirm dialog", async () => {
+    vi.mocked(listReceipts).mockResolvedValue(page([linked]));
+    vi.mocked(purgeReceiptMedia).mockRejectedValue(new Error("boom"));
+
+    renderDialog();
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Tickets cargados",
+    });
+    await within(dialog).findByText(/boleta\.jpg/);
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Depurar medios" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "más de 30 días" }),
+    );
+
+    const confirm = await screen.findByRole("dialog", {
+      name: "Depurar medios de tickets",
+    });
+    fireEvent.click(
+      within(confirm).getByRole("button", { name: "Depurar" }),
+    );
+
+    await waitFor(() =>
+      expect(purgeReceiptMedia).toHaveBeenCalledWith(30),
+    );
+    expect(
+      await within(confirm).findByText(
+        "No se pudo completar la operación. Intentá de nuevo.",
+      ),
+    ).toBeTruthy();
+    // No success feedback and no extra fetch while it failed.
+    expect(
+      within(dialog).queryByText(/medios eliminados/),
+    ).toBeNull();
+    expect(listReceipts).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing when the confirm is cancelled", async () => {
+    vi.mocked(listReceipts).mockResolvedValue(page([linked]));
+
+    renderDialog();
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Tickets cargados",
+    });
+    await within(dialog).findByText(/boleta\.jpg/);
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Depurar medios" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "más de 1 semana" }),
+    );
+
+    const confirm = await screen.findByRole("dialog", {
+      name: "Depurar medios de tickets",
+    });
+    fireEvent.click(
+      within(confirm).getByRole("button", { name: "Cancelar" }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", {
+          name: "Depurar medios de tickets",
+        }),
+      ).toBeNull(),
+    );
+    expect(purgeReceiptMedia).not.toHaveBeenCalled();
+    expect(listReceipts).toHaveBeenCalledTimes(1);
   });
 });
