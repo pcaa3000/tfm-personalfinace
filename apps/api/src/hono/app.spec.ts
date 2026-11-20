@@ -111,6 +111,7 @@ function makeDeps() {
     uploadReceipt: {
       execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },
+    listReceiptScans: { execute: vi.fn(async () => []) },
     getReceiptScan: {
       execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },

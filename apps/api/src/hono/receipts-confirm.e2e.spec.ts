@@ -369,6 +369,7 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
         amount: string;
         currency: string;
         origin: string;
+        originReference: string;
         concept: string;
         splits: Array<{ categoryId: string; amount: string }>;
       };
@@ -378,6 +379,9 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
     expect(confirmed.transaction.amount).toBe("35.50");
     expect(confirmed.transaction.currency).toBe("PEN");
     expect(confirmed.transaction.origin).toBe("ticket");
+    // receipt-review-link T2 (S2): the ticket↔movement link is
+    // serialized — the scan id survives as originReference.
+    expect(confirmed.transaction.originReference).toBe(scanId);
     expect(confirmed.transaction.concept).toBe("Bodega Central");
     expect(confirmed.transaction.splits).toHaveLength(3);
     expect(
@@ -415,6 +419,76 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
       .where(eq(categories.id, uncategorizedSplit.categoryId));
     expect(uncatRow?.key).toBe("uncategorized");
     expect(uncatRow?.workspaceId).toBeNull();
+  });
+
+  it("GET /api/v1/receipts lists the workspace scans newest first (receipt-review-link T1, S1)", async () => {
+    const upload = await uploadReceipt(ALICE);
+    expect(upload.status).toBe(201);
+    const scanId = upload.body.id as string;
+    const wsId = await workspaceIdOf(ALICE);
+
+    // Before confirm the scan is listed with a null transactionId.
+    const before = await json("/api/v1/receipts", { headers: ALICE });
+    expect(before.status).toBe(200);
+    const itemsBefore = before.body as unknown as Array<{
+      id: string;
+      status: string;
+      originalFilename: string;
+      fileMimeType: string;
+      createdAt: string;
+      transactionId: string | null;
+    }>;
+    expect(Array.isArray(itemsBefore)).toBe(true);
+    const pendingItem = itemsBefore.find((item) => item.id === scanId);
+    expect(pendingItem).toBeDefined();
+    expect(pendingItem!.transactionId).toBeNull();
+
+    // Newest-first ordering across the whole workspace list.
+    const timestamps = itemsBefore.map((item) => Date.parse(item.createdAt));
+    expect(timestamps).toEqual([...timestamps].sort((a, b) => b - a));
+
+    await runScanJob(scanId, wsId);
+    const foodId = await categoryIdByKey(ALICE, "food");
+    const confirm = await json(`/api/v1/receipts/${scanId}/confirm`, {
+      method: "POST",
+      headers: ALICE,
+      body: {
+        accountId: await createPenAccount(),
+        type: "expense",
+        idempotencyKey: `e2e-list-${randomUUID()}`,
+        splits: [{ categoryId: foodId, amountMinorUnits: 3550 }],
+      },
+    });
+    expect(confirm.status).toBe(201);
+    const transaction = (
+      confirm.body as { transaction: { id: string } }
+    ).transaction;
+
+    // After confirm the same list item carries the transaction link.
+    const after = await json("/api/v1/receipts", { headers: ALICE });
+    const itemsAfter = after.body as unknown as typeof itemsBefore;
+    const confirmedItem = itemsAfter.find((item) => item.id === scanId);
+    expect(confirmedItem).toBeDefined();
+    expect(Object.keys(confirmedItem!).sort()).toEqual([
+      "createdAt",
+      "fileMimeType",
+      "id",
+      "originalFilename",
+      "status",
+      "transactionId",
+    ]);
+    expect(confirmedItem).toMatchObject({
+      id: scanId,
+      status: "confirmed",
+      originalFilename: "ticket.jpg",
+      fileMimeType: "image/jpeg",
+      transactionId: transaction.id,
+    });
+
+    // Workspace isolation: BOB has no scans and sees an empty list.
+    const foreign = await json("/api/v1/receipts", { headers: BOB });
+    expect(foreign.status).toBe(200);
+    expect(foreign.body).toEqual([]);
   });
 
   it("replaying the same confirm returns the same transaction without duplicates", async () => {

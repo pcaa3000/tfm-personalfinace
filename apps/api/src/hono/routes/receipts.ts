@@ -7,6 +7,7 @@ import type {
   GetReceiptDraftUseCase,
   GetReceiptFileUseCase,
   GetReceiptScanUseCase,
+  ListReceiptScansUseCase,
   RejectReceiptScanUseCase,
   RetryReceiptScanUseCase,
   UploadReceiptUseCase,
@@ -78,6 +79,7 @@ const confirmReceiptSchema = z.object({
 
 export interface ReceiptRouteDeps extends AuthDeps {
   readonly uploadReceipt: Pick<UploadReceiptUseCase, "execute">;
+  readonly listReceiptScans: Pick<ListReceiptScansUseCase, "execute">;
   readonly getReceiptScan: Pick<GetReceiptScanUseCase, "execute">;
   readonly getReceiptFile: Pick<GetReceiptFileUseCase, "execute">;
   readonly getReceiptDraft: Pick<GetReceiptDraftUseCase, "execute">;
@@ -100,6 +102,8 @@ function isUploadedFile(value: unknown): value is File {
  * Registers the receipt-scan upload + polling surface
  * (receipt-scan-drafts T3, S1+S9):
  *   POST /api/v1/receipts          multipart `file` field → 201 pending scan
+ *   GET  /api/v1/receipts          workspace scan list, newest first
+ *        (receipt-review-link T1, S1) — registered BEFORE /:id
  *   GET  /api/v1/receipts/:id      scan row for status polling
  *   GET  /api/v1/receipts/:id/file stored bytes (interim for signed URLs)
  *   POST /api/v1/receipts/:id/retry re-queue a failed scan without
@@ -134,6 +138,14 @@ export function registerReceiptRoutes(
       throw toHttpError(result.error);
     }
     return c.json(result.value, 201);
+  });
+
+  // receipt-review-link T1 (S1): the exact-path GET must be registered
+  // before /:id so "list" is not captured as a scan id.
+  app.get("/api/v1/receipts", auth, async (c) => {
+    const { workspace } = authContext(c);
+    const items = await deps.listReceiptScans.execute(workspace.workspaceId);
+    return c.json(items);
   });
 
   app.get("/api/v1/receipts/:id", auth, async (c) => {

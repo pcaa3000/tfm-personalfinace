@@ -62,6 +62,7 @@ import {
 } from "../jobs/receipt-scan.js";
 import { UploadReceiptUseCase } from "../modules/receipts/application/upload-receipt.use-case.js";
 import { GetReceiptScanUseCase } from "../modules/receipts/application/get-receipt-scan.use-case.js";
+import { ListReceiptScansUseCase } from "../modules/receipts/application/list-receipt-scans.use-case.js";
 import { GetReceiptFileUseCase } from "../modules/receipts/application/get-receipt-file.use-case.js";
 import { GetReceiptDraftUseCase } from "../modules/receipts/application/get-receipt-draft.use-case.js";
 import { ConfirmReceiptDraftUseCase } from "../modules/receipts/application/confirm-receipt-draft.use-case.js";
@@ -232,6 +233,8 @@ export function buildApp(env: AppEnv): BuiltApp {
       ids,
       { maxBytes: env.receipts.maxBytes },
     ),
+    // receipt-review-link T1 (S1): workspace ticket-review list.
+    listReceiptScans: new ListReceiptScansUseCase(receiptScans),
     getReceiptScan: new GetReceiptScanUseCase(receiptScans),
     getReceiptFile: new GetReceiptFileUseCase(receiptScans, receiptStorage),
     // receipt draft review + confirm (receipt-scan-drafts T6);

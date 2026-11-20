@@ -22,6 +22,7 @@ export {
 } from "./application/ports/receipt-storage.port.js";
 export {
   RECEIPT_SCAN_REPOSITORY,
+  type ReceiptScanListPort,
   type ReceiptScanRepositoryPort,
 } from "./application/ports/receipt-scan-repository.port.js";
 export {
@@ -65,6 +66,7 @@ export {
   type UploadReceiptCommand,
 } from "./application/upload-receipt.use-case.js";
 export { GetReceiptScanUseCase } from "./application/get-receipt-scan.use-case.js";
+export { ListReceiptScansUseCase } from "./application/list-receipt-scans.use-case.js";
 export { GetReceiptDraftUseCase } from "./application/get-receipt-draft.use-case.js";
 export { RejectReceiptScanUseCase } from "./application/reject-receipt-scan.use-case.js";
 export { RetryReceiptScanUseCase } from "./application/retry-receipt-scan.use-case.js";
@@ -79,7 +81,9 @@ export {
   type ReceiptFileView,
 } from "./application/get-receipt-file.use-case.js";
 export {
+  toReceiptScanListItem,
   toReceiptScanView,
+  type ReceiptScanListItem,
   type ReceiptScanView,
 } from "./application/receipt-scan.view.js";
 export { LocalReceiptStorage } from "./infrastructure/local-receipt-storage.js";

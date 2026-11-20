@@ -80,6 +80,7 @@ function transactionView(
     categoryId: null,
     status: "confirmed",
     origin: "manual",
+    originReference: null,
     confirmedAt: "2026-10-27T10:00:00.000Z",
     revisionCount: 0,
     splits: [],
@@ -246,6 +247,7 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     rejectReceiptScan: {
       execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },
+    listReceiptScans: { execute: vi.fn(async () => []) },
     retryReceiptScan: {
       execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },

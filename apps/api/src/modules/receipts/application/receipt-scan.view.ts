@@ -18,6 +18,31 @@ export interface ReceiptScanView {
   readonly updatedAt: string;
 }
 
+/**
+ * Trimmed list row for `GET /api/v1/receipts` (receipt-review-link T1,
+ * S1): review state + file identity + the ticket↔movement link
+ * (`transactionId`, null until the scan is confirmed).
+ */
+export interface ReceiptScanListItem {
+  readonly id: string;
+  readonly status: string;
+  readonly originalFilename: string;
+  readonly fileMimeType: string;
+  readonly createdAt: string;
+  readonly transactionId: string | null;
+}
+
+export function toReceiptScanListItem(scan: ReceiptScan): ReceiptScanListItem {
+  return {
+    id: scan.id,
+    status: scan.status,
+    originalFilename: scan.originalFilename,
+    fileMimeType: scan.mimeType,
+    createdAt: scan.createdAt.toISOString(),
+    transactionId: scan.transactionId,
+  };
+}
+
 export function toReceiptScanView(scan: ReceiptScan): ReceiptScanView {
   return {
     id: scan.id,

@@ -65,6 +65,7 @@ const TX_VIEW: TransactionView = {
   categoryId: null,
   status: "confirmed",
   origin: "ticket",
+  originReference: "scan-1",
   confirmedAt: NOW.toISOString(),
   revisionCount: 0,
   splits: [

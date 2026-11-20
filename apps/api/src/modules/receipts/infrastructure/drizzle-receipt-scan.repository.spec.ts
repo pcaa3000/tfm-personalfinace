@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { inArray } from "drizzle-orm";
 
 import { createDrizzleDb } from "../../../drizzle/db.js";
-import { receiptScans } from "../../../drizzle/schema.js";
+import { ledgerTransactions, receiptScans } from "../../../drizzle/schema.js";
 import { WorkspaceId } from "../../shared-kernel/index.js";
 import { ReceiptScan } from "../domain/receipt-scan.js";
 import { DrizzleReceiptScanRepository } from "./drizzle-receipt-scan.repository.js";
@@ -26,6 +26,7 @@ function makeScan(overrides: Partial<{
   workspaceId: WorkspaceId;
   storageKey: string;
   fileHash: string;
+  now: Date;
 }> = {}): ReceiptScan {
   const scan = ReceiptScan.quarantine({
     id: overrides.id ?? "scan-spec-1",
@@ -40,7 +41,7 @@ function makeScan(overrides: Partial<{
     fileHash:
       overrides.fileHash ??
       (overrides.id ?? "scan-spec-1").padEnd(64, "0").slice(0, 64),
-    now: new Date("2026-11-10T12:00:00.000Z"),
+    now: overrides.now ?? new Date("2026-11-10T12:00:00.000Z"),
   });
   if (!scan.ok) throw scan.error;
   return scan.value;
@@ -50,6 +51,36 @@ async function cleanupAll(db: ReturnType<typeof createDrizzleDb>["db"]) {
   await db
     .delete(receiptScans)
     .where(inArray(receiptScans.workspaceId, WORKSPACES));
+  await db
+    .delete(ledgerTransactions)
+    .where(inArray(ledgerTransactions.workspaceId, WORKSPACES));
+}
+
+/**
+ * receipt_scans.transactionId has an FK to ledger_transactions — a
+ * confirmed scan in a spec needs a real transaction row behind it.
+ */
+async function seedTransaction(
+  db: ReturnType<typeof createDrizzleDb>["db"],
+  id: string,
+  workspace: string,
+): Promise<void> {
+  await db.insert(ledgerTransactions).values({
+    id,
+    workspaceId: workspace,
+    idempotencyKey: `scan-list-${id}`,
+    type: "expense",
+    amountMinor: 1000n,
+    currency: "PEN",
+    businessDate: new Date("2026-11-10T00:00:00.000Z"),
+    timezone: "UTC",
+    concept: "receipt list spec",
+    status: "confirmed",
+    origin: "ticket",
+    originRef: "scan-list-newer",
+    confirmedAt: new Date("2026-11-10T12:30:00.000Z"),
+    confirmedBy: "scan-list-spec",
+  });
 }
 
 describe("DrizzleReceiptScanRepository (integration, real Postgres)", () => {
@@ -133,6 +164,38 @@ describe("DrizzleReceiptScanRepository (integration, real Postgres)", () => {
         "d".repeat(64),
       ),
     ).toBeNull();
+  });
+
+  it("listByWorkspace returns the workspace scans newest first with the linked transaction id (receipt-review-link T1, S1)", async () => {
+    const older = makeScan({
+      id: "scan-list-older",
+      now: new Date("2026-11-10T10:00:00.000Z"),
+    });
+    const newer = makeScan({
+      id: "scan-list-newer",
+      now: new Date("2026-11-10T13:00:00.000Z"),
+    });
+    await seedTransaction(db, "trx-list-1", WS_A);
+    newer.markConfirmed("trx-list-1", new Date("2026-11-10T13:01:00.000Z"));
+    await repository.save(older);
+    await repository.save(newer);
+    await repository.save(
+      makeScan({ id: "scan-list-b", workspaceId: workspaceId(WS_B) }),
+    );
+
+    const listed = await repository.listByWorkspace(workspaceId(WS_A));
+
+    // Only WS_A rows, newest first.
+    expect(listed.every((s) => s.workspaceId.value === WS_A)).toBe(true);
+    expect(listed.some((s) => s.id === "scan-list-b")).toBe(false);
+    const interest = listed
+      .filter((s) => ["scan-list-older", "scan-list-newer"].includes(s.id))
+      .map((s) => s.id);
+    expect(interest).toEqual(["scan-list-newer", "scan-list-older"]);
+    // The persisted transaction link survives reconstitution.
+    const newerListed = listed.find((s) => s.id === "scan-list-newer");
+    expect(newerListed?.status).toBe("confirmed");
+    expect(newerListed?.transactionId).toBe("trx-list-1");
   });
 
   it("UNIQUE(workspaceId, fileHash) rejects a second row with the same hash", async () => {

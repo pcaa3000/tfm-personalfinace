@@ -22,6 +22,8 @@ export interface TransactionView {
   readonly categoryId: string | null; // null = uncategorized
   readonly status: "confirmed" | "voided";
   readonly origin: "manual" | "ticket" | "voice";
+  /** Scan id when `origin === "ticket"` (receipt-review-link T2, S2); null otherwise. */
+  readonly originReference: string | null;
   readonly confirmedAt: string; // ISO instant
   readonly revisionCount: number;
   /** Category breakdown in stored order; empty when the transaction has none. */
@@ -44,6 +46,7 @@ export function toTransactionView(trx: Transaction): TransactionView {
       trx.category.kind === "categorized" ? trx.category.categoryId : null,
     status: trx.status,
     origin: trx.origin,
+    originReference: trx.originReference,
     confirmedAt: trx.confirmedAt.toISOString(),
     revisionCount: trx.revisions.length,
     splits: trx.splits.map((split) => ({

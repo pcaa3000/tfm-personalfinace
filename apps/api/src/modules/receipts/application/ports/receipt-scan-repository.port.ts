@@ -9,3 +9,14 @@ export interface ReceiptScanRepositoryPort {
 }
 
 export const RECEIPT_SCAN_REPOSITORY = Symbol("RECEIPT_SCAN_REPOSITORY");
+
+/**
+ * Workspace-scoped list read (receipt-review-link T1, S1). Split from
+ * {@link ReceiptScanRepositoryPort} so consumers that only enumerate
+ * scans (the list use case) depend on a narrow port — the same
+ * separation ReceiptFileHashPort already applies to this adapter.
+ */
+export interface ReceiptScanListPort {
+  /** Every scan of the workspace, newest `createdAt` first. */
+  listByWorkspace(workspaceId: WorkspaceId): Promise<ReceiptScan[]>;
+}

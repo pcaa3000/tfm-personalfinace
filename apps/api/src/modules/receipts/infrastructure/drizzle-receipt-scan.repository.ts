@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import type { DrizzleDb } from "../../../drizzle/db.js";
 import { receiptScans } from "../../../drizzle/schema.js";
@@ -9,7 +9,10 @@ import {
   type ReceiptScanStatus,
 } from "../domain/receipt-scan.js";
 import type { ReceiptFileHashPort } from "../application/ports/receipt-file-hash.port.js";
-import type { ReceiptScanRepositoryPort } from "../application/ports/receipt-scan-repository.port.js";
+import type {
+  ReceiptScanListPort,
+  ReceiptScanRepositoryPort,
+} from "../application/ports/receipt-scan-repository.port.js";
 
 type Row = typeof receiptScans.$inferSelect;
 
@@ -35,7 +38,10 @@ function toState(row: Row): ReceiptScanState {
 
 /** Drizzle adapter over `receipts_receipt_scans` (T13: also the fileHash dedup index). */
 export class DrizzleReceiptScanRepository
-  implements ReceiptScanRepositoryPort, ReceiptFileHashPort
+  implements
+    ReceiptScanRepositoryPort,
+    ReceiptScanListPort,
+    ReceiptFileHashPort
 {
   constructor(private readonly db: DrizzleDb) {}
 
@@ -99,6 +105,16 @@ export class DrizzleReceiptScanRepository
       )
       .limit(1);
     return row ? ReceiptScan.reconstitute(toState(row)) : null;
+  }
+
+  /** receipt-review-link T1 (S1): newest-first workspace listing. */
+  async listByWorkspace(workspaceId: WorkspaceId): Promise<ReceiptScan[]> {
+    const rows = await this.db
+      .select()
+      .from(receiptScans)
+      .where(eq(receiptScans.workspaceId, workspaceId.value))
+      .orderBy(desc(receiptScans.createdAt));
+    return rows.map((row) => ReceiptScan.reconstitute(toState(row)));
   }
 
   /**

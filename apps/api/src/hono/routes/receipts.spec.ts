@@ -17,6 +17,7 @@ import {
   type ReceiptFileHashPort,
   type ReceiptScan,
   type ReceiptScanDispatcher,
+  type ReceiptScanListItem,
   type ReceiptScanRepositoryPort,
   type ReceiptScanView,
   type ReceiptStoragePort,
@@ -69,6 +70,7 @@ const CONFIRM_RESULT: ConfirmReceiptDraftResult = {
     categoryId: null,
     status: "confirmed",
     origin: "ticket",
+    originReference: "scan-1",
     confirmedAt: "2026-11-10T13:00:00.000Z",
     revisionCount: 0,
     splits: [],
@@ -82,6 +84,16 @@ const CONFIRM_RESULT: ConfirmReceiptDraftResult = {
       custom: true,
     },
   ],
+};
+
+/** receipt-review-link T1 (S1): the trimmed list-item view. */
+const LIST_ITEM: ReceiptScanListItem = {
+  id: "scan-1",
+  status: "pending",
+  originalFilename: "ticket.jpg",
+  fileMimeType: "image/jpeg",
+  createdAt: "2026-11-10T12:00:00.000Z",
+  transactionId: null,
 };
 
 const SCAN_VIEW: ReceiptScanView = {
@@ -122,6 +134,9 @@ function buildApp(options: {
         async (_command: UploadReceiptCommand) =>
           options.uploadResult ?? ok(SCAN_VIEW),
       ),
+    },
+    listReceiptScans: {
+      execute: vi.fn(async (_workspaceId: WorkspaceId) => [LIST_ITEM]),
     },
     getReceiptScan: {
       execute: vi.fn(async (workspaceId: WorkspaceId, id: string) =>
@@ -336,6 +351,42 @@ describe("POST /api/v1/receipts (receipt-scan-drafts T3, S1+S9)", () => {
     const thirdBody = (await third.json()) as { id: string };
     expect(thirdBody.id).not.toBe(firstBody.id);
     expect(storage.save).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("GET /api/v1/receipts (receipt-review-link T1, S1)", () => {
+  it("returns the workspace scans as list items", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request("/api/v1/receipts", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([LIST_ITEM]);
+    expect(deps.listReceiptScans.execute).toHaveBeenCalledWith(WS);
+  });
+
+  it("rejects unauthenticated requests with 401", async () => {
+    const { app, deps } = buildApp({ authenticated: false });
+
+    const res = await app.request("/api/v1/receipts", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(401);
+    expect(deps.listReceiptScans.execute).not.toHaveBeenCalled();
+  });
+
+  it("does not shadow GET /api/v1/receipts/:id", async () => {
+    const { app } = buildApp();
+
+    const res = await app.request("/api/v1/receipts/scan-1", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(SCAN_VIEW);
   });
 });
 
