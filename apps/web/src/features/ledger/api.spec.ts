@@ -9,6 +9,7 @@ import {
   createAccount,
   createCategory,
   createTransaction,
+  deleteReceiptFile,
   fetchBalance,
   getWorkspace,
   listAccounts,
@@ -431,6 +432,18 @@ describe("receipt list (receipt-review-link T4, S1)", () => {
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(String(url)).toBe("/api/v1/receipts");
     expect(init?.method ?? "GET").toBe("GET");
+  });
+});
+
+describe("receipt media deletion (receipt-retention-30d T5, S3)", () => {
+  it("deletes the stored object with DELETE /receipts/:id/file", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await deleteReceiptFile("rc-1");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/receipts/rc-1/file");
+    expect(init?.method).toBe("DELETE");
   });
 });
 

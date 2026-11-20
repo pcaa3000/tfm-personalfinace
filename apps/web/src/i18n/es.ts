@@ -212,6 +212,14 @@ export const es = {
     retry: "Reintentar",
     viewImage: "Ver imagen",
     linkedMovement: "Vinculado a un movimiento",
+    expiresAt: "Vence: {{date}}",
+    mediaDeleted: "Medio eliminado",
+    deleteMedia: "Eliminar medio",
+    deleteTitle: "Eliminar medio del ticket",
+    deleteBody:
+      "Se eliminará el archivo almacenado de forma permanente. El ticket y el movimiento vinculado no se verán afectados.",
+    deleteConfirm: "Eliminar",
+    deleting: "Eliminando…",
     status: {
       pending: "Pendiente",
       extracted: "Extrayendo…",

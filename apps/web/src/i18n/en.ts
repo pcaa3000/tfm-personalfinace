@@ -216,6 +216,14 @@ export const en: TranslationShape = {
     retry: "Retry",
     viewImage: "View image",
     linkedMovement: "Linked to a transaction",
+    expiresAt: "Expires: {{date}}",
+    mediaDeleted: "Media deleted",
+    deleteMedia: "Delete media",
+    deleteTitle: "Delete receipt media",
+    deleteBody:
+      "The stored file will be permanently deleted. The receipt and its linked transaction are not affected.",
+    deleteConfirm: "Delete",
+    deleting: "Deleting…",
     status: {
       pending: "Pending",
       extracted: "Extracting…",

@@ -338,6 +338,16 @@ export function confirmReceipt(
   });
 }
 
+/**
+ * `DELETE /receipts/:id/file` — early media deletion
+ * (receipt-retention-30d T5, S3): removes only the stored object; the
+ * scan row and any confirmed transaction survive (CA-012). Idempotent —
+ * the API answers 204 and `GET /:id/file` turns 410 afterwards.
+ */
+export function deleteReceiptFile(id: string): Promise<void> {
+  return request<void>(`/receipts/${id}/file`, { method: "DELETE" });
+}
+
 /** `POST /receipts/:id/reject` — discard the draft without registering. */
 export function rejectReceipt(id: string): Promise<ReceiptScanView> {
   return request<ReceiptScanView>(`/receipts/${id}/reject`, {

@@ -53,6 +53,16 @@ export interface ReceiptListItemView {
   createdAt: string;
   /** Set once the scan was confirmed into a transaction; null before. */
   transactionId: string | null;
+  /**
+   * Fixed retention deadline (receipt-retention-30d S1+S2): persisted as
+   * `createdAt + 30 days`, surfaced so the UI can show "Vence: <date>".
+   */
+  expiresAt: string;
+  /**
+   * Set once the stored object was deleted — early (S3) or by the purge
+   * job (S4). The scan row and any linked transaction survive (CA-012).
+   */
+  mediaDeletedAt: string | null;
 }
 
 export type ReceiptCategoryNature =
