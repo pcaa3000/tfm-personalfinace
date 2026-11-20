@@ -11,6 +11,7 @@ import {
   createTransaction,
   deleteReceiptFile,
   fetchBalance,
+  getReceiptFile,
   getWorkspace,
   listAccounts,
   listCategories,
@@ -425,13 +426,57 @@ describe("unarchive accounts (T25)", () => {
   });
 });
 
-describe("receipt list (receipt-review-link T4, S1)", () => {
+describe("receipt list (receipt-review-link T4+T7, S1+S4)", () => {
   it("lists workspace receipts with GET /receipts", async () => {
     await listReceipts();
 
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(String(url)).toBe("/api/v1/receipts");
     expect(init?.method ?? "GET").toBe("GET");
+  });
+
+  it("sends limit and cursor when paginating (T7)", async () => {
+    await listReceipts({ limit: 20, cursor: "cur-9" });
+
+    expect(calledUrl()).toBe("/api/v1/receipts?limit=20&cursor=cur-9");
+  });
+});
+
+describe("receipt file download (receipt-review-link T6, L28)", () => {
+  afterEach(() => {
+    setAccessTokenProvider(null);
+  });
+
+  it("fetches /receipts/:id/file as a blob through the auth path", async () => {
+    setAccessTokenProvider(async () => "token-abc");
+    fetchMock.mockResolvedValueOnce(
+      new Response("jpeg-bytes", {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      }),
+    );
+
+    const blob = await getReceiptFile("rc-1");
+
+    expect(blob).toBeInstanceOf(Blob);
+    expect(await blob.text()).toBe("jpeg-bytes");
+    expect(calledUrl()).toBe("/api/v1/receipts/rc-1/file");
+    const headers = new Headers(calledHeaders());
+    expect(headers.get("authorization")).toBe("Bearer token-abc");
+  });
+
+  it("throws ApiError on failures (410 media deleted)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ code: "RECEIPT_MEDIA_GONE", message: "gone" }),
+        { status: 410, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const error = await getReceiptFile("rc-1").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ code: "RECEIPT_MEDIA_GONE", status: 410 });
   });
 });
 

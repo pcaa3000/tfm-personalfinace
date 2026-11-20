@@ -65,6 +65,16 @@ export interface ReceiptListItemView {
   mediaDeletedAt: string | null;
 }
 
+/**
+ * Page of `GET /api/v1/receipts` (receipt-review-link T5+T7, S4):
+ * cursor-paginated — `nextCursor` is opaque; pass it back as `cursor`
+ * to fetch the next page. `null` means the list is exhausted.
+ */
+export interface ReceiptListPageView {
+  items: ReceiptListItemView[];
+  nextCursor: string | null;
+}
+
 export type ReceiptCategoryNature =
   | "income"
   | "essential"

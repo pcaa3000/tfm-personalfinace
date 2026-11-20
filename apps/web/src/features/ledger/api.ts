@@ -2,7 +2,7 @@ import { isAuthBypassed } from "../auth/supabase";
 import type {
   ReceiptConfirmInput,
   ReceiptDraftPayload,
-  ReceiptListItemView,
+  ReceiptListPageView,
   ReceiptScanView,
 } from "./receipt-draft";
 import type {
@@ -297,12 +297,40 @@ export function listTransactionRevisions(
 // --- Receipt scans (receipt-scan-drafts T7, S1+S2+S7+S10) ------------
 
 /**
- * `GET /receipts` — every workspace scan, newest first
- * (receipt-review-link T4, S1+S3). Rows carry `transactionId` once the
- * scan was confirmed into a movement.
+ * `GET /receipts` — workspace scans, newest first, cursor-paginated
+ * (receipt-review-link T5+T7, S1+S3+S4): `?limit=<n>&cursor=<opaque>` →
+ * `{items, nextCursor}` where `nextCursor === null` ends the list.
+ * Rows carry `transactionId` once the scan was confirmed into a
+ * movement.
  */
-export function listReceipts(): Promise<ReceiptListItemView[]> {
-  return request<ReceiptListItemView[]>("/receipts");
+export function listReceipts(
+  opts: { limit?: number | undefined; cursor?: string | undefined } = {},
+): Promise<ReceiptListPageView> {
+  const params = new URLSearchParams();
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.cursor !== undefined && opts.cursor !== "") {
+    params.set("cursor", opts.cursor);
+  }
+  const qs = params.toString();
+  return request<ReceiptListPageView>(`/receipts${qs ? `?${qs}` : ""}`);
+}
+
+/**
+ * `GET /receipts/:id/file` — the stored medium as bytes
+ * (receipt-review-link T6, L28). Binary, not JSON: the same auth
+ * headers apply but the body is read with `res.blob()`, while API
+ * failures keep the JSON error envelope so `ApiError` retains
+ * status/code (410 → medio eliminado).
+ */
+export async function getReceiptFile(id: string): Promise<Blob> {
+  const response = await fetch(`${BASE}/receipts/${id}/file`, {
+    headers: await authHeaders(),
+  });
+  if (!response.ok) {
+    // Always throws the ApiError for non-OK responses.
+    await parseResponse<never>(response);
+  }
+  return response.blob();
 }
 
 /** `POST /receipts` — multipart `file` field → 201 pending scan row. */

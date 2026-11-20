@@ -1,10 +1,8 @@
 import { Chip } from "@mui/material";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-/** Inline URL of a stored scan image (`GET /receipts/:id/file`). */
-export function receiptFileUrl(scanId: string): string {
-  return `/api/v1/receipts/${scanId}/file`;
-}
+import { ReceiptImageViewer } from "./ReceiptImageViewer";
 
 interface Props {
   /** Scan id behind `origin === "ticket"`; may be absent on old rows. */
@@ -13,28 +11,36 @@ interface Props {
 
 /**
  * "ticket" origin badge for movement rows (receipt-review-link T3, S2).
- * With an `originReference` it links straight to the stored scan image
- * in a new tab; without one it degrades to a plain non-linked badge —
- * pinned degradation for scans predating the field.
+ * With an `originReference` it opens the authenticated in-app image
+ * viewer (T6, L28) — the raw `/receipts/:id/file` URL 401s without the
+ * Authorization header, so no link to it may be rendered. Without a
+ * reference it degrades to a plain non-clickable badge — pinned
+ * degradation for scans predating the field.
  */
 export function TicketOriginBadge({ originReference }: Props) {
   const { t } = useTranslation();
-  if (originReference) {
+  const [viewerOpen, setViewerOpen] = useState(false);
+  if (!originReference) {
     return (
+      <Chip size="small" variant="outlined" label={t("table.ticketBadge")} />
+    );
+  }
+  const scanId = originReference;
+  return (
+    <>
       <Chip
         size="small"
         variant="outlined"
-        component="a"
-        href={receiptFileUrl(originReference)}
-        target="_blank"
-        rel="noopener noreferrer"
+        component="button"
+        onClick={() => setViewerOpen(true)}
         aria-label={t("table.viewTicket")}
         clickable
         label={t("table.ticketBadge")}
       />
-    );
-  }
-  return (
-    <Chip size="small" variant="outlined" label={t("table.ticketBadge")} />
+      <ReceiptImageViewer
+        scanId={viewerOpen ? scanId : null}
+        onClose={() => setViewerOpen(false)}
+      />
+    </>
   );
 }

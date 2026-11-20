@@ -1,12 +1,24 @@
 // @vitest-environment jsdom
 import { ThemeProvider } from "@mui/material/styles";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import i18n from "../../i18n";
 import { buildAppTheme } from "../../theme";
+import { getReceiptFile } from "./api";
 import { TransactionDayCards } from "./TransactionDayCards";
 import type { LedgerRow } from "./types";
+
+vi.mock("./api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./api")>();
+  return { ...actual, getReceiptFile: vi.fn() };
+});
 
 /**
  * Raw CSS of every injected rule that targets one of the element's
@@ -73,6 +85,17 @@ const baseRow: LedgerRow = {
 
 beforeAll(async () => {
   await i18n.changeLanguage("es");
+  // jsdom has no URL.createObjectURL — stub it for the image viewer.
+  Object.defineProperty(URL, "createObjectURL", {
+    value: vi.fn(() => "blob:ticket-image"),
+    configurable: true,
+    writable: true,
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    value: vi.fn(),
+    configurable: true,
+    writable: true,
+  });
 });
 
 afterEach(cleanup);
@@ -100,7 +123,8 @@ describe("TransactionDayCards empty state (S1)", () => {
 });
 
 describe("ticket origin badge (receipt-review-link T3, S2)", () => {
-  it("links the ticket badge to the scan image when originReference exists", () => {
+  it("opens the authenticated image viewer from the ticket badge", async () => {
+    vi.mocked(getReceiptFile).mockResolvedValue(new Blob(["img"]));
     render(
       <ThemeProvider theme={buildAppTheme("light")}>
         <TransactionDayCards
@@ -120,11 +144,23 @@ describe("ticket origin badge (receipt-review-link T3, S2)", () => {
       </ThemeProvider>,
     );
 
-    const link = screen.getByRole("link", {
+    // L28: the badge no longer links the raw API path (401 without the
+    // auth header); it opens the in-app viewer instead.
+    const badge = screen.getByRole("button", {
       name: "Ver ticket escaneado",
     });
-    expect(link.getAttribute("href")).toBe("/api/v1/receipts/scan-7/file");
-    expect(link.getAttribute("target")).toBe("_blank");
+    expect(
+      screen.queryByRole("link", { name: "Ver ticket escaneado" }),
+    ).toBeNull();
+
+    fireEvent.click(badge);
+
+    expect(getReceiptFile).toHaveBeenCalledWith("scan-7");
+    const viewer = await screen.findByRole("dialog", {
+      name: "Imagen del ticket",
+    });
+    const img = await within(viewer).findByRole("img");
+    expect(img.getAttribute("src")).toBe("blob:ticket-image");
   });
 });
 

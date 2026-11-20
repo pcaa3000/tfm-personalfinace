@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+  type InfiniteData,
+} from "@tanstack/react-query";
 import {
   Alert,
   Button,
@@ -8,8 +13,13 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  IconButton,
   List,
+  ListItem,
+  ListItemText,
+  Stack,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,21 +27,153 @@ import { useTranslation } from "react-i18next";
 import { deleteReceiptFile, listReceipts } from "./api";
 import { errorMessage } from "./errors";
 import { formatInstant } from "./format";
+import { EyeIcon, TrashIcon } from "./icons";
 import { ManageListItem } from "./ManageListItem";
-import { receiptFileUrl } from "./TicketOriginBadge";
-import type { ReceiptListItemView } from "./receipt-draft";
+import { ReceiptImageViewer } from "./ReceiptImageViewer";
+import type {
+  ReceiptListItemView,
+  ReceiptListPageView,
+} from "./receipt-draft";
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
+const RECEIPTS_PAGE_SIZE = 20;
 /**
- * Gestión → Tickets (receipt-review-link T4, S1+S3): every workspace
- * receipt scan, newest first — filename, upload date, localized status
- * and a link to the stored image. Scans confirmed into a movement show
- * the linked-movement badge (the history list has no row-level deep
- * linking, so the badge is informational).
+ * Below MUI's `sm` breakpoint the rows switch to the compact layout
+ * (receipt-review-link T7): icon actions and ~3 lines per row so 6+
+ * rows fit a mobile viewport. Raw query string, like DESKTOP_QUERY in
+ * LedgerPage — also lets specs drive the breakpoint via matchMedia.
+ */
+const COMPACT_QUERY = "(max-width:599.95px)";
+
+interface RowProps {
+  scan: ReceiptListItemView;
+  compact: boolean;
+  onView: (scan: ReceiptListItemView) => void;
+  onDelete: (scan: ReceiptListItemView) => void;
+}
+
+/**
+ * One receipt row. Compact (mobile) packs the status chip and icon
+ * actions on the right of ≤3 text lines; the regular layout keeps the
+ * shared ManageListItem shape with text buttons.
+ */
+function TicketRow({ scan, compact, onView, onDelete }: RowProps) {
+  const { t, i18n } = useTranslation();
+  const statusChip = (
+    <Chip
+      size="small"
+      variant="outlined"
+      label={t(`tickets.status.${scan.status}`, {
+        defaultValue: scan.status,
+      })}
+    />
+  );
+  const linkedChip = scan.transactionId ? (
+    <Chip
+      size="small"
+      color="success"
+      variant="outlined"
+      label={t("tickets.linkedMovement")}
+      sx={{ ml: 1 }}
+    />
+  ) : null;
+  const expiry = scan.mediaDeletedAt
+    ? t("tickets.mediaDeleted")
+    : t("tickets.expiresAt", {
+        date: formatInstant(scan.expiresAt, i18n.language),
+      });
+
+  if (compact) {
+    return (
+      <ListItem
+        disableGutters
+        data-testid="manage-row"
+        sx={{ display: "flex", alignItems: "center", gap: 1, py: 0.5 }}
+      >
+        <ListItemText
+          sx={{ flex: 1, minWidth: 0, m: 0 }}
+          primary={
+            <>
+              {scan.originalFilename}
+              {linkedChip}
+            </>
+          }
+          secondary={`${formatInstant(scan.createdAt, i18n.language)} · ${expiry}`}
+        />
+        <Stack sx={{ flexShrink: 0, alignItems: "flex-end" }}>
+          {statusChip}
+          {scan.mediaDeletedAt ? null : (
+            <Stack direction="row">
+              <IconButton
+                size="small"
+                aria-label={t("tickets.viewImage")}
+                onClick={() => onView(scan)}
+              >
+                <EyeIcon fontSize="small" />
+              </IconButton>
+              <IconButton
+                size="small"
+                color="error"
+                aria-label={t("tickets.deleteMedia")}
+                onClick={() => onDelete(scan)}
+              >
+                <TrashIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          )}
+        </Stack>
+      </ListItem>
+    );
+  }
+
+  return (
+    <ManageListItem
+      primary={
+        <>
+          {scan.originalFilename}
+          {linkedChip}
+        </>
+      }
+      secondary={
+        <>
+          {formatInstant(scan.createdAt, i18n.language)}
+          <br />
+          <span>{expiry}</span>
+        </>
+      }
+      actions={
+        <>
+          {statusChip}
+          {scan.mediaDeletedAt ? null : (
+            <>
+              <Button size="small" onClick={() => onView(scan)}>
+                {t("tickets.viewImage")}
+              </Button>
+              <Button
+                size="small"
+                color="error"
+                onClick={() => onDelete(scan)}
+              >
+                {t("tickets.deleteMedia")}
+              </Button>
+            </>
+          )}
+        </>
+      }
+    />
+  );
+}
+
+/**
+ * Gestión → Tickets (receipt-review-link T4+T6+T7, S1+S3+S4): every
+ * workspace receipt scan, newest first, cursor-paginated behind
+ * "Cargar más" — filename, upload date, localized status, an in-app
+ * authenticated image viewer (the raw file URL 401s without the auth
+ * header, L28) and a linked-movement badge.
  *
  * Retention (receipt-retention-30d T5, S3+S5): each row shows the fixed
  * 30-day expiry of its stored medium and offers early deletion behind a
@@ -41,28 +183,46 @@ interface Props {
  * `mediaDeletedAt` render that state directly.
  */
 export function TicketsDialog({ open, onClose }: Props) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const compact = useMediaQuery(COMPACT_QUERY);
   const [deleteTarget, setDeleteTarget] = useState<ReceiptListItemView | null>(
     null,
   );
-  const receiptsQuery = useQuery({
+  const [viewerScan, setViewerScan] = useState<ReceiptListItemView | null>(
+    null,
+  );
+  const receiptsQuery = useInfiniteQuery({
     queryKey: ["receipts"],
-    queryFn: listReceipts,
+    queryFn: ({ pageParam }) =>
+      listReceipts({ limit: RECEIPTS_PAGE_SIZE, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: open,
   });
+  const scans = receiptsQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteReceiptFile(id),
     onSuccess: (_result, id) => {
-      // CA-012: only the stored object is gone — patch the cached row in
-      // place so its deleted state renders without a refetch.
-      queryClient.setQueryData<ReceiptListItemView[]>(["receipts"], (rows) =>
-        (rows ?? []).map((row) =>
-          row.id === id
-            ? { ...row, mediaDeletedAt: new Date().toISOString() }
-            : row,
-        ),
+      // CA-012: only the stored object is gone — patch every cached
+      // page in place so the row's deleted state renders without a
+      // refetch.
+      const stamp = new Date().toISOString();
+      queryClient.setQueryData<InfiniteData<ReceiptListPageView>>(
+        ["receipts"],
+        (data) =>
+          data
+            ? {
+                ...data,
+                pages: data.pages.map((page) => ({
+                  ...page,
+                  items: page.items.map((row) =>
+                    row.id === id ? { ...row, mediaDeletedAt: stamp } : row,
+                  ),
+                })),
+              }
+            : data,
       );
       setDeleteTarget(null);
     },
@@ -86,95 +246,65 @@ export function TicketsDialog({ open, onClose }: Props) {
         <DialogContent sx={{ pb: 3 }}>
           {receiptsQuery.isLoading ? (
             <Typography>{t("tickets.loading")}</Typography>
-          ) : receiptsQuery.isError ? (
-            <Alert
-              severity="error"
-              action={
-                <Button
-                  color="inherit"
-                  size="small"
-                  onClick={() => void receiptsQuery.refetch()}
-                >
-                  {t("tickets.retry")}
-                </Button>
-              }
-            >
-              {t("tickets.loadError")}
-            </Alert>
-          ) : (receiptsQuery.data ?? []).length === 0 ? (
-            <Typography color="text.secondary">{t("tickets.empty")}</Typography>
           ) : (
-            <List dense>
-              {(receiptsQuery.data ?? []).map((scan) => (
-                <ManageListItem
-                  key={scan.id}
-                  primary={
-                    <>
-                      {scan.originalFilename}
-                      {scan.transactionId ? (
-                        <Chip
-                          size="small"
-                          color="success"
-                          variant="outlined"
-                          label={t("tickets.linkedMovement")}
-                          sx={{ ml: 1 }}
-                        />
-                      ) : null}
-                    </>
+            <>
+              {receiptsQuery.isError ? (
+                <Alert
+                  severity="error"
+                  action={
+                    <Button
+                      color="inherit"
+                      size="small"
+                      onClick={() => void receiptsQuery.refetch()}
+                    >
+                      {t("tickets.retry")}
+                    </Button>
                   }
-                  secondary={
-                    <>
-                      {formatInstant(scan.createdAt, i18n.language)}
-                      <br />
-                      <span>
-                        {scan.mediaDeletedAt
-                          ? t("tickets.mediaDeleted")
-                          : t("tickets.expiresAt", {
-                              date: formatInstant(
-                                scan.expiresAt,
-                                i18n.language,
-                              ),
-                            })}
-                      </span>
-                    </>
-                  }
-                  actions={
-                    <>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={t(`tickets.status.${scan.status}`, {
-                          defaultValue: scan.status,
-                        })}
-                      />
-                      {scan.mediaDeletedAt ? null : (
-                        <>
-                          <Button
-                            size="small"
-                            component="a"
-                            href={receiptFileUrl(scan.id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {t("tickets.viewImage")}
-                          </Button>
-                          <Button
-                            size="small"
-                            color="error"
-                            onClick={() => openDeleteDialog(scan)}
-                          >
-                            {t("tickets.deleteMedia")}
-                          </Button>
-                        </>
-                      )}
-                    </>
-                  }
-                />
-              ))}
-            </List>
+                >
+                  {t("tickets.loadError")}
+                </Alert>
+              ) : null}
+              {scans.length === 0 && !receiptsQuery.isError ? (
+                <Typography color="text.secondary">
+                  {t("tickets.empty")}
+                </Typography>
+              ) : null}
+              {scans.length > 0 ? (
+                <List dense={!compact}>
+                  {scans.map((scan) => (
+                    <TicketRow
+                      key={scan.id}
+                      scan={scan}
+                      compact={compact}
+                      onView={setViewerScan}
+                      onDelete={openDeleteDialog}
+                    />
+                  ))}
+                </List>
+              ) : null}
+              {receiptsQuery.hasNextPage ? (
+                <Button
+                  fullWidth
+                  sx={{ mt: 1 }}
+                  disabled={receiptsQuery.isFetchingNextPage}
+                  onClick={() => void receiptsQuery.fetchNextPage()}
+                >
+                  {receiptsQuery.isFetchingNextPage
+                    ? t("tickets.loading")
+                    : t("tickets.loadMore")}
+                </Button>
+              ) : null}
+            </>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Authenticated in-app image viewer (T6, L28). */}
+      <ReceiptImageViewer
+        scanId={viewerScan?.id ?? null}
+        title={viewerScan?.originalFilename}
+        onClose={() => setViewerScan(null)}
+      />
 
       {/* Early media deletion confirm (S3): same inline-confirm pattern
           as VoidTransactionDialog. */}
