@@ -554,7 +554,7 @@ describe("ReceiptFlow — capture → poll → review (T7, S1+S2+S7+S10)", () =>
   });
 });
 
-describe("ReceiptFlow — review layout, clipped labels on narrow viewports (T16, S7)", () => {
+describe("ReceiptFlow — review layout, clipped labels on narrow viewports (T16+T17, S7)", () => {
   const reachReview = async () => {
     vi.mocked(uploadReceipt).mockResolvedValue(scanView("pending"));
     vi.mocked(getReceiptScan).mockResolvedValue(scanView("draft_ready"));
@@ -629,6 +629,23 @@ describe("ReceiptFlow — review layout, clipped labels on narrow viewports (T16
     const amountField = amountInput.closest(".MuiTextField-root");
     if (!amountField) throw new Error("amount field wrapper not rendered");
     expect(generatedCssFor(amountField)).toContain("width:100%");
+  });
+
+  it("gives the review root a top padding so the shrunk Tipo label is not clipped by the dialog edge (T17)", async () => {
+    await reachReview();
+
+    // The Tipo select is the first field of the review step; its shrunk
+    // label floats ~6px above the outlined border and the DialogContent
+    // top edge clips it. The fix lives inside ReceiptFlow (DialogContent
+    // is owned by NewMovementDialog): a non-zero padding-top on the
+    // review root reserves room for the floating label.
+    const reviewRoot = document.querySelector(
+      '[data-part="receipt-review"]',
+    );
+    expect(reviewRoot).toBeTruthy();
+    expect(generatedCssFor(reviewRoot!)).toMatch(
+      /padding-top:[1-9][\d.]*px/,
+    );
   });
 });
 

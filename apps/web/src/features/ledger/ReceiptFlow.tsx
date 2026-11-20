@@ -401,7 +401,9 @@ export function ReceiptFlow({
     const confirmInput = reviewStateToConfirmInput(review, exponentOf);
 
     return (
-      <Stack spacing={2} data-part="receipt-review">
+      // T17: pt:1 reserves room for the shrunk "Tipo" label, which floats
+      // ~6px above the first field and is clipped by the DialogContent top.
+      <Stack spacing={2} sx={{ pt: 1 }} data-part="receipt-review">
         {error ? <Alert severity="error">{error}</Alert> : null}
         {review.totalMismatch ? (
           <Alert severity="warning">{t("receipt.totalMismatch")}</Alert>
