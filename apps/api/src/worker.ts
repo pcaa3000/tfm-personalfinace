@@ -25,6 +25,7 @@ import {
   RECEIPT_MEDIA_PURGE_CRON,
   RECEIPT_MEDIA_PURGE_QUEUE,
 } from "./jobs/purge-receipt-media.js";
+import { purgeExpiredVoiceMedia } from "./jobs/purge-voice-media.js";
 import { DrizzleCategoryValidationAdapter } from "./modules/categorization/index.js";
 import { SystemClock } from "./modules/ledger/infrastructure/system-clock.adapter.js";
 import {
@@ -132,11 +133,19 @@ async function main(): Promise<void> {
   // receipt-retention-30d T4 (S4): daily purge of expired media —
   // pg-boss `schedule` (v12 supports cron schedules) enqueues onto the
   // purge queue; the handler deletes objects + stamps mediaDeletedAt.
+  // voice-drafts T6 (S7): the same run also purges voices_voice_notes —
+  // the sibling table shares this storage instance and each row carries
+  // its own storageKey, so one schedule covers both.
   const purgeStorage = receiptScanDeps.storage;
   const purgeClock = new SystemClock();
   await boss.schedule(RECEIPT_MEDIA_PURGE_QUEUE, RECEIPT_MEDIA_PURGE_CRON);
   await boss.work(RECEIPT_MEDIA_PURGE_QUEUE, async () => {
     await purgeExpiredReceiptMedia({
+      db,
+      storage: purgeStorage,
+      clock: purgeClock,
+    });
+    await purgeExpiredVoiceMedia({
       db,
       storage: purgeStorage,
       clock: purgeClock,
