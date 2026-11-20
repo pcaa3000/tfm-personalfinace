@@ -71,6 +71,15 @@ import { RejectReceiptScanUseCase } from "../modules/receipts/application/reject
 import { RetryReceiptScanUseCase } from "../modules/receipts/application/retry-receipt-scan.use-case.js";
 import { PurgeReceiptMediaUseCase } from "../modules/receipts/application/purge-receipt-media.use-case.js";
 import { RECEIPT_MAX_BYTES_DEFAULT } from "../modules/receipts/domain/receipt-upload.js";
+import { DrizzleVoiceNoteRepository } from "../modules/voices/infrastructure/drizzle-voice-note.repository.js";
+import { PgBossVoiceDraftDispatcher } from "../modules/voices/infrastructure/pgboss-voice-draft.dispatcher.js";
+import { InlineVoiceDraftDispatcher } from "../modules/voices/infrastructure/inline-voice-draft.dispatcher.js";
+import type { VoiceDraftDispatcher } from "../modules/voices/application/ports/voice-draft-dispatcher.port.js";
+import { UploadVoiceNoteUseCase } from "../modules/voices/application/upload-voice-note.use-case.js";
+import { GetVoiceNoteUseCase } from "../modules/voices/application/get-voice-note.use-case.js";
+import { GetVoiceFileUseCase } from "../modules/voices/application/get-voice-file.use-case.js";
+import { ListVoiceNotesUseCase } from "../modules/voices/application/list-voice-notes.use-case.js";
+import { VOICE_MAX_BYTES_DEFAULT } from "../modules/voices/domain/voice-upload.js";
 
 /**
  * Composition root (T4): explicit wiring, no DI container.
@@ -116,6 +125,17 @@ export type ReceiptScanDispatcherEnv =
       readonly scanner?: ReceiptScanPort;
     };
 
+/**
+ * Voice-draft dispatcher selection (voice-drafts T1, S5): `pgboss`
+ * keeps the API→queue→worker topology; `inline` — the DEFAULT, same
+ * single-component deploy constraint as receipts on Render free —
+ * runs the draft pipeline in-process. T1 wires a placeholder runner
+ * that leaves the row `pending`; T2 swaps in `handleVoiceDraft`.
+ */
+export type VoiceDraftDispatcherEnv =
+  | { readonly mode: "pgboss" }
+  | { readonly mode: "inline" };
+
 export interface AppEnv {
   readonly databaseUrl: string;
   readonly authMode: "dev" | "oidc";
@@ -129,6 +149,10 @@ export interface AppEnv {
     readonly maxBytes: number;
     readonly storage: ReceiptStorageEnv;
     readonly scanDispatcher: ReceiptScanDispatcherEnv;
+  };
+  readonly voices: {
+    readonly maxBytes: number;
+    readonly draftDispatcher: VoiceDraftDispatcherEnv;
   };
 }
 
@@ -161,6 +185,7 @@ export function buildApp(env: AppEnv): BuiltApp {
 
   const clock = new SystemClock();
   const ids = new CryptoIdGenerator();
+  const fileHasher = new CryptoFileHasher();
 
   // receipt-scan-drafts D2: storage driver selected via STORAGE_DRIVER.
   const receiptStorage = createReceiptStorage(env.receipts.storage);
@@ -174,6 +199,15 @@ export function buildApp(env: AppEnv): BuiltApp {
       categories: categoryValidation,
       clock,
     },
+  );
+
+  // voice-drafts T1 (S5): the same storage driver instance serves the
+  // voices module — VoiceStoragePort is structurally the receipts
+  // contract, no second driver/env surface.
+  const voiceNotes = new DrizzleVoiceNoteRepository(db);
+  const voiceDraftDispatcher = createVoiceDraftDispatcher(
+    env.voices.draftDispatcher,
+    env.databaseUrl,
   );
 
   const recordManual = new RecordManualTransactionUseCase(
@@ -229,7 +263,7 @@ export function buildApp(env: AppEnv): BuiltApp {
       receiptScans,
       // T13 (S12): exact-hash dedup index + SHA-256 hasher.
       receiptScans,
-      new CryptoFileHasher(),
+      fileHasher,
       receiptDispatcher,
       clock,
       ids,
@@ -274,12 +308,28 @@ export function buildApp(env: AppEnv): BuiltApp {
       receiptStorage,
       clock,
     ),
+    // voices (voice-drafts T1: upload + quarantine + polling)
+    uploadVoiceNote: new UploadVoiceNoteUseCase(
+      receiptStorage,
+      voiceNotes,
+      // S5: exact-hash dedup index + shared SHA-256 hasher.
+      voiceNotes,
+      fileHasher,
+      voiceDraftDispatcher,
+      clock,
+      ids,
+      { maxBytes: env.voices.maxBytes },
+    ),
+    listVoiceNotes: new ListVoiceNotesUseCase(voiceNotes),
+    getVoiceNote: new GetVoiceNoteUseCase(voiceNotes),
+    getVoiceFile: new GetVoiceFileUseCase(voiceNotes, receiptStorage),
   };
 
   return {
     app: createApp(deps, env.security),
     db,
     close: async () => {
+      await voiceDraftDispatcher.close();
       await receiptDispatcher.close();
       await pool.end();
     },
@@ -334,6 +384,15 @@ function securityFromProcess(): HttpSecurityConfig {
         RECEIPT_MAX_BYTES_DEFAULT,
       ) +
       256 * 1024,
+    // voice-drafts T1: same multipart cap policy as receipts —
+    // VOICE_MAX_BYTES + slack for boundary/field overhead.
+    voiceUploadBodyLimitBytes:
+      parsePositiveInt(
+        "VOICE_MAX_BYTES",
+        process.env.VOICE_MAX_BYTES,
+        VOICE_MAX_BYTES_DEFAULT,
+      ) +
+      256 * 1024,
   };
 }
 
@@ -367,6 +426,7 @@ export function envFromProcess(): AppEnv {
   const databaseUrl = requiredEnv("DATABASE_URL");
   const security = securityFromProcess();
   const receipts = receiptsFromProcess();
+  const voices = voicesFromProcess();
   const authMode = process.env.AUTH_MODE;
   if (authMode === "oidc") {
     const required = (name: string): string => {
@@ -381,6 +441,7 @@ export function envFromProcess(): AppEnv {
       authMode: "oidc",
       security,
       receipts,
+      voices,
       oidc: {
         issuer: required("OIDC_ISSUER"),
         audience: required("OIDC_AUDIENCE"),
@@ -394,7 +455,7 @@ export function envFromProcess(): AppEnv {
         "AUTH_MODE=dev is forbidden when NODE_ENV=production",
       );
     }
-    return { databaseUrl, authMode: "dev", security, receipts };
+    return { databaseUrl, authMode: "dev", security, receipts, voices };
   }
   throw new Error(
     `AUTH_MODE must be "dev" or "oidc"; got ${
@@ -536,4 +597,62 @@ export function createReceiptStorage(
   return config.driver === "s3"
     ? new S3ReceiptStorage(config)
     : new LocalReceiptStorage(config.dir);
+}
+
+/**
+ * Voice quarantine + dispatcher config (voice-drafts T1, S1+S5).
+ * `VOICE_MAX_BYTES` mirrors RECEIPT_MAX_BYTES (default 5 MiB); the
+ * storage driver/env is SHARED with receipts — `STORAGE_DRIVER`,
+ * `RECEIPT_STORAGE_DIR` and the `S3_*`/`RECEIPT_S3_BUCKET` credentials
+ * already cover both modules.
+ */
+function voicesFromProcess(): AppEnv["voices"] {
+  return {
+    maxBytes: parsePositiveInt(
+      "VOICE_MAX_BYTES",
+      process.env.VOICE_MAX_BYTES,
+      VOICE_MAX_BYTES_DEFAULT,
+    ),
+    draftDispatcher: voiceDraftDispatcherFromProcess(),
+  };
+}
+
+/**
+ * Dispatcher env parsing (voice-drafts T1, S5): `inline` is the
+ * DEFAULT — the single-component deploy (Render free tier, no worker
+ * service) must run the draft pipeline in-process, the same call
+ * receipts made for RECEIPT_SCAN_DISPATCHER=inline. `pgboss` keeps the
+ * API→queue→worker topology. Fails closed on any other value, like
+ * STORAGE_DRIVER.
+ */
+function voiceDraftDispatcherFromProcess(): VoiceDraftDispatcherEnv {
+  const mode = process.env.VOICE_DISPATCHER ?? "inline";
+  if (mode === "pgboss" || mode === "inline") {
+    return { mode };
+  }
+  throw new Error(
+    `VOICE_DISPATCHER must be "inline" or "pgboss"; got ${JSON.stringify(mode)}`,
+  );
+}
+
+/**
+ * Builds the dispatcher for the parsed mode (voice-drafts T1, S5).
+ * `inline` runs a placeholder runner — the real `handleVoiceDraft`
+ * pipeline lands in T2; until then the note row stays `pending`
+ * (exactly what the poll contract returns) and the job is logged, not
+ * lost. `pgboss` enqueues on the `voice-draft` queue where T2's worker
+ * consumer picks it up.
+ */
+function createVoiceDraftDispatcher(
+  config: VoiceDraftDispatcherEnv,
+  databaseUrl: string,
+): VoiceDraftDispatcher & { close(): Promise<void> } {
+  if (config.mode === "pgboss") {
+    return new PgBossVoiceDraftDispatcher(databaseUrl);
+  }
+  return new InlineVoiceDraftDispatcher(async (job) => {
+    console.error(
+      `[voices] voice-draft job for ${job.voiceNoteId} not handled — the draft pipeline lands in T2; the note stays pending`,
+    );
+  });
 }

@@ -252,6 +252,19 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     purgeReceiptMedia: {
       execute: vi.fn(async () => 0),
     },
+    // voice-drafts T1 — stubs; these specs never call them.
+    uploadVoiceNote: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    listVoiceNotes: {
+      execute: vi.fn(async () => ({ items: [], nextCursor: null })),
+    },
+    getVoiceNote: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getVoiceFile: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
   };
 }
 

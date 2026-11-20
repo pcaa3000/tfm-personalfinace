@@ -31,6 +31,8 @@ const ENV_KEYS = [
   "RECEIPT_SCAN_DISPATCHER",
   "GEMINI_API_KEY",
   "GEMINI_MODEL",
+  "VOICE_MAX_BYTES",
+  "VOICE_DISPATCHER",
 ] as const;
 
 const DATABASE_URL = "postgresql://u:p@db:5432/spec";
@@ -347,5 +349,54 @@ describe("envFromProcess — RECEIPT_SCAN_DISPATCHER (receipt-scan-drafts T14, S
     process.env.AUTH_MODE = "dev";
     process.env.RECEIPT_SCAN_DISPATCHER = "inline";
     expect(() => envFromProcess()).toThrow(/GEMINI_API_KEY/);
+  });
+});
+
+describe("envFromProcess — voices config (voice-drafts T1, S1+S5)", () => {
+  it("defaults VOICE_MAX_BYTES to 5 MiB (S1)", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    expect(envFromProcess().voices.maxBytes).toBe(5 * 1024 * 1024);
+  });
+
+  it("reads VOICE_MAX_BYTES", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.VOICE_MAX_BYTES = "2097152";
+    expect(envFromProcess().voices.maxBytes).toBe(2_097_152);
+  });
+
+  it("rejects a non-positive VOICE_MAX_BYTES instead of silently disabling quarantine", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.VOICE_MAX_BYTES = "0";
+    expect(() => envFromProcess()).toThrow(/VOICE_MAX_BYTES/);
+  });
+
+  it("defaults VOICE_DISPATCHER to inline — the single-component deploy runs the draft pipeline in-process (S5)", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    expect(envFromProcess().voices.draftDispatcher).toEqual({ mode: "inline" });
+  });
+
+  it("accepts the explicit pgboss value", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.VOICE_DISPATCHER = "pgboss";
+    expect(envFromProcess().voices.draftDispatcher).toEqual({ mode: "pgboss" });
+  });
+
+  it("accepts the explicit inline value", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.VOICE_DISPATCHER = "inline";
+    expect(envFromProcess().voices.draftDispatcher).toEqual({ mode: "inline" });
+  });
+
+  it("fails closed on an unknown dispatcher value", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.VOICE_DISPATCHER = "sqs";
+    expect(() => envFromProcess()).toThrow(/VOICE_DISPATCHER/);
   });
 });
