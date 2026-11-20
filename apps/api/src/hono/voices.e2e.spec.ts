@@ -12,6 +12,8 @@ import { cleanE2eData, closeTestDb, db } from "../../test/e2e-helpers.js";
 import { voiceNotes, workspaces } from "../drizzle/schema.js";
 import { buildApp, envFromProcess } from "./composition.js";
 import { LocalReceiptStorage } from "../modules/receipts/index.js";
+import type { VoiceDraftPort } from "../modules/voices/index.js";
+import { ok } from "../modules/shared-kernel/index.js";
 
 /**
  * Voice upload e2e (voice-drafts T1, S1+S5+S7): real HTTP + Postgres +
@@ -94,7 +96,49 @@ async function cleanupNotes(): Promise<void> {
   }
 }
 
-describe("voices e2e (voice-drafts T1, S1+S5+S7)", () => {
+/** Deterministic stand-in for Gemini (T2): a fixed expense extraction. */
+const fakeVoiceProcessor: VoiceDraftPort = {
+  processAudio: async () =>
+    ok({
+      transcript: "compré un sol de pan",
+      type: "expense",
+      concept: "Pan",
+      dateHint: null,
+      totalMinorUnits: null,
+      items: [
+        {
+          concept: "Pan",
+          amountMinorUnits: 100,
+          currency: null,
+          suggestedCategoryKey: null,
+          suggestedNewCategory: null,
+          confidence: 0.95,
+        },
+      ],
+    }),
+};
+
+/** Polls GET /voices/:id until it reports `wanted` (T2 inline pipeline). */
+async function waitForVoiceStatus(
+  noteId: string,
+  headers: Record<string, string>,
+  wanted: string,
+  timeoutMs = 10_000,
+): Promise<Record<string, unknown>> {
+  const deadline = Date.now() + timeoutMs;
+  let last: Record<string, unknown> | null = null;
+  while (Date.now() < deadline) {
+    const res = await json(`/api/v1/voices/${noteId}`, { headers });
+    last = res.body;
+    if (last?.status === wanted) return last;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(
+    `note ${noteId} never reached ${wanted}; last=${JSON.stringify(last)}`,
+  );
+}
+
+describe("voices e2e (voice-drafts T1+T2, S1+S2+S5+S7)", () => {
   beforeAll(async () => {
     storageDir = mkdtempSync(join(tmpdir(), "tfm-voices-e2e-"));
     process.env.DATABASE_URL ??= DATABASE_URL;
@@ -102,11 +146,24 @@ describe("voices e2e (voice-drafts T1, S1+S5+S7)", () => {
     process.env.RATE_LIMIT_MAX ??= "100000";
     process.env.STORAGE_DRIVER = "local";
     process.env.RECEIPT_STORAGE_DIR = storageDir;
-    // T1: the draft pipeline lands in T2 — the inline dispatcher
-    // (S5 default for the single-component deploy) leaves the row
-    // pending, exactly what this spec polls.
+    // T2: the inline dispatcher (S5 default) runs the REAL handleVoiceDraft
+    // pipeline in-process; the fake VoiceDraftPort replaces Gemini through
+    // the `processor` seam. GEMINI_API_KEY is still required — the API
+    // fails fast without it exactly like the worker does.
     process.env.VOICE_DISPATCHER = "inline";
-    const built = buildApp(envFromProcess());
+    process.env.GEMINI_API_KEY = "e2e-inline-fake-key";
+    const env = envFromProcess();
+    const draftDispatcher = env.voices.draftDispatcher;
+    if (draftDispatcher.mode !== "inline") {
+      throw new Error("VOICE_DISPATCHER=inline was not parsed");
+    }
+    const built = buildApp({
+      ...env,
+      voices: {
+        ...env.voices,
+        draftDispatcher: { ...draftDispatcher, processor: fakeVoiceProcessor },
+      },
+    });
     const server = serve({ fetch: built.app.fetch, port: 0 });
     const address = server.address() as AddressInfo;
     baseUrl = `http://127.0.0.1:${address.port}`;
@@ -126,6 +183,7 @@ describe("voices e2e (voice-drafts T1, S1+S5+S7)", () => {
     await closeApp();
     rmSync(storageDir, { recursive: true, force: true });
     delete process.env.VOICE_DISPATCHER;
+    delete process.env.GEMINI_API_KEY;
   });
 
   it("upload → poll → file → list, with the 30-day expiry and real stored bytes", async () => {
@@ -143,14 +201,14 @@ describe("voices e2e (voice-drafts T1, S1+S5+S7)", () => {
     );
     expect(upload.body.mediaDeletedAt).toBeNull();
 
-    // GET /:id polling view — pending while T2's draft job is unwired.
-    const poll = await json(`/api/v1/voices/${noteId}`, { headers: ALICE });
-    expect(poll.status).toBe(200);
-    expect(poll.body).toMatchObject({
+    // GET /:id polling view — the inline T2 pipeline drives the note
+    // to draft_ready; poll until it lands (S7: transcript persisted).
+    const poll = await waitForVoiceStatus(noteId, ALICE, "draft_ready");
+    expect(poll).toMatchObject({
       id: noteId,
-      status: "pending",
+      status: "draft_ready",
       mimeType: "audio/webm",
-      transcript: null,
+      transcript: "compré un sol de pan",
       transactionId: null,
     });
 
@@ -181,7 +239,7 @@ describe("voices e2e (voice-drafts T1, S1+S5+S7)", () => {
     ).items;
     const item = items.find((i) => i.id === noteId);
     expect(item).toMatchObject({
-      status: "pending",
+      status: "draft_ready",
       fileMimeType: "audio/webm",
       transactionId: null,
       mediaDeletedAt: null,

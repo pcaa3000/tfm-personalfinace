@@ -72,9 +72,16 @@ import { RetryReceiptScanUseCase } from "../modules/receipts/application/retry-r
 import { PurgeReceiptMediaUseCase } from "../modules/receipts/application/purge-receipt-media.use-case.js";
 import { RECEIPT_MAX_BYTES_DEFAULT } from "../modules/receipts/domain/receipt-upload.js";
 import { DrizzleVoiceNoteRepository } from "../modules/voices/infrastructure/drizzle-voice-note.repository.js";
+import { DrizzleVoiceWorkspaceContextAdapter } from "../modules/voices/infrastructure/drizzle-voice-workspace-context.adapter.js";
 import { PgBossVoiceDraftDispatcher } from "../modules/voices/infrastructure/pgboss-voice-draft.dispatcher.js";
 import { InlineVoiceDraftDispatcher } from "../modules/voices/infrastructure/inline-voice-draft.dispatcher.js";
+import { GeminiVoiceDraftAdapter } from "../modules/voices/infrastructure/gemini-voice-draft.adapter.js";
 import type { VoiceDraftDispatcher } from "../modules/voices/application/ports/voice-draft-dispatcher.port.js";
+import type { VoiceDraftPort } from "../modules/voices/application/ports/voice-draft.port.js";
+import {
+  handleVoiceDraft,
+  type VoiceDraftJobDeps,
+} from "../jobs/voice-draft.js";
 import { UploadVoiceNoteUseCase } from "../modules/voices/application/upload-voice-note.use-case.js";
 import { GetVoiceNoteUseCase } from "../modules/voices/application/get-voice-note.use-case.js";
 import { GetVoiceFileUseCase } from "../modules/voices/application/get-voice-file.use-case.js";
@@ -129,12 +136,24 @@ export type ReceiptScanDispatcherEnv =
  * Voice-draft dispatcher selection (voice-drafts T1, S5): `pgboss`
  * keeps the API→queue→worker topology; `inline` — the DEFAULT, same
  * single-component deploy constraint as receipts on Render free —
- * runs the draft pipeline in-process. T1 wires a placeholder runner
- * that leaves the row `pending`; T2 swaps in `handleVoiceDraft`.
+ * runs the draft pipeline in-process — T2 wires `handleVoiceDraft`
+ * there, so `inline` needs the Gemini config at API boot (fail-fast,
+ * identical to the receipts inline policy).
  */
 export type VoiceDraftDispatcherEnv =
   | { readonly mode: "pgboss" }
-  | { readonly mode: "inline" };
+  | {
+      readonly mode: "inline";
+      readonly gemini: {
+        readonly apiKey: string;
+        readonly model: string;
+      };
+      /**
+       * Test seam: e2e specs inject a fake VoiceDraftPort instead of
+       * the real Gemini adapter. Unset → GeminiVoiceDraftAdapter.
+       */
+      readonly processor?: VoiceDraftPort;
+    };
 
 export interface AppEnv {
   readonly databaseUrl: string;
@@ -207,7 +226,14 @@ export function buildApp(env: AppEnv): BuiltApp {
   const voiceNotes = new DrizzleVoiceNoteRepository(db);
   const voiceDraftDispatcher = createVoiceDraftDispatcher(
     env.voices.draftDispatcher,
-    env.databaseUrl,
+    {
+      databaseUrl: env.databaseUrl,
+      notes: voiceNotes,
+      storage: receiptStorage,
+      categories: categoryValidation,
+      workspaceContext: new DrizzleVoiceWorkspaceContextAdapter(db),
+      clock,
+    },
   );
 
   const recordManual = new RecordManualTransactionUseCase(
@@ -621,14 +647,27 @@ function voicesFromProcess(): AppEnv["voices"] {
  * Dispatcher env parsing (voice-drafts T1, S5): `inline` is the
  * DEFAULT — the single-component deploy (Render free tier, no worker
  * service) must run the draft pipeline in-process, the same call
- * receipts made for RECEIPT_SCAN_DISPATCHER=inline. `pgboss` keeps the
- * API→queue→worker topology. Fails closed on any other value, like
+ * receipts made for RECEIPT_SCAN_DISPATCHER=inline — and the same
+ * consequence (T2): `inline` requires GEMINI_API_KEY at API boot
+ * (fail-fast); in `pgboss` mode the key stays worker-only and the API
+ * must NOT require it. Fails closed on any other value, like
  * STORAGE_DRIVER.
  */
 function voiceDraftDispatcherFromProcess(): VoiceDraftDispatcherEnv {
   const mode = process.env.VOICE_DISPATCHER ?? "inline";
-  if (mode === "pgboss" || mode === "inline") {
-    return { mode };
+  if (mode === "pgboss") {
+    return { mode: "pgboss" };
+  }
+  if (mode === "inline") {
+    // T2: inline runs the real LLM pipeline in-process — same fail-fast
+    // policy receipts applies (GEMINI_API_KEY mandatory, model optional).
+    return {
+      mode: "inline",
+      gemini: {
+        apiKey: requiredEnv("GEMINI_API_KEY"),
+        model: process.env.GEMINI_MODEL ?? GEMINI_DEFAULT_MODEL,
+      },
+    };
   }
   throw new Error(
     `VOICE_DISPATCHER must be "inline" or "pgboss"; got ${JSON.stringify(mode)}`,
@@ -636,23 +675,38 @@ function voiceDraftDispatcherFromProcess(): VoiceDraftDispatcherEnv {
 }
 
 /**
- * Builds the dispatcher for the parsed mode (voice-drafts T1, S5).
- * `inline` runs a placeholder runner — the real `handleVoiceDraft`
- * pipeline lands in T2; until then the note row stays `pending`
- * (exactly what the poll contract returns) and the job is logged, not
- * lost. `pgboss` enqueues on the `voice-draft` queue where T2's worker
- * consumer picks it up.
+ * Builds the dispatcher for the parsed mode (voice-drafts T2, S5).
+ * `inline` wires the EXACT same job deps the worker builds (worker.ts)
+ * — shared notes repo, storage, category catalog, workspace context
+ * and clock instances — and reuses `handleVoiceDraft` verbatim. The
+ * draft runs fire-and-forget: if the process dies mid-draft the row
+ * stays `pending` and T3's retry is the recovery. `pgboss` enqueues on
+ * the `voice-draft` queue the worker consumer drains.
  */
 function createVoiceDraftDispatcher(
   config: VoiceDraftDispatcherEnv,
-  databaseUrl: string,
+  context: { readonly databaseUrl: string } & Omit<
+    VoiceDraftJobDeps,
+    "processor"
+  >,
 ): VoiceDraftDispatcher & { close(): Promise<void> } {
   if (config.mode === "pgboss") {
-    return new PgBossVoiceDraftDispatcher(databaseUrl);
+    return new PgBossVoiceDraftDispatcher(context.databaseUrl);
   }
-  return new InlineVoiceDraftDispatcher(async (job) => {
-    console.error(
-      `[voices] voice-draft job for ${job.voiceNoteId} not handled — the draft pipeline lands in T2; the note stays pending`,
-    );
-  });
+  const deps: VoiceDraftJobDeps = {
+    notes: context.notes,
+    storage: context.storage,
+    categories: context.categories,
+    processor:
+      config.processor ??
+      new GeminiVoiceDraftAdapter({
+        apiKey: config.gemini.apiKey,
+        model: config.gemini.model,
+      }),
+    workspaceContext: context.workspaceContext,
+    clock: context.clock,
+  };
+  return new InlineVoiceDraftDispatcher((job) =>
+    handleVoiceDraft(deps, job),
+  );
 }

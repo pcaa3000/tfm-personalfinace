@@ -254,6 +254,9 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
     process.env.RATE_LIMIT_MAX ??= "100000";
     process.env.STORAGE_DRIVER = "local";
     process.env.RECEIPT_STORAGE_DIR = storageDir;
+    // voice-drafts T2: the default inline voice dispatcher requires
+    // GEMINI_API_KEY at boot — park voice notes on the queue instead.
+    process.env.VOICE_DISPATCHER = "pgboss";
     const built = buildApp(envFromProcess());
     const server = serve({ fetch: built.app.fetch, port: 0 });
     const address = server.address() as AddressInfo;
@@ -277,6 +280,7 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
       .where(eq(categories.id, "sys-uncategorized"));
     await closeApp();
     rmSync(storageDir, { recursive: true, force: true });
+    delete process.env.VOICE_DISPATCHER;
   });
 
   it("upload → fake scan → draft → confirm creates a split transaction (origin ticket)", async () => {

@@ -42,6 +42,31 @@ export {
   type VoiceDraftDispatcher,
 } from "./application/ports/voice-draft-dispatcher.port.js";
 export {
+  VOICE_DRAFT_PROCESSOR,
+  type VoiceDraftPort,
+} from "./application/ports/voice-draft.port.js";
+export {
+  VOICE_WORKSPACE_CONTEXT,
+  type VoiceWorkspaceContext,
+  type VoiceWorkspaceContextPort,
+} from "./application/ports/voice-workspace-context.port.js";
+export type {
+  VoiceDraftType,
+  VoiceExtraction,
+  VoiceExtractionItem,
+  VoiceNewCategorySuggestion,
+} from "./domain/voice-extraction.js";
+export {
+  buildVoiceDraft,
+  resolveVoiceBusinessDate,
+  VOICE_LOW_CONFIDENCE,
+  type VoiceDraftContext,
+  type VoiceDraftNewCategory,
+  type VoiceDraftPayload,
+  type VoiceDraftPossibleDuplicate,
+  type VoiceDraftSplit,
+} from "./domain/voice-draft.js";
+export {
   FILE_HASHER,
   type FileHasherPort,
 } from "./application/ports/file-hasher.port.js";
@@ -70,6 +95,12 @@ export {
   type VoiceNoteView,
 } from "./application/voice-note.view.js";
 export { DrizzleVoiceNoteRepository } from "./infrastructure/drizzle-voice-note.repository.js";
+export { DrizzleVoiceWorkspaceContextAdapter } from "./infrastructure/drizzle-voice-workspace-context.adapter.js";
+export {
+  GeminiVoiceDraftAdapter,
+  GEMINI_VOICE_DEFAULT_BASE_URL,
+  type GeminiVoiceDraftConfig,
+} from "./infrastructure/gemini-voice-draft.adapter.js";
 export { PgBossVoiceDraftDispatcher } from "./infrastructure/pgboss-voice-draft.dispatcher.js";
 export {
   InlineVoiceDraftDispatcher,

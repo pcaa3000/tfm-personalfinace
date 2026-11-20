@@ -114,6 +114,11 @@ export async function bootApp(): Promise<E2eApp> {
   process.env.DATABASE_URL ??= DATABASE_URL;
   process.env.AUTH_MODE ??= "dev";
   process.env.RATE_LIMIT_MAX ??= "100000";
+  // voice-drafts T2: the default inline voice dispatcher requires
+  // GEMINI_API_KEY at boot — these suites never upload voice notes, so
+  // they park voice drafts on the pg-boss queue (an explicit export
+  // still wins).
+  process.env.VOICE_DISPATCHER ??= "pgboss";
   const built = buildApp(envFromProcess());
   const server = serve({ fetch: built.app.fetch, port: 0 });
   const address = server.address() as AddressInfo;

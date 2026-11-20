@@ -17,6 +17,10 @@ import {
   type ReceiptScanJob,
 } from "./jobs/receipt-scan.js";
 import {
+  handleVoiceDraft,
+  type VoiceDraftJob,
+} from "./jobs/voice-draft.js";
+import {
   purgeExpiredReceiptMedia,
   RECEIPT_MEDIA_PURGE_CRON,
   RECEIPT_MEDIA_PURGE_QUEUE,
@@ -29,6 +33,12 @@ import {
   GEMINI_DEFAULT_MODEL,
   RECEIPT_SCAN_QUEUE,
 } from "./modules/receipts/index.js";
+import {
+  DrizzleVoiceNoteRepository,
+  DrizzleVoiceWorkspaceContextAdapter,
+  GeminiVoiceDraftAdapter,
+  VOICE_DRAFT_QUEUE,
+} from "./modules/voices/index.js";
 
 const DRAIN_INTERVAL_MS = Number(process.env.WORKER_DRAIN_MS ?? 2_000);
 
@@ -51,6 +61,7 @@ async function main(): Promise<void> {
   await boss.createQueue(LEDGER_EVENTS_QUEUE);
   await boss.createQueue(RECEIPT_SCAN_QUEUE);
   await boss.createQueue(RECEIPT_MEDIA_PURGE_QUEUE);
+  await boss.createQueue(VOICE_DRAFT_QUEUE);
 
   await boss.work(LEDGER_EVENTS_QUEUE, async (jobs) => {
     for (const job of jobs) {
@@ -74,6 +85,27 @@ async function main(): Promise<void> {
   await boss.work(RECEIPT_SCAN_QUEUE, async (jobs) => {
     for (const job of jobs) {
       await handleReceiptScan(receiptScanDeps, job.data as ReceiptScanJob);
+    }
+  });
+
+  // voice-drafts T2 (D1, S2): Gemini audio transcription+extraction +
+  // categorization. Shares the receipts storage driver instance (the
+  // voices port is the same contract) and the same GEMINI_API_KEY
+  // fail-fast — the worker already refuses to boot without it.
+  const voiceDraftDeps = {
+    notes: new DrizzleVoiceNoteRepository(db),
+    storage: createReceiptStorage(receiptStorageFromProcess()),
+    categories: new DrizzleCategoryValidationAdapter(db),
+    processor: new GeminiVoiceDraftAdapter({
+      apiKey: requiredEnv("GEMINI_API_KEY"),
+      model: process.env.GEMINI_MODEL ?? GEMINI_DEFAULT_MODEL,
+    }),
+    workspaceContext: new DrizzleVoiceWorkspaceContextAdapter(db),
+    clock: new SystemClock(),
+  };
+  await boss.work(VOICE_DRAFT_QUEUE, async (jobs) => {
+    for (const job of jobs) {
+      await handleVoiceDraft(voiceDraftDeps, job.data as VoiceDraftJob);
     }
   });
 
