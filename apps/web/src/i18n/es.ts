@@ -103,6 +103,14 @@ export const es = {
     audioDeleted: "El audio de esta nota ya fue eliminado.",
     closeViewer: "Cerrar",
     loading: "Cargando…",
+    // T5 (S6 — docs/05 RF-070): consentimiento informado del proveedor.
+    consentTitle: "Enviar audio a Google Gemini",
+    consentBody:
+      "El audio grabado se envía a Google Gemini para transcribirlo y armar el borrador del movimiento. En el nivel gratuito, Google puede usar los datos enviados para entrenar sus modelos. Los audios se conservan 30 días y luego se eliminan. Podés revocar este permiso en cualquier momento desde Gestión → Preferencias. Si preferís no enviar audio, siempre podés registrar el movimiento manualmente.",
+    consentAccept: "Aceptar y enviar",
+    consentDecline: "No enviar",
+    consentDeclined:
+      "No se envió el audio. Podés registrar el movimiento manualmente.",
   },
   form: {
     newTransaction: "Nuevo movimiento",
@@ -179,6 +187,9 @@ export const es = {
     title: "Preferencias",
     save: "Guardar",
     cancel: "Cancelar",
+    voiceConsent: "Voz — envío de audio a Google Gemini",
+    voiceConsentHint:
+      "Si lo desactivás, no se envían más audios al proveedor; el registro manual sigue disponible.",
   },
   settings: {
     defaultCurrency: "Moneda por defecto",
@@ -465,6 +476,8 @@ export const es = {
     VOICE_SPLITS_REQUIRED: "El borrador necesita al menos una fila.",
     VOICE_DRAFT_INVALID: "El borrador de voz no es válido.",
     VOICE_MEDIA_DELETED: "El audio de esta nota ya fue eliminado.",
+    VOICE_CONSENT_REVOKED:
+      "El audio no se procesó porque se revocó el consentimiento de voz.",
     WORKSPACE_NO_CHANGES: "No hay cambios para guardar.",
     WORKSPACE_ID_INVALID: "Error interno de espacio de trabajo.",
   },

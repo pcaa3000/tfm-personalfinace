@@ -19,6 +19,7 @@ import {
   type VoiceDraftPayload,
   type VoiceFileHashPort,
   type VoiceNote,
+  type VoiceConsentView,
   type VoiceNoteListItem,
   type VoiceNoteListPage,
   type VoiceNoteRepositoryPort,
@@ -111,6 +112,13 @@ const CONFIRM_VIEW: ConfirmVoiceDraftResult = {
   createdCategories: [],
 };
 
+const CONSENT_VIEW: VoiceConsentView = {
+  provider: "gemini",
+  granted: false,
+  grantedAt: null,
+  revokedAt: null,
+};
+
 function buildApp(options: {
   authenticated?: boolean;
   uploadResult?:
@@ -192,6 +200,23 @@ function buildApp(options: {
         id === "note-1"
           ? ok({ ...NOTE_VIEW, status: "pending" })
           : err(new DomainError("VOICE_NOT_FOUND", "not found")),
+      ),
+    },
+    getVoiceConsent: {
+      execute: vi.fn(async () => CONSENT_VIEW),
+    },
+    setVoiceConsent: {
+      execute: vi.fn(
+        async (
+          _workspaceId: WorkspaceId,
+          _subject: string,
+          input: { granted: boolean },
+        ): Promise<VoiceConsentView> => ({
+          ...CONSENT_VIEW,
+          granted: input.granted,
+          grantedAt: input.granted ? "2026-11-10T12:00:00.000Z" : null,
+          revokedAt: input.granted ? null : "2026-11-10T12:00:00.000Z",
+        }),
       ),
     },
   };
@@ -788,5 +813,96 @@ describe("GET /api/v1/voices/:id/file", () => {
     expect(res.status).toBe(410);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe("VOICE_MEDIA_DELETED");
+  });
+});
+
+describe("GET/PATCH /api/v1/voices/consent (voice-drafts T5, S6)", () => {
+  it("returns the caller-scoped consent view", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request("/api/v1/voices/consent", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(CONSENT_VIEW);
+    expect(deps.getVoiceConsent.execute).toHaveBeenCalledWith(WS, "user-1");
+  });
+
+  it("requires authentication", async () => {
+    const { app } = buildApp({ authenticated: false });
+
+    const res = await app.request("/api/v1/voices/consent");
+
+    expect(res.status).toBe(401);
+  });
+
+  it("PATCH {granted:true} persists the grant for the caller subject", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request("/api/v1/voices/consent", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ granted: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      provider: "gemini",
+      granted: true,
+      grantedAt: "2026-11-10T12:00:00.000Z",
+      revokedAt: null,
+    });
+    expect(deps.setVoiceConsent.execute).toHaveBeenCalledWith(WS, "user-1", {
+      granted: true,
+    });
+  });
+
+  it("PATCH {granted:false} persists the revocation", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request("/api/v1/voices/consent", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ granted: false }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      granted: false,
+      revokedAt: "2026-11-10T12:00:00.000Z",
+    });
+    expect(deps.setVoiceConsent.execute).toHaveBeenCalledWith(WS, "user-1", {
+      granted: false,
+    });
+  });
+
+  it.each([[{ granted: "yes" }], [{}], [null]])(
+    "rejects a malformed consent payload %j with 400 INVALID_BODY",
+    async (body) => {
+      const { app, deps } = buildApp();
+
+      const res = await app.request("/api/v1/voices/consent", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      expect(res.status).toBe(400);
+      const envelope = (await res.json()) as { code: string };
+      expect(envelope.code).toBe("INVALID_BODY");
+      expect(deps.setVoiceConsent.execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it("GET /api/v1/voices/consent is not swallowed by the /:id route", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request("/api/v1/voices/consent", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(deps.getVoiceNote.execute).not.toHaveBeenCalled();
   });
 });

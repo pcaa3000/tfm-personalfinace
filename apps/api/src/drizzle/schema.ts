@@ -322,6 +322,36 @@ export const voiceNotes = pgTable(
 );
 
 /**
+ * Provider-consent records (voice-drafts T5, S6 — docs/05 RF-070 +
+ * revocación): ONE row per (workspace, subject, provider) keeps the
+ * latest decision with both instants — `grantedAt`/`revokedAt` are
+ * nullable because an explicit refusal has no grant and an active
+ * consent has no revoke. The record is never deleted on revoke.
+ */
+export const voiceConsents = pgTable(
+  "voices_voice_consents",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspaceId").notNull(),
+    subject: text("subject").notNull(),
+    provider: text("provider").notNull(),
+    grantedAt: timestamp("grantedAt", { mode: "date", precision: 3 }),
+    revokedAt: timestamp("revokedAt", { mode: "date", precision: 3 }),
+    createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex(
+      "voices_voice_consents_workspaceId_subject_provider_key",
+    ).on(table.workspaceId, table.subject, table.provider),
+  ],
+);
+
+/**
  * Transactional outbox (worker-pgboss-outbox S1): domain events are
  * inserted in the SAME transaction as the business write; a separate
  * worker drains pending rows (`processedAt IS NULL`) into pg-boss.

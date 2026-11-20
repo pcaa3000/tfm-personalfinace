@@ -12,6 +12,7 @@ import {
   categories,
   currencies,
   ledgerTransactions,
+  voiceConsents,
   workspaces,
 } from "../src/drizzle/schema.js";
 import { buildApp, envFromProcess } from "../src/hono/composition.js";
@@ -179,6 +180,10 @@ export async function cleanE2eData(marker: string): Promise<void> {
     await db
       .delete(notifications)
       .where(inArray(notifications.workspaceId, ids));
+    // voice-drafts T5 (S6): provider-consent rows of e2e workspaces.
+    await db
+      .delete(voiceConsents)
+      .where(inArray(voiceConsents.workspaceId, ids));
     await db
       .delete(workspaces)
       .where(like(workspaces.identityKey, `%${marker}%`));

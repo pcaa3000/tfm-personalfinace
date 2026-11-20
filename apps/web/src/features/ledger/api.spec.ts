@@ -13,6 +13,7 @@ import {
   deleteReceiptFile,
   fetchBalance,
   getReceiptFile,
+  getVoiceConsent,
   getVoiceDraft,
   getVoiceFile,
   getVoiceNote,
@@ -32,6 +33,7 @@ import {
   reviseTransaction,
   retryReceiptScan,
   retryVoiceNote,
+  setVoiceConsent,
   unarchiveAccount,
   updateWorkspace,
   uploadVoiceNote,
@@ -627,6 +629,57 @@ describe("voice notes (voice-drafts T4, S1+S2+S4)", () => {
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ code: "VOICE_MEDIA_DELETED", status: 410 });
+  });
+});
+
+describe("voice consent (voice-drafts T5, S6)", () => {
+  it("reads the consent flag with GET /voices/consent", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          provider: "gemini",
+          granted: true,
+          grantedAt: "2026-11-10T12:00:00.000Z",
+          revokedAt: null,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const view = await getVoiceConsent();
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/voices/consent");
+    expect(init?.method ?? "GET").toBe("GET");
+    expect(view).toEqual({
+      provider: "gemini",
+      granted: true,
+      grantedAt: "2026-11-10T12:00:00.000Z",
+      revokedAt: null,
+    });
+  });
+
+  it("writes the decision with PATCH /voices/consent {granted}", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          provider: "gemini",
+          granted: false,
+          grantedAt: "2026-11-10T12:00:00.000Z",
+          revokedAt: "2026-11-11T12:00:00.000Z",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const view = await setVoiceConsent(false);
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/voices/consent");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({ granted: false });
+    expect(view.granted).toBe(false);
+    expect(view.revokedAt).toBe("2026-11-11T12:00:00.000Z");
   });
 });
 

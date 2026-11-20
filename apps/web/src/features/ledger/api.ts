@@ -421,6 +421,36 @@ export function retryReceiptScan(id: string): Promise<ReceiptScanView> {
 
 // --- Voice notes (voice-drafts T4, S1+S2+S4) -------------------------
 
+/**
+ * Provider-consent view (voice-drafts T5, S6): the caller's decision
+ * for the voice LLM provider — `granted:false` with no instants means
+ * undecided, so the client must show the consent dialog before the
+ * first audio send (docs/05 RF-070).
+ */
+export interface VoiceConsentView {
+  provider: string;
+  granted: boolean;
+  grantedAt: string | null;
+  revokedAt: string | null;
+}
+
+/** `GET /voices/consent` — the caller-scoped consent flag. */
+export function getVoiceConsent(): Promise<VoiceConsentView> {
+  return request<VoiceConsentView>("/voices/consent");
+}
+
+/**
+ * `PATCH /voices/consent` — grant or revoke the provider consent.
+ * Revocation keeps the record server-side (docs/05): `revokedAt` is
+ * stamped, nothing is deleted.
+ */
+export function setVoiceConsent(granted: boolean): Promise<VoiceConsentView> {
+  return request<VoiceConsentView>("/voices/consent", {
+    method: "PATCH",
+    body: JSON.stringify({ granted }),
+  });
+}
+
 /** `POST /voices` — multipart `file` audio field → 201 pending note. */
 export function uploadVoiceNote(file: File): Promise<VoiceNoteView> {
   const form = new FormData();

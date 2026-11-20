@@ -21,12 +21,14 @@ const migrationFile = readdirSync(dir).find((f) => /^0008_.*\.sql$/.test(f));
 const migrationSql = migrationFile ? read(migrationFile).trim() : null;
 
 describe("voices_voice_notes migration (voice-drafts T1, S5+S7)", () => {
-  it("journal registers a 0008_* migration as the head", () => {
+  it("journal registers a 0008_* migration", () => {
     const { entries } = JSON.parse(read("meta/_journal.json")) as {
       entries: { idx: number; tag: string; when: number }[];
     };
-    expect(entries.at(-1)?.idx).toBe(8);
-    expect(entries.at(-1)?.tag).toMatch(/^0008_/);
+    const entry = entries.find((e) => e.idx === 8);
+    expect(entry?.tag).toMatch(/^0008_/);
+    // 0009_* (voice-drafts T5) heads the journal now — the sequence
+    // must stay contiguous either way.
     expect(entries.map((e) => e.idx)).toEqual(entries.map((_, i) => i));
   });
 

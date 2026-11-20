@@ -3,6 +3,10 @@ import {
   Box,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   MenuItem,
   Stack,
@@ -12,7 +16,13 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { confirmVoiceDraft, rejectVoiceNote, retryVoiceNote } from "./api";
+import {
+  confirmVoiceDraft,
+  getVoiceConsent,
+  rejectVoiceNote,
+  retryVoiceNote,
+  setVoiceConsent,
+} from "./api";
 import { CategorySelect } from "./CategorySelect";
 import { errorMessage } from "./errors";
 import { minorToDecimalString, todayInTimeZone } from "./format";
@@ -168,10 +178,17 @@ export function VoiceFlow({
   // re-uploading the audio.
   const [lastNote, setLastNote] = useState<VoiceNoteView | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
+  // S6 (docs/05 RF-070): provider consent — the dialog blocks the
+  // first audio send until an explicit grant; `notice` carries the
+  // friendly decline message (manual registration stays available).
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [consentBusy, setConsentBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<"confirm" | "reject" | null>(
     null,
   );
   const previewRef = useRef<string | null>(null);
+  const pendingTakeRef = useRef<File | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -250,15 +267,63 @@ export function VoiceFlow({
     setStep("record");
   };
 
-  const startUpload = (taken: File) => {
+  const sendUpload = (taken: File) => {
     setStep("working");
     setPhase("uploading");
     setError(null);
+    setNotice(null);
     setFailure(null);
     setLastNote(null);
     void uploadAndAwaitVoiceDraft(taken, flowOptions())
       .then(showReview)
       .catch(showFlowError);
+  };
+
+  /**
+   * S6 (docs/05 RF-070): the FIRST send of audio to the provider is
+   * gated on the persisted consent flag — undecided or revoked opens
+   * the dialog and the take waits; granted proceeds straight to the
+   * upload. The audio never leaves the device without an explicit
+   * grant; every later send re-reads the flag so a revocation from
+   * Preferences takes effect immediately.
+   */
+  const startUpload = (taken: File) => {
+    setNotice(null);
+    void getVoiceConsent()
+      .then((consent) => {
+        if (consent.granted) {
+          sendUpload(taken);
+          return;
+        }
+        pendingTakeRef.current = taken;
+        setConsentOpen(true);
+      })
+      .catch((cause: unknown) => showFlowError(cause));
+  };
+
+  const onConsentAccept = () => {
+    const taken = pendingTakeRef.current;
+    setConsentBusy(true);
+    setVoiceConsent(true)
+      .then(() => {
+        pendingTakeRef.current = null;
+        setConsentOpen(false);
+        setConsentBusy(false);
+        if (taken) sendUpload(taken);
+      })
+      .catch((cause: unknown) => {
+        pendingTakeRef.current = null;
+        setConsentOpen(false);
+        setConsentBusy(false);
+        showFlowError(cause);
+      });
+  };
+
+  const onConsentDecline = () => {
+    pendingTakeRef.current = null;
+    setConsentOpen(false);
+    // Declining never blocks manual registration (docs/05).
+    setNotice(t("voice.consentDeclined"));
   };
 
   /**
@@ -692,6 +757,28 @@ export function VoiceFlow({
   return (
     <Stack spacing={2} data-part="voice-record">
       {error ? <Alert severity="error">{error}</Alert> : null}
+      {notice ? <Alert severity="info">{notice}</Alert> : null}
+      {/* S6 (docs/05 RF-070): provider-consent dialog — names the
+          provider, the data sent, the purpose, the free-tier
+          training caveat, revocation path and the manual fallback. */}
+      <Dialog open={consentOpen} onClose={onConsentDecline}>
+        <DialogTitle>{t("voice.consentTitle")}</DialogTitle>
+        <DialogContent>
+          <Typography>{t("voice.consentBody")}</Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={onConsentDecline} disabled={consentBusy}>
+            {t("voice.consentDecline")}
+          </Button>
+          <Button
+            variant="contained"
+            onClick={onConsentAccept}
+            disabled={consentBusy}
+          >
+            {consentBusy ? t("form.saving") : t("voice.consentAccept")}
+          </Button>
+        </DialogActions>
+      </Dialog>
       {micError ? (
         <Alert severity="error">{t("voice.micUnavailable")}</Alert>
       ) : null}

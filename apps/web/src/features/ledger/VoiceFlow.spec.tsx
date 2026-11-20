@@ -11,10 +11,12 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import i18n from "../../i18n";
 import {
   confirmVoiceDraft,
+  getVoiceConsent,
   getVoiceDraft,
   getVoiceNote,
   rejectVoiceNote,
   retryVoiceNote,
+  setVoiceConsent,
   uploadVoiceNote,
 } from "./api";
 import type { AccountView, CategoryView, TransactionView } from "./types";
@@ -31,6 +33,8 @@ vi.mock("./api", async (importOriginal) => {
     confirmVoiceDraft: vi.fn(),
     rejectVoiceNote: vi.fn(),
     retryVoiceNote: vi.fn(),
+    getVoiceConsent: vi.fn(),
+    setVoiceConsent: vi.fn(),
   };
 });
 
@@ -261,6 +265,22 @@ beforeEach(() => {
   vi.mocked(confirmVoiceDraft).mockReset();
   vi.mocked(rejectVoiceNote).mockReset();
   vi.mocked(retryVoiceNote).mockReset();
+  vi.mocked(getVoiceConsent).mockReset();
+  vi.mocked(setVoiceConsent).mockReset();
+  // S6: existing specs exercise the post-consent pipeline — default
+  // the flag to granted so only the consent describe sees the dialog.
+  vi.mocked(getVoiceConsent).mockResolvedValue({
+    provider: "gemini",
+    granted: true,
+    grantedAt: "2026-10-01T00:00:00.000Z",
+    revokedAt: null,
+  });
+  vi.mocked(setVoiceConsent).mockResolvedValue({
+    provider: "gemini",
+    granted: true,
+    grantedAt: "2026-10-03T00:00:00.000Z",
+    revokedAt: null,
+  });
 });
 
 afterEach(cleanup);
@@ -668,5 +688,77 @@ describe("VoiceFlow — failure + retry (S11 pattern)", () => {
     expect(
       await screen.findByText("El registro por voz necesita conexión."),
     ).toBeTruthy();
+  });
+});
+
+describe("VoiceFlow — provider consent (T5, S6)", () => {
+  function consentUndecided() {
+    vi.mocked(getVoiceConsent).mockResolvedValue({
+      provider: "gemini",
+      granted: false,
+      grantedAt: null,
+      revokedAt: null,
+    });
+  }
+
+  it("asks for consent before the first upload — accept persists the grant and sends the audio", async () => {
+    consentUndecided();
+    vi.mocked(uploadVoiceNote).mockResolvedValue(noteView("pending"));
+    vi.mocked(getVoiceNote).mockResolvedValue(noteView("draft_ready"));
+    vi.mocked(getVoiceDraft).mockResolvedValue(draftPayload());
+    renderFlow();
+
+    await uploadTake();
+
+    // RF-070: the audio does NOT leave the device — the provider
+    // dialog shows first and the upload waits for the decision.
+    expect(
+      await screen.findByText("Enviar audio a Google Gemini"),
+    ).toBeTruthy();
+    expect(uploadVoiceNote).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Aceptar y enviar" }),
+    );
+
+    await waitFor(() => {
+      expect(setVoiceConsent).toHaveBeenCalledWith(true);
+    });
+    await waitFor(() => {
+      expect(uploadVoiceNote).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByLabelText("Concepto")).toBeTruthy();
+  });
+
+  it("declining aborts the upload and points to manual registration — nothing is sent", async () => {
+    consentUndecided();
+    renderFlow();
+
+    await uploadTake();
+    await screen.findByText("Enviar audio a Google Gemini");
+
+    fireEvent.click(screen.getByRole("button", { name: "No enviar" }));
+
+    expect(
+      await screen.findByText(/registrar el movimiento manualmente/),
+    ).toBeTruthy();
+    expect(uploadVoiceNote).not.toHaveBeenCalled();
+    expect(setVoiceConsent).not.toHaveBeenCalled();
+  });
+
+  it("does not ask again once consent is granted", async () => {
+    // beforeEach default: granted:true — the dialog never appears.
+    vi.mocked(uploadVoiceNote).mockResolvedValue(noteView("pending"));
+    vi.mocked(getVoiceNote).mockResolvedValue(noteView("draft_ready"));
+    vi.mocked(getVoiceDraft).mockResolvedValue(draftPayload());
+    renderFlow();
+
+    await uploadTake();
+
+    await waitFor(() => {
+      expect(uploadVoiceNote).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByText("Enviar audio a Google Gemini")).toBeNull();
+    expect(setVoiceConsent).not.toHaveBeenCalled();
   });
 });

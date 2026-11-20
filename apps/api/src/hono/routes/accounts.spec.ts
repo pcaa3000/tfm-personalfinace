@@ -278,6 +278,24 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     retryVoiceNote: {
       execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },
+    // voice-drafts T5 (S6): consent endpoints — unused in these
+    // suites; mocks exist only to satisfy the VoiceRouteDeps shape.
+    getVoiceConsent: {
+      execute: vi.fn(async () => ({
+        provider: "gemini",
+        granted: false,
+        grantedAt: null,
+        revokedAt: null,
+      })),
+    },
+    setVoiceConsent: {
+      execute: vi.fn(async () => ({
+        provider: "gemini",
+        granted: false,
+        grantedAt: null,
+        revokedAt: null,
+      })),
+    },
   };
 }
 

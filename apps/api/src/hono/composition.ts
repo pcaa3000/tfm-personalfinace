@@ -72,6 +72,11 @@ import { RetryReceiptScanUseCase } from "../modules/receipts/application/retry-r
 import { PurgeReceiptMediaUseCase } from "../modules/receipts/application/purge-receipt-media.use-case.js";
 import { RECEIPT_MAX_BYTES_DEFAULT } from "../modules/receipts/domain/receipt-upload.js";
 import { DrizzleVoiceNoteRepository } from "../modules/voices/infrastructure/drizzle-voice-note.repository.js";
+import { DrizzleVoiceConsentRepository } from "../modules/voices/infrastructure/drizzle-voice-consent.repository.js";
+import { ConsentGatedVoiceDraftDispatcher } from "../modules/voices/infrastructure/consent-gated-voice-draft.dispatcher.js";
+import { VoiceDraftConsentGuard } from "../modules/voices/application/voice-draft-consent-guard.js";
+import { GetVoiceConsentUseCase } from "../modules/voices/application/get-voice-consent.use-case.js";
+import { SetVoiceConsentUseCase } from "../modules/voices/application/set-voice-consent.use-case.js";
 import { DrizzleVoiceWorkspaceContextAdapter } from "../modules/voices/infrastructure/drizzle-voice-workspace-context.adapter.js";
 import { PgBossVoiceDraftDispatcher } from "../modules/voices/infrastructure/pgboss-voice-draft.dispatcher.js";
 import { InlineVoiceDraftDispatcher } from "../modules/voices/infrastructure/inline-voice-draft.dispatcher.js";
@@ -228,6 +233,15 @@ export function buildApp(env: AppEnv): BuiltApp {
   // voices module — VoiceStoragePort is structurally the receipts
   // contract, no second driver/env surface.
   const voiceNotes = new DrizzleVoiceNoteRepository(db);
+  // voice-drafts T5 (S6 — docs/05 revocación): the consent record +
+  // the gate that stops pending audio from reaching the provider
+  // after a revoke — wired into BOTH dispatch paths below.
+  const voiceConsents = new DrizzleVoiceConsentRepository(db);
+  const voiceConsentGuard = new VoiceDraftConsentGuard(
+    voiceNotes,
+    voiceConsents,
+    clock,
+  );
   const voiceDraftDispatcher = createVoiceDraftDispatcher(
     env.voices.draftDispatcher,
     {
@@ -237,6 +251,7 @@ export function buildApp(env: AppEnv): BuiltApp {
       categories: categoryValidation,
       workspaceContext: new DrizzleVoiceWorkspaceContextAdapter(db),
       clock,
+      consentGuard: voiceConsentGuard,
     },
   );
 
@@ -375,6 +390,10 @@ export function buildApp(env: AppEnv): BuiltApp {
       voiceDraftDispatcher,
       clock,
     ),
+    // voice-drafts T5 (S6): provider consent read/write — the client
+    // gates the first audio send on this flag (docs/05 RF-070).
+    getVoiceConsent: new GetVoiceConsentUseCase(voiceConsents),
+    setVoiceConsent: new SetVoiceConsentUseCase(voiceConsents, clock, ids),
   };
 
   return {
@@ -714,10 +733,19 @@ function createVoiceDraftDispatcher(
   context: { readonly databaseUrl: string } & Omit<
     VoiceDraftJobDeps,
     "processor"
-  >,
+  > & {
+    /** T5 (S6): the revocation gate wrapping every dispatch path. */
+    readonly consentGuard: VoiceDraftConsentGuard;
+  },
 ): VoiceDraftDispatcher & { close(): Promise<void> } {
   if (config.mode === "pgboss") {
-    return new PgBossVoiceDraftDispatcher(context.databaseUrl);
+    // S6: gate at enqueue — a revoked uploader's note never reaches
+    // the queue. The drain-side check lives in the worker, out of
+    // this composition's reach.
+    return new ConsentGatedVoiceDraftDispatcher(
+      new PgBossVoiceDraftDispatcher(context.databaseUrl),
+      context.consentGuard,
+    );
   }
   const deps: VoiceDraftJobDeps = {
     notes: context.notes,
@@ -732,7 +760,18 @@ function createVoiceDraftDispatcher(
     workspaceContext: context.workspaceContext,
     clock: context.clock,
   };
-  return new InlineVoiceDraftDispatcher((job) =>
-    handleVoiceDraft(deps, job),
-  );
+  // S6: the inline runner re-checks consent at EXECUTION time — a
+  // revoke between dispatch and the deferred run still stops the
+  // send (docs/05 "detiene nuevos envíos inmediatamente").
+  const inner = new InlineVoiceDraftDispatcher(async (job) => {
+    if (
+      await context.consentGuard.ensureDispatchable(
+        job.voiceNoteId,
+        job.workspaceId,
+      )
+    ) {
+      await handleVoiceDraft(deps, job);
+    }
+  });
+  return new ConsentGatedVoiceDraftDispatcher(inner, context.consentGuard);
 }

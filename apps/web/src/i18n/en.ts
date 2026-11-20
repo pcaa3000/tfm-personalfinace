@@ -107,6 +107,14 @@ export const en: TranslationShape = {
     audioDeleted: "This note's audio was already deleted.",
     closeViewer: "Close",
     loading: "Loading…",
+    // T5 (S6 — docs/05 RF-070): informed provider consent.
+    consentTitle: "Send audio to Google Gemini",
+    consentBody:
+      "The recorded audio is sent to Google Gemini to transcribe it and build the movement draft. On the free tier, Google may use submitted data to train its models. Audios are kept for 30 days and then deleted. You can revoke this permission at any time from Manage → Preferences. If you prefer not to send audio, you can always register the movement manually.",
+    consentAccept: "Allow and send",
+    consentDecline: "Don't send",
+    consentDeclined:
+      "The audio was not sent. You can register the movement manually.",
   },
   form: {
     newTransaction: "New transaction",
@@ -183,6 +191,9 @@ export const en: TranslationShape = {
     title: "Preferences",
     save: "Save",
     cancel: "Cancel",
+    voiceConsent: "Voice — audio sent to Google Gemini",
+    voiceConsentHint:
+      "Turn it off to stop sending audios to the provider; manual registration stays available.",
   },
   settings: {
     defaultCurrency: "Default currency",
@@ -470,6 +481,8 @@ export const en: TranslationShape = {
     VOICE_SPLITS_REQUIRED: "The draft needs at least one row.",
     VOICE_DRAFT_INVALID: "The voice draft is not valid.",
     VOICE_MEDIA_DELETED: "This note's audio was already deleted.",
+    VOICE_CONSENT_REVOKED:
+      "The audio was not processed because voice consent was revoked.",
     WORKSPACE_NO_CHANGES: "There are no changes to save.",
     WORKSPACE_ID_INVALID: "Internal workspace error.",
   },

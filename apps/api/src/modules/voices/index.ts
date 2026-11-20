@@ -103,6 +103,28 @@ export {
   type VoiceNoteListItem,
   type VoiceNoteView,
 } from "./application/voice-note.view.js";
+export {
+  VoiceConsent,
+  VOICE_LLM_PROVIDER,
+  type CreateVoiceConsentInput,
+  type VoiceConsentState,
+} from "./domain/voice-consent.js";
+export {
+  VOICE_CONSENT_REPOSITORY,
+  type VoiceConsentRepositoryPort,
+} from "./application/ports/voice-consent-repository.port.js";
+export {
+  toVoiceConsentView,
+  type VoiceConsentView,
+} from "./application/voice-consent.view.js";
+export { GetVoiceConsentUseCase } from "./application/get-voice-consent.use-case.js";
+export {
+  SetVoiceConsentUseCase,
+  type SetVoiceConsentInput,
+} from "./application/set-voice-consent.use-case.js";
+export { VoiceDraftConsentGuard } from "./application/voice-draft-consent-guard.js";
+export { DrizzleVoiceConsentRepository } from "./infrastructure/drizzle-voice-consent.repository.js";
+export { ConsentGatedVoiceDraftDispatcher } from "./infrastructure/consent-gated-voice-draft.dispatcher.js";
 export { DrizzleVoiceNoteRepository } from "./infrastructure/drizzle-voice-note.repository.js";
 export { DrizzleVoiceWorkspaceContextAdapter } from "./infrastructure/drizzle-voice-workspace-context.adapter.js";
 export {

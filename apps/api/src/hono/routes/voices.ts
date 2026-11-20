@@ -5,12 +5,14 @@ import type { CategoryNature } from "../../modules/categorization/index.js";
 import {
   decodeVoiceNoteCursor,
   type ConfirmVoiceDraftUseCase,
+  type GetVoiceConsentUseCase,
   type GetVoiceDraftUseCase,
   type GetVoiceFileUseCase,
   type GetVoiceNoteUseCase,
   type ListVoiceNotesUseCase,
   type RejectVoiceNoteUseCase,
   type RetryVoiceNoteUseCase,
+  type SetVoiceConsentUseCase,
   type UploadVoiceNoteUseCase,
   type VoiceNoteCursor,
 } from "../../modules/voices/index.js";
@@ -110,7 +112,18 @@ export interface VoiceRouteDeps extends AuthDeps {
   readonly confirmVoiceDraft: Pick<ConfirmVoiceDraftUseCase, "execute">;
   readonly rejectVoiceNote: Pick<RejectVoiceNoteUseCase, "execute">;
   readonly retryVoiceNote: Pick<RetryVoiceNoteUseCase, "execute">;
+  readonly getVoiceConsent: Pick<GetVoiceConsentUseCase, "execute">;
+  readonly setVoiceConsent: Pick<SetVoiceConsentUseCase, "execute">;
 }
+
+/**
+ * Consent write contract (voice-drafts T5, S6): `{granted: boolean}` —
+ * PATCH over PUT because the CORS allowlist (app.ts, outside this
+ * route's reach) does not include PUT for cross-origin dev clients.
+ */
+const setVoiceConsentSchema = z.object({
+  granted: z.boolean(),
+});
 
 /** True for the multipart field shapes Hono yields (File, or File-like). */
 function isUploadedFile(value: unknown): value is File {
@@ -167,6 +180,39 @@ export function registerVoiceRoutes(
       throw toHttpError(result.error);
     }
     return c.json(result.value, 201);
+  });
+
+  // Provider consent (S6 — docs/05 RF-070): the client reads the
+  // caller-scoped flag before the first audio send and PATCHes the
+  // decision. Both exact paths register BEFORE /:id so "consent" is
+  // never captured as a note id.
+  app.get("/api/v1/voices/consent", auth, async (c) => {
+    const { caller, workspace } = authContext(c);
+    const view = await deps.getVoiceConsent.execute(
+      workspace.workspaceId,
+      caller.subject,
+    );
+    return c.json(view);
+  });
+
+  app.patch("/api/v1/voices/consent", auth, async (c) => {
+    const parsed = setVoiceConsentSchema.safeParse(
+      await c.req.json().catch(() => undefined),
+    );
+    if (!parsed.success) {
+      throw new HttpError(400, {
+        code: "INVALID_BODY",
+        message: "Invalid voice consent payload",
+        details: sanitizeZodIssues(parsed.error.issues),
+      });
+    }
+    const { caller, workspace } = authContext(c);
+    const view = await deps.setVoiceConsent.execute(
+      workspace.workspaceId,
+      caller.subject,
+      { granted: parsed.data.granted },
+    );
+    return c.json(view);
   });
 
   // The exact-path GET must be registered before /:id so "list" is not

@@ -34,10 +34,12 @@ import {
   RECEIPT_SCAN_QUEUE,
 } from "./modules/receipts/index.js";
 import {
+  DrizzleVoiceConsentRepository,
   DrizzleVoiceNoteRepository,
   DrizzleVoiceWorkspaceContextAdapter,
   GeminiVoiceDraftAdapter,
   VOICE_DRAFT_QUEUE,
+  VoiceDraftConsentGuard,
 } from "./modules/voices/index.js";
 
 const DRAIN_INTERVAL_MS = Number(process.env.WORKER_DRAIN_MS ?? 2_000);
@@ -103,9 +105,27 @@ async function main(): Promise<void> {
     workspaceContext: new DrizzleVoiceWorkspaceContextAdapter(db),
     clock: new SystemClock(),
   };
+  // voice-drafts T5 (S6 — docs/05 revocación): drain-side consent
+  // gate — a note queued BEFORE a revoke must not be sent to the
+  // provider either. Same guard the API wraps dispatchers with: it
+  // fails the pending row with VOICE_CONSENT_REVOKED and skips the
+  // LLM call entirely.
+  const voiceConsentGuard = new VoiceDraftConsentGuard(
+    voiceDraftDeps.notes,
+    new DrizzleVoiceConsentRepository(db),
+    voiceDraftDeps.clock,
+  );
   await boss.work(VOICE_DRAFT_QUEUE, async (jobs) => {
     for (const job of jobs) {
-      await handleVoiceDraft(voiceDraftDeps, job.data as VoiceDraftJob);
+      const data = job.data as VoiceDraftJob;
+      if (
+        await voiceConsentGuard.ensureDispatchable(
+          data.voiceNoteId,
+          data.workspaceId,
+        )
+      ) {
+        await handleVoiceDraft(voiceDraftDeps, data);
+      }
     }
   });
 
