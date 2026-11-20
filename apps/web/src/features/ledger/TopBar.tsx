@@ -25,6 +25,7 @@ import {
   LogoutIcon,
   MoonIcon,
   PlusIcon,
+  ReceiptIcon,
   SunIcon,
   TagIcon,
   UserIcon,
@@ -35,6 +36,7 @@ export type ManagementSection =
   | "accounts"
   | "categories"
   | "currencies"
+  | "tickets"
   | "preferences";
 
 export const TOPBAR_HEIGHT = 56;
@@ -178,6 +180,10 @@ export function TopBar({
           <MenuItem onClick={openManagement("currencies")}>
             <CoinIcon fontSize="small" sx={{ mr: 1.25 }} />
             {t("management.currencies")}
+          </MenuItem>
+          <MenuItem onClick={openManagement("tickets")}>
+            <ReceiptIcon fontSize="small" sx={{ mr: 1.25 }} />
+            {t("management.tickets")}
           </MenuItem>
           <Divider />
           <MenuItem onClick={openManagement("preferences")}>

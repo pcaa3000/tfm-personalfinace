@@ -23,6 +23,7 @@ import {
   SwapIcon,
 } from "./icons";
 import { categoryLabel } from "./category-label";
+import { TicketOriginBadge } from "./TicketOriginBadge";
 import type {
   AccountView,
   CategoryView,
@@ -212,6 +213,11 @@ export function TransactionDayCards({
                     <Typography variant="caption" color="text.secondary" noWrap>
                       {meta(trx)}
                     </Typography>
+                    {trx.origin === "ticket" ? (
+                      <TicketOriginBadge
+                        originReference={trx.originReference}
+                      />
+                    ) : null}
                   </Box>
                   <Box sx={{ textAlign: "right" }}>
                     <Typography

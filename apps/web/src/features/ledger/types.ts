@@ -31,6 +31,8 @@ export interface TransactionView {
   categoryId: string | null;
   status: "confirmed" | "voided";
   origin: "manual" | "ticket" | "voice";
+  /** Scan id behind `origin === "ticket"` (receipt-review-link T3, S2). */
+  originReference?: string | null;
   confirmedAt: string;
   revisionCount: number;
   /** Category breakdown in stored order; empty when the transaction has none. */

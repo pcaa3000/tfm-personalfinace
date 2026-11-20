@@ -15,6 +15,7 @@ import {
   listCategories,
   listCurrencies,
   listCurrencyCatalog,
+  listReceipts,
   listTransactionRevisions,
   listTransactions,
   reviseAccount,
@@ -420,6 +421,16 @@ describe("unarchive accounts (T25)", () => {
     expect(String(url)).toBe("/api/v1/accounts/acc-9");
     expect(init?.method).toBe("PATCH");
     expect(String(init?.body)).toBe(JSON.stringify({ archived: false }));
+  });
+});
+
+describe("receipt list (receipt-review-link T4, S1)", () => {
+  it("lists workspace receipts with GET /receipts", async () => {
+    await listReceipts();
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/receipts");
+    expect(init?.method ?? "GET").toBe("GET");
   });
 });
 

@@ -188,6 +188,54 @@ describe("TransactionTable (es)", () => {
     expect(screen.getByText("Sin cuenta")).toBeTruthy();
   });
 
+  it("links the ticket badge to the scan image when originReference exists (receipt-review-link T3, S2)", () => {
+    renderTable({
+      transactions: [
+        {
+          ...baseRow,
+          origin: "ticket",
+          originReference: "scan-9",
+          concept: "Voucher",
+        },
+      ],
+    });
+
+    const link = screen.getByRole("link", {
+      name: "Ver ticket escaneado",
+    });
+    expect(link.getAttribute("href")).toBe("/api/v1/receipts/scan-9/file");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    expect(link.getAttribute("rel")).toContain("noreferrer");
+  });
+
+  it("shows no ticket badge for manual or voice origins (receipt-review-link T3, S2)", () => {
+    renderTable({
+      transactions: [
+        { ...baseRow, id: "tx-manual", origin: "manual", concept: "manual" },
+        { ...baseRow, id: "tx-voice", origin: "voice", concept: "voz" },
+      ],
+    });
+
+    expect(
+      screen.queryByRole("link", { name: "Ver ticket escaneado" }),
+    ).toBeNull();
+    expect(screen.queryByText("ticket")).toBeNull();
+  });
+
+  it("keeps the badge without a link when originReference is missing (receipt-review-link T3, S2)", () => {
+    renderTable({
+      transactions: [
+        { ...baseRow, origin: "ticket", originReference: null },
+      ],
+    });
+
+    expect(screen.getByText("ticket")).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: "Ver ticket escaneado" }),
+    ).toBeNull();
+  });
+
   it("shows the split count when a transaction is divided (receipt-scan-drafts T7)", () => {
     renderTable({
       transactions: [

@@ -99,6 +99,35 @@ describe("TransactionDayCards empty state (S1)", () => {
   });
 });
 
+describe("ticket origin badge (receipt-review-link T3, S2)", () => {
+  it("links the ticket badge to the scan image when originReference exists", () => {
+    render(
+      <ThemeProvider theme={buildAppTheme("light")}>
+        <TransactionDayCards
+          transactions={[
+            {
+              ...baseRow,
+              origin: "ticket",
+              originReference: "scan-7",
+            },
+          ]}
+          categories={[]}
+          accounts={accounts}
+          onEdit={vi.fn()}
+          onVoid={vi.fn()}
+          onHistory={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    const link = screen.getByRole("link", {
+      name: "Ver ticket escaneado",
+    });
+    expect(link.getAttribute("href")).toBe("/api/v1/receipts/scan-7/file");
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
+});
+
 describe("TransactionDayCards transfer identity (S9)", () => {
   it("renders the icon chip and amount with the transfer palette token", () => {
     const { container } = render(

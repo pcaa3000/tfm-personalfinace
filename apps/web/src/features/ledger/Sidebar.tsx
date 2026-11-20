@@ -15,6 +15,7 @@ import {
   GearIcon,
   HomeIcon,
   ListIcon,
+  ReceiptIcon,
   TagIcon,
   WalletIcon,
 } from "./icons";
@@ -115,6 +116,12 @@ export function Sidebar({
       icon: <CoinIcon fontSize="small" />,
       label: t("management.currencies"),
       onClick: () => onOpenManagement("currencies"),
+    },
+    {
+      key: "tickets",
+      icon: <ReceiptIcon fontSize="small" />,
+      label: t("management.tickets"),
+      onClick: () => onOpenManagement("tickets"),
     },
     {
       key: "preferences",

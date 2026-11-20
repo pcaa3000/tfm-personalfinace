@@ -26,6 +26,7 @@ export const es = {
     accounts: "Cuentas",
     categories: "Categorías",
     currencies: "Monedas",
+    tickets: "Tickets",
     preferences: "Preferencias",
   },
   movement: {
@@ -200,6 +201,25 @@ export const es = {
     statusVoided: "anulada",
     pendingSync: "Pendiente de sincronización",
     splitCount: "Dividido ({{count}})",
+    ticketBadge: "ticket",
+    viewTicket: "Ver ticket escaneado",
+  },
+  tickets: {
+    title: "Tickets cargados",
+    loading: "Cargando…",
+    empty: "Todavía no hay tickets cargados.",
+    loadError: "No se pudieron cargar los tickets.",
+    retry: "Reintentar",
+    viewImage: "Ver imagen",
+    linkedMovement: "Vinculado a un movimiento",
+    status: {
+      pending: "Pendiente",
+      extracted: "Extrayendo…",
+      draft_ready: "Borrador listo",
+      confirmed: "Confirmado",
+      rejected: "Descartado",
+      failed: "Error",
+    },
   },
   pending: {
     badge: "{{count}} pendiente(s) de sincronizar",

@@ -59,6 +59,7 @@ import {
   storedRailCollapsed,
 } from "./Sidebar";
 import { summariesFromBalanceItems } from "./summarize";
+import { TicketsDialog } from "./TicketsDialog";
 import { TransactionDayCards } from "./TransactionDayCards";
 import { TransactionFilters } from "./TransactionFilters";
 import {
@@ -629,6 +630,10 @@ export function LedgerPage() {
           currencyMutation.mutate({ kind: "revise", id, code: input.code })
         }
         onArchive={(id) => currencyMutation.mutate({ kind: "archive", id })}
+      />
+      <TicketsDialog
+        open={management === "tickets"}
+        onClose={() => setManagement(null)}
       />
       <PreferencesDialog
         open={management === "preferences"}

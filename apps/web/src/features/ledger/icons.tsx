@@ -253,6 +253,25 @@ export const CameraIcon = makeIcon(
   </>,
 );
 
+export const ReceiptIcon = makeIcon(
+  <>
+    <path
+      d="M6 3.5h12V21l-2-1.2-2 1.2-2-1.2-2 1.2-2-1.2L6 21z"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M9 8.5h6M9 12h6M9 15.5h4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+  </>,
+);
+
 export const TrashIcon = makeIcon(
   <path
     d="M4 7h16M9 7V5h6v2m-9 0 1 12.5h10L18 7"

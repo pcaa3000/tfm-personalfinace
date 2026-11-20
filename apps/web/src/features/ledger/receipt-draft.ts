@@ -31,6 +31,30 @@ export interface ReceiptScanView {
   updatedAt: string;
 }
 
+/**
+ * Statuses surfaced by `GET /api/v1/receipts` list rows
+ * (receipt-review-link T4, S3): any scan state is listed, including
+ * scans still in the pipeline.
+ */
+export type ReceiptListStatus =
+  | "pending"
+  | "extracted"
+  | "draft_ready"
+  | "confirmed"
+  | "rejected"
+  | "failed";
+
+/** Row of `GET /api/v1/receipts` (receipt-review-link T4, S1). */
+export interface ReceiptListItemView {
+  id: string;
+  status: ReceiptListStatus;
+  originalFilename: string;
+  fileMimeType: string;
+  createdAt: string;
+  /** Set once the scan was confirmed into a transaction; null before. */
+  transactionId: string | null;
+}
+
 export type ReceiptCategoryNature =
   | "income"
   | "essential"

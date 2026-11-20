@@ -2,6 +2,7 @@ import { isAuthBypassed } from "../auth/supabase";
 import type {
   ReceiptConfirmInput,
   ReceiptDraftPayload,
+  ReceiptListItemView,
   ReceiptScanView,
 } from "./receipt-draft";
 import type {
@@ -294,6 +295,15 @@ export function listTransactionRevisions(
 }
 
 // --- Receipt scans (receipt-scan-drafts T7, S1+S2+S7+S10) ------------
+
+/**
+ * `GET /receipts` — every workspace scan, newest first
+ * (receipt-review-link T4, S1+S3). Rows carry `transactionId` once the
+ * scan was confirmed into a movement.
+ */
+export function listReceipts(): Promise<ReceiptListItemView[]> {
+  return request<ReceiptListItemView[]>("/receipts");
+}
 
 /** `POST /receipts` — multipart `file` field → 201 pending scan row. */
 export function uploadReceipt(file: File): Promise<ReceiptScanView> {

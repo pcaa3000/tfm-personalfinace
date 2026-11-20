@@ -30,6 +30,7 @@ export const en: TranslationShape = {
     accounts: "Accounts",
     categories: "Categories",
     currencies: "Currencies",
+    tickets: "Receipts",
     preferences: "Preferences",
   },
   movement: {
@@ -204,6 +205,25 @@ export const en: TranslationShape = {
     statusVoided: "voided",
     pendingSync: "Pending sync",
     splitCount: "Split ({{count}})",
+    ticketBadge: "receipt",
+    viewTicket: "View scanned receipt",
+  },
+  tickets: {
+    title: "Uploaded receipts",
+    loading: "Loading…",
+    empty: "No receipts uploaded yet.",
+    loadError: "Could not load receipts.",
+    retry: "Retry",
+    viewImage: "View image",
+    linkedMovement: "Linked to a transaction",
+    status: {
+      pending: "Pending",
+      extracted: "Extracting…",
+      draft_ready: "Draft ready",
+      confirmed: "Confirmed",
+      rejected: "Discarded",
+      failed: "Failed",
+    },
   },
   pending: {
     badge: "{{count}} pending sync",

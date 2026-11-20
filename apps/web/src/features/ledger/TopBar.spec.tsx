@@ -117,6 +117,30 @@ describe("TopBar user menu (T29, L38)", () => {
     ).toBeNull();
   });
 
+  it("offers a Tickets entry that opens the tickets section (receipt-review-link T4, S1)", async () => {
+    const client = makeClient();
+    getSupabaseClient.mockReturnValue(client);
+    isAuthConfigured.mockReturnValue(true);
+    const onOpenManagement = vi.fn();
+
+    render(
+      <ThemeModeProvider>
+        <AuthProvider>
+          <TopBar
+            pendingCount={0}
+            desktop
+            onNewMovement={() => {}}
+            onOpenManagement={onOpenManagement}
+          />
+        </AuthProvider>
+      </ThemeModeProvider>,
+    );
+    await openManagementMenu();
+
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Tickets" }));
+    expect(onOpenManagement).toHaveBeenCalledWith("tickets");
+  });
+
   it("no longer offers logout inside the Gestión menu", async () => {
     const client = makeClient();
     getSupabaseClient.mockReturnValue(client);

@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 
 import { formatBusinessDate } from "./format";
 import { categoryLabel } from "./category-label";
+import { TicketOriginBadge } from "./TicketOriginBadge";
 import type {
   AccountView,
   CategoryView,
@@ -172,7 +173,16 @@ export function TransactionTable({
                     label={t(`form.${trx.type}`)}
                   />
                 </TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>{trx.concept}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>
+                  {trx.concept}
+                  {trx.origin === "ticket" ? (
+                    <Box component="span" sx={{ ml: 0.75 }}>
+                      <TicketOriginBadge
+                        originReference={trx.originReference}
+                      />
+                    </Box>
+                  ) : null}
+                </TableCell>
                 <TableCell>{accountCell(trx)}</TableCell>
                 <TableCell>
                   {trx.type === "transfer"
