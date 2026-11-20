@@ -431,6 +431,9 @@ export function ReceiptFlow({
           onChange={(event) =>
             patchReview({ type: event.target.value as "expense" | "income" })
           }
+          // T16: force the floating label — the outlined-Select notch
+          // measurement clips the label on narrow viewports.
+          slotProps={{ inputLabel: { shrink: true } }}
           fullWidth
         >
           <MenuItem value="expense">{t("form.expense")}</MenuItem>
@@ -442,7 +445,11 @@ export function ReceiptFlow({
           onChange={(event) => patchReview({ concept: event.target.value })}
           fullWidth
         />
-        <Stack direction="row" spacing={1}>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1}
+          data-part="receipt-currency-date"
+        >
           <TextField
             select
             label={t("form.currency")}
@@ -499,9 +506,9 @@ export function ReceiptFlow({
         {review.splits.map((row, index) => (
           <Stack
             key={index}
-            direction="row"
+            direction={{ xs: "column", sm: "row" }}
             spacing={1}
-            sx={{ alignItems: "center" }}
+            sx={{ alignItems: { xs: "stretch", sm: "center" } }}
             data-part="receipt-split-row"
           >
             <CategorySelect
@@ -539,7 +546,7 @@ export function ReceiptFlow({
                 patchSplit(index, { amount: event.target.value })
               }
               slotProps={{ htmlInput: { inputMode: "decimal" } }}
-              sx={{ width: 130 }}
+              sx={{ width: { xs: "100%", sm: 130 } }}
             />
             {row.lowConfidence ? (
               <Chip

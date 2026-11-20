@@ -554,6 +554,84 @@ describe("ReceiptFlow — capture → poll → review (T7, S1+S2+S7+S10)", () =>
   });
 });
 
+describe("ReceiptFlow — review layout, clipped labels on narrow viewports (T16, S7)", () => {
+  const reachReview = async () => {
+    vi.mocked(uploadReceipt).mockResolvedValue(scanView("pending"));
+    vi.mocked(getReceiptScan).mockResolvedValue(scanView("draft_ready"));
+    vi.mocked(getReceiptDraft).mockResolvedValue(draftPayload());
+    renderFlow();
+    pickFile();
+    await screen.findByLabelText("Concepto");
+  };
+
+  /**
+   * jsdom cannot assert visual clipping; the observable proxy is the
+   * CSS emotion generated for the element's `css-*` class — e.g. a
+   * responsive `direction={{ xs: "column", sm: "row" }}` emits a
+   * `flex-direction:column` rule that a fixed `direction="row"` lacks.
+   */
+  const generatedCssFor = (el: Element): string => {
+    const cls = [...el.classList].find((c) => c.startsWith("css-"));
+    if (!cls) throw new Error("element has no generated style class");
+    const allCss = [...document.querySelectorAll("style")]
+      .map((s) => s.textContent ?? "")
+      .join("\n");
+    return [...allCss.matchAll(new RegExp(`\\.${cls}\\{[^}]*\\}`, "g"))]
+      .map((match) => match[0])
+      .join("\n");
+  };
+
+  it("renders the Tipo select label shrunk so the outlined notch does not clip it", async () => {
+    await reachReview();
+
+    const typeField = screen
+      .getByRole("combobox", { name: "Tipo" })
+      .closest(".MuiFormControl-root");
+    expect(typeField).toBeTruthy();
+    const label = typeField!.querySelector(".MuiInputLabel-root");
+    // Forced shrink (slotProps.inputLabel.shrink): the label floats
+    // above the notch from the first paint instead of depending on the
+    // filled-state measurement that misfires on narrow viewports.
+    expect(label).toBeTruthy();
+    expect(label!.getAttribute("data-shrink")).toBe("true");
+    expect(label!.className).toContain("MuiInputLabel-shrink");
+    // The fieldset keeps the notched legend reserving space for the label.
+    const legend = typeField!.querySelector("fieldset legend");
+    expect(legend?.querySelector("span")?.textContent).toBe("Tipo");
+  });
+
+  it("stacks the currency/date row and split rows vertically on xs and lets the amount grow", async () => {
+    await reachReview();
+
+    // Moneda/Fecha row: column direction on xs so neither field clips.
+    const currencyDateRow = document.querySelector(
+      '[data-part="receipt-currency-date"]',
+    );
+    expect(currencyDateRow).toBeTruthy();
+    expect(generatedCssFor(currencyDateRow!)).toContain(
+      "flex-direction:column",
+    );
+
+    // Split rows: column direction on xs so Categoría/Importe/chip/delete
+    // do not overflow a ~360px viewport.
+    const splitRows = document.querySelectorAll(
+      '[data-part="receipt-split-row"]',
+    );
+    expect(splitRows.length).toBeGreaterThan(0);
+    for (const row of splitRows) {
+      expect(generatedCssFor(row)).toContain("flex-direction:column");
+    }
+
+    // The amount field is no longer locked to a fixed 130px on xs — it
+    // takes the full row width below the sm breakpoint.
+    const amountInput = screen.getAllByLabelText("Importe")[0];
+    if (!amountInput) throw new Error("amount input not rendered");
+    const amountField = amountInput.closest(".MuiTextField-root");
+    if (!amountField) throw new Error("amount field wrapper not rendered");
+    expect(generatedCssFor(amountField)).toContain("width:100%");
+  });
+});
+
 describe("ReceiptFlow — mobile pick step (T15, S1)", () => {
   beforeEach(() => {
     stubMatchMedia((query) => query === "(pointer: coarse)");
