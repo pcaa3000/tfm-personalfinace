@@ -69,6 +69,7 @@ import { GetReceiptDraftUseCase } from "../modules/receipts/application/get-rece
 import { ConfirmReceiptDraftUseCase } from "../modules/receipts/application/confirm-receipt-draft.use-case.js";
 import { RejectReceiptScanUseCase } from "../modules/receipts/application/reject-receipt-scan.use-case.js";
 import { RetryReceiptScanUseCase } from "../modules/receipts/application/retry-receipt-scan.use-case.js";
+import { PurgeReceiptMediaUseCase } from "../modules/receipts/application/purge-receipt-media.use-case.js";
 import { RECEIPT_MAX_BYTES_DEFAULT } from "../modules/receipts/domain/receipt-upload.js";
 
 /**
@@ -264,6 +265,13 @@ export function buildApp(env: AppEnv): BuiltApp {
     retryReceiptScan: new RetryReceiptScanUseCase(
       receiptScans,
       receiptDispatcher,
+      clock,
+    ),
+    // receipt-retention-30d T6 (S6): manual media purge by capture
+    // age, workspace-scoped (unlike the cron purge in the worker).
+    purgeReceiptMedia: new PurgeReceiptMediaUseCase(
+      receiptScans,
+      receiptStorage,
       clock,
     ),
   };

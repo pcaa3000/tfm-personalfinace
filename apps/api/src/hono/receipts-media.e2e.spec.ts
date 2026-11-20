@@ -297,22 +297,105 @@ describe("receipt media deletion e2e (receipt-retention-30d T3, S3, CA-012)", ()
     ).not.toBeNull();
   });
 
-  it("GET /receipts list item exposes expiresAt and mediaDeletedAt (S2)", async () => {
+  it("GET /receipts exposes expiresAt/mediaDeletedAt on live media and EXCLUDES media-deleted scans (S2+S6)", async () => {
     const upload = await uploadReceipt(ALICE);
     const scanId = upload.body.id as string;
+
+    const before = await json("/api/v1/receipts", { headers: ALICE });
+    const item = (
+      before.body as unknown as { items: Array<Record<string, unknown>> }
+    ).items.find((i) => i.id === scanId);
+    expect(item).toBeDefined();
+    expect(typeof item!.expiresAt).toBe("string");
+    expect(item!.mediaDeletedAt).toBeNull();
+
     await fetch(`${baseUrl}/api/v1/receipts/${scanId}/file`, {
       method: "DELETE",
       headers: ALICE,
     });
 
+    // S6: a scan without its image is never listed again — not on the
+    // first page and not inside a keyset walk.
+    const after = await json("/api/v1/receipts", { headers: ALICE });
+    expect(after.status).toBe(200);
+    const items = (
+      after.body as unknown as { items: Array<Record<string, unknown>> }
+    ).items;
+    expect(items.some((i) => i.id === scanId)).toBe(false);
+  });
+
+  it("POST /receipts/purge-media deletes only the caller workspace's media older than the window and returns {deleted: n} (S6)", async () => {
+    // Alice: one scan aged past the window, one fresh — only the aged
+    // one is purged. Bob: an aged scan in ANOTHER workspace the purge
+    // must never reach.
+    const aliceOld = (await uploadReceipt(ALICE)).body.id as string;
+    const aliceFresh = (await uploadReceipt(ALICE)).body.id as string;
+    const bobOld = (await uploadReceipt(BOB)).body.id as string;
+    const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    await db
+      .update(receiptScans)
+      .set({ createdAt: tenDaysAgo })
+      .where(eq(receiptScans.id, aliceOld));
+    await db
+      .update(receiptScans)
+      .set({ createdAt: tenDaysAgo })
+      .where(eq(receiptScans.id, bobOld));
+
+    const res = await json("/api/v1/receipts/purge-media", {
+      method: "POST",
+      headers: ALICE,
+      body: { olderThanDays: 7 },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ deleted: 1 });
+
+    const local = new LocalReceiptStorage(storageDir);
+    const [oldRow] = await db
+      .select()
+      .from(receiptScans)
+      .where(eq(receiptScans.id, aliceOld));
+    expect(oldRow?.mediaDeletedAt).not.toBeNull();
+    expect(await local.open(oldRow!.storageKey)).toBeNull();
+
+    // The fresh scan keeps its media; Bob's aged scan is untouched.
+    const [freshRow] = await db
+      .select()
+      .from(receiptScans)
+      .where(eq(receiptScans.id, aliceFresh));
+    expect(freshRow?.mediaDeletedAt).toBeNull();
+    const [bobRow] = await db
+      .select()
+      .from(receiptScans)
+      .where(eq(receiptScans.id, bobOld));
+    expect(bobRow?.mediaDeletedAt).toBeNull();
+    expect(await local.open(bobRow!.storageKey)).not.toBeNull();
+
+    // The purged scan disappears from the list; the fresh one stays.
     const list = await json("/api/v1/receipts", { headers: ALICE });
-    expect(list.status).toBe(200);
-    const item = (
-      list.body as unknown as { items: Array<Record<string, unknown>> }
-    ).items.find((i) => i.id === scanId);
-    expect(item).toBeDefined();
-    expect(typeof item!.expiresAt).toBe("string");
-    expect(typeof item!.mediaDeletedAt).toBe("string");
+    const ids = (
+      list.body as unknown as { items: Array<{ id: string }> }
+    ).items.map((i) => i.id);
+    expect(ids).toContain(aliceFresh);
+    expect(ids).not.toContain(aliceOld);
+
+    // Idempotent: a second purge finds nothing.
+    const again = await json("/api/v1/receipts/purge-media", {
+      method: "POST",
+      headers: ALICE,
+      body: { olderThanDays: 7 },
+    });
+    expect(again.status).toBe(200);
+    expect(again.body).toEqual({ deleted: 0 });
+  });
+
+  it("POST /receipts/purge-media rejects an invalid window with 400 INVALID_PURGE_WINDOW", async () => {
+    const res = await json("/api/v1/receipts/purge-media", {
+      method: "POST",
+      headers: ALICE,
+      body: { olderThanDays: 10 },
+    });
+    expect(res.status).toBe(400);
+    expect((res.body as { code: string }).code).toBe("INVALID_PURGE_WINDOW");
   });
 
   it("a foreign workspace cannot delete the medium (workspace-scoped)", async () => {

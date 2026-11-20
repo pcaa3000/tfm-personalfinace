@@ -10,6 +10,7 @@ import {
   type GetReceiptFileUseCase,
   type GetReceiptScanUseCase,
   type ListReceiptScansUseCase,
+  type PurgeReceiptMediaUseCase,
   type ReceiptScanCursor,
   type RejectReceiptScanUseCase,
   type RetryReceiptScanUseCase,
@@ -91,6 +92,16 @@ const listReceiptsQuerySchema = z.object({
   cursor: z.string().min(1).max(512).optional(),
 });
 
+/**
+ * receipt-retention-30d T6 (S6): manual media purge — the only valid
+ * windows are 7/15/30 days by capture age. Any other value (or a
+ * missing/malformed body) is rejected 400 INVALID_PURGE_WINDOW —
+ * pinned code for the web contract.
+ */
+const purgeMediaSchema = z.object({
+  olderThanDays: z.union([z.literal(7), z.literal(15), z.literal(30)]),
+});
+
 const confirmReceiptSchema = z.object({
   accountId: z.string().min(1),
   type: z.enum(["expense", "income"]),
@@ -111,6 +122,7 @@ export interface ReceiptRouteDeps extends AuthDeps {
   readonly confirmReceiptDraft: Pick<ConfirmReceiptDraftUseCase, "execute">;
   readonly rejectReceiptScan: Pick<RejectReceiptScanUseCase, "execute">;
   readonly retryReceiptScan: Pick<RetryReceiptScanUseCase, "execute">;
+  readonly purgeReceiptMedia: Pick<PurgeReceiptMediaUseCase, "execute">;
 }
 
 /** True for the multipart field shapes Hono yields (File, or File-like). */
@@ -197,6 +209,28 @@ export function registerReceiptRoutes(
         : { limit: parsed.data.limit, after },
     );
     return c.json(page);
+  });
+
+  // receipt-retention-30d T6 (S6): manual mass purge by capture age.
+  // Registered BEFORE /:id so "purge-media" is never captured as a
+  // scan id. Returns {deleted: n} — actual storage deletions.
+  app.post("/api/v1/receipts/purge-media", auth, async (c) => {
+    const parsed = purgeMediaSchema.safeParse(
+      await c.req.json().catch(() => undefined),
+    );
+    if (!parsed.success) {
+      throw new HttpError(400, {
+        code: "INVALID_PURGE_WINDOW",
+        message: "olderThanDays must be one of 7, 15 or 30",
+        details: sanitizeZodIssues(parsed.error.issues),
+      });
+    }
+    const { workspace } = authContext(c);
+    const deleted = await deps.purgeReceiptMedia.execute(
+      workspace.workspaceId,
+      parsed.data.olderThanDays,
+    );
+    return c.json({ deleted });
   });
 
   app.get("/api/v1/receipts/:id", auth, async (c) => {

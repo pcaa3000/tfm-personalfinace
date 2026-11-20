@@ -249,6 +249,9 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     retryReceiptScan: {
       execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },
+    purgeReceiptMedia: {
+      execute: vi.fn(async () => 0),
+    },
   };
 }
 

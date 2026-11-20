@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lt, lte, or } from "drizzle-orm";
 
 import type { DrizzleDb } from "../../../drizzle/db.js";
 import { receiptScans } from "../../../drizzle/schema.js";
@@ -10,6 +10,8 @@ import {
 } from "../domain/receipt-scan.js";
 import type { ReceiptFileHashPort } from "../application/ports/receipt-file-hash.port.js";
 import type {
+  ReceiptMediaPurgeCandidate,
+  ReceiptMediaPurgePort,
   ReceiptScanListPort,
   ReceiptScanListQuery,
   ReceiptScanListSlice,
@@ -45,7 +47,8 @@ export class DrizzleReceiptScanRepository
   implements
     ReceiptScanRepositoryPort,
     ReceiptScanListPort,
-    ReceiptFileHashPort
+    ReceiptFileHashPort,
+    ReceiptMediaPurgePort
 {
   constructor(private readonly db: DrizzleDb) {}
 
@@ -122,12 +125,18 @@ export class DrizzleReceiptScanRepository
    * id DESC` and an exclusive `(createdAt, id) < cursor` predicate, so
    * a concurrent insert can never shift or repeat a client's page the
    * way OFFSET would. Fetches limit+1 to detect `hasMore`.
+   * receipt-retention-30d T6 (S6): media-deleted rows are excluded in
+   * the WHERE clause, so they never appear in ANY page — including
+   * inside a keyset walk.
    */
   async listByWorkspace(
     workspaceId: WorkspaceId,
     query: ReceiptScanListQuery,
   ): Promise<ReceiptScanListSlice> {
-    const conditions = [eq(receiptScans.workspaceId, workspaceId.value)];
+    const conditions = [
+      eq(receiptScans.workspaceId, workspaceId.value),
+      isNull(receiptScans.mediaDeletedAt),
+    ];
     if (query.after) {
       const after = query.after;
       const keyset = or(
@@ -151,6 +160,45 @@ export class DrizzleReceiptScanRepository
       scans: page.map((row) => ReceiptScan.reconstitute(toState(row))),
       hasMore,
     };
+  }
+
+  /**
+   * receipt-retention-30d T6 (S6): manual purge selection — this
+   * workspace's live-media scans captured at or before the cutoff,
+   * oldest first. By `createdAt` (capture age), NOT `expiresAt`: the
+   * expiry predicate belongs to the daily cron job.
+   */
+  async listMediaPurgeCandidates(
+    workspaceId: WorkspaceId,
+    createdAtCutoff: Date,
+    limit: number,
+  ): Promise<ReceiptMediaPurgeCandidate[]> {
+    return this.db
+      .select({ id: receiptScans.id, storageKey: receiptScans.storageKey })
+      .from(receiptScans)
+      .where(
+        and(
+          eq(receiptScans.workspaceId, workspaceId.value),
+          lte(receiptScans.createdAt, createdAtCutoff),
+          isNull(receiptScans.mediaDeletedAt),
+        ),
+      )
+      .orderBy(asc(receiptScans.createdAt))
+      .limit(limit);
+  }
+
+  /**
+   * Guarded media-deletion stamp — identical guard to the daily purge
+   * job: `mediaDeletedAt IS NULL` in the UPDATE keeps a concurrent
+   * early user DELETE's timestamp from being overwritten.
+   */
+  async stampMediaDeleted(id: string, at: Date): Promise<void> {
+    await this.db
+      .update(receiptScans)
+      .set({ mediaDeletedAt: at, updatedAt: at })
+      .where(
+        and(eq(receiptScans.id, id), isNull(receiptScans.mediaDeletedAt)),
+      );
   }
 
   /**

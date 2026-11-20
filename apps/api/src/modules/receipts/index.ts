@@ -22,6 +22,8 @@ export {
 } from "./application/ports/receipt-storage.port.js";
 export {
   RECEIPT_SCAN_REPOSITORY,
+  type ReceiptMediaPurgeCandidate,
+  type ReceiptMediaPurgePort,
   type ReceiptScanListPort,
   type ReceiptScanListQuery,
   type ReceiptScanListSlice,
@@ -91,6 +93,12 @@ export {
   type ReceiptFileView,
 } from "./application/get-receipt-file.use-case.js";
 export { DeleteReceiptFileUseCase } from "./application/delete-receipt-file.use-case.js";
+export {
+  PurgeReceiptMediaUseCase,
+  RECEIPT_MANUAL_PURGE_BATCH_SIZE,
+  RECEIPT_PURGE_WINDOWS,
+  type ReceiptPurgeWindow,
+} from "./application/purge-receipt-media.use-case.js";
 export {
   toReceiptScanListItem,
   toReceiptScanView,

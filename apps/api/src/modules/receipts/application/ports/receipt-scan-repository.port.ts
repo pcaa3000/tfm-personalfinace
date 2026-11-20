@@ -40,9 +40,51 @@ export interface ReceiptScanListPort {
    * Up to `query.limit` scans of the workspace, newest first
    * (`createdAt DESC, id DESC`), strictly after `query.after` when set
    * (T5, S4: keyset/seek — stable under concurrent inserts).
+   * receipt-retention-30d T6 (S6): scans whose media was deleted
+   * (`mediaDeletedAt IS NOT NULL`) are excluded at query level — a
+   * row without its image adds nothing to the ticket list (the
+   * confirmed transaction is untouched, CA-012).
    */
   listByWorkspace(
     workspaceId: WorkspaceId,
     query: ReceiptScanListQuery,
   ): Promise<ReceiptScanListSlice>;
+}
+
+/**
+ * Row selected for media purge (receipt-retention-30d T6, S6): the
+ * scan id + storage key are all the purge needs — one to delete the
+ * object, the other to stamp the marker.
+ */
+export interface ReceiptMediaPurgeCandidate {
+  readonly id: string;
+  readonly storageKey: string;
+}
+
+/**
+ * Manual media purge support (receipt-retention-30d T6, S6): the user
+ * asks for media older than a chosen window (7/15/30 days by CAPTURE
+ * AGE — `createdAt`, not `expiresAt`; that predicate belongs to the
+ * daily cron purge). Workspace-scoped: unlike the cron job this is a
+ * user action and never reaches across workspaces.
+ */
+export interface ReceiptMediaPurgePort {
+  /**
+   * Up to `limit` scans of the workspace with media still present
+   * (`mediaDeletedAt IS NULL`) captured at or before `createdAtCutoff`
+   * (`createdAt <= cutoff`, boundary inclusive — same `lte`
+   * convention as the daily job's `expiresAt` predicate), oldest
+   * first.
+   */
+  listMediaPurgeCandidates(
+    workspaceId: WorkspaceId,
+    createdAtCutoff: Date,
+    limit: number,
+  ): Promise<ReceiptMediaPurgeCandidate[]>;
+  /**
+   * Guarded media-deletion stamp (same guard as the daily purge job):
+   * only a row whose `mediaDeletedAt` is still NULL is marked — a
+   * concurrent early user DELETE keeps its own timestamp.
+   */
+  stampMediaDeleted(id: string, at: Date): Promise<void>;
 }

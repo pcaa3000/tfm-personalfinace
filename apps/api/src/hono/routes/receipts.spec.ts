@@ -197,6 +197,9 @@ function buildApp(options: {
           : err(new DomainError("RECEIPT_NOT_FOUND", "not found")),
       ),
     },
+    purgeReceiptMedia: {
+      execute: vi.fn(async (_workspaceId: WorkspaceId, _days: number) => 2),
+    },
   };
   const app = new Hono<HonoEnv>();
   registerReceiptRoutes(app, deps);
@@ -784,6 +787,109 @@ describe("POST /api/v1/receipts/:id/confirm (T6, S2+S4+S7+S10)", () => {
     );
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/v1/receipts/purge-media (receipt-retention-30d T6, S6)", () => {
+  function purgeRequest(body: unknown) {
+    return {
+      method: "POST",
+      headers: { "x-dev-user": "t", "content-type": "application/json" },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    } satisfies RequestInit;
+  }
+
+  it.each([[7], [15], [30]])(
+    "purges media older than %d days and returns {deleted: n}",
+    async (olderThanDays) => {
+      const { app, deps } = buildApp();
+
+      const res = await app.request(
+        "/api/v1/receipts/purge-media",
+        purgeRequest({ olderThanDays }),
+      );
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ deleted: 2 });
+      expect(deps.purgeReceiptMedia.execute).toHaveBeenCalledWith(
+        WS,
+        olderThanDays,
+      );
+    },
+  );
+
+  it("returns {deleted: 0} when nothing qualifies", async () => {
+    const { app, deps } = buildApp();
+    vi.mocked(deps.purgeReceiptMedia.execute).mockResolvedValueOnce(0);
+
+    const res = await app.request(
+      "/api/v1/receipts/purge-media",
+      purgeRequest({ olderThanDays: 30 }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: 0 });
+  });
+
+  // Pinned error code for the web contract: INVALID_PURGE_WINDOW.
+  it.each([[10], [0], [45], ["30"], [null], [{}], [[]], [undefined]])(
+    "rejects olderThanDays=%j with 400 INVALID_PURGE_WINDOW (pinned)",
+    async (olderThanDays) => {
+      const { app, deps } = buildApp();
+      const body =
+        olderThanDays === undefined ? {} : { olderThanDays };
+
+      const res = await app.request(
+        "/api/v1/receipts/purge-media",
+        purgeRequest(body),
+      );
+
+      expect(res.status).toBe(400);
+      const parsed = (await res.json()) as { code: string };
+      expect(parsed.code).toBe("INVALID_PURGE_WINDOW");
+      expect(deps.purgeReceiptMedia.execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects a non-JSON body with 400 INVALID_PURGE_WINDOW", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request(
+      "/api/v1/receipts/purge-media",
+      purgeRequest("not json{"),
+    );
+
+    expect(res.status).toBe(400);
+    const parsed = (await res.json()) as { code: string };
+    expect(parsed.code).toBe("INVALID_PURGE_WINDOW");
+    expect(deps.purgeReceiptMedia.execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects unauthenticated purges with 401", async () => {
+    const { app, deps } = buildApp({ authenticated: false });
+
+    const res = await app.request(
+      "/api/v1/receipts/purge-media",
+      purgeRequest({ olderThanDays: 7 }),
+    );
+
+    expect(res.status).toBe(401);
+    expect(deps.purgeReceiptMedia.execute).not.toHaveBeenCalled();
+  });
+
+  it("is registered before /:id so \"purge-media\" is never captured as a scan id", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request(
+      "/api/v1/receipts/purge-media",
+      purgeRequest({ olderThanDays: 15 }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(deps.purgeReceiptMedia.execute).toHaveBeenCalledTimes(1);
+    // No :id route saw the request.
+    expect(deps.getReceiptScan.execute).not.toHaveBeenCalled();
+    expect(deps.rejectReceiptScan.execute).not.toHaveBeenCalled();
   });
 });
 

@@ -16,7 +16,12 @@ const WS_B = "receipt-repo-spec-b";
 // receipt-review-link T5 (S4): a dedicated workspace so keyset pages
 // see ONLY this spec's rows — leftover WS_A scans would interleave.
 const WS_PAGES = "receipt-repo-spec-pages";
-const WORKSPACES = [WS_A, WS_B, WS_PAGES];
+// receipt-retention-30d T6 (S6): dedicated workspaces — the media-
+// deleted exclusion and the purge-candidate selection must see ONLY
+// this spec's rows.
+const WS_GONE = "receipt-repo-spec-gone";
+const WS_PURGE = "receipt-repo-spec-purge";
+const WORKSPACES = [WS_A, WS_B, WS_PAGES, WS_GONE, WS_PURGE];
 
 function workspaceId(value: string): WorkspaceId {
   const id = WorkspaceId.create(value);
@@ -302,6 +307,118 @@ describe("DrizzleReceiptScanRepository (integration, real Postgres)", () => {
     expect(tail.scans).toHaveLength(1);
     expect(beyond.scans).toHaveLength(0);
     expect(beyond.hasMore).toBe(false);
+  });
+
+  it("listByWorkspace excludes scans whose media was deleted (receipt-retention-30d T6, S6) — first page AND inside a keyset walk", async () => {
+    const ws = workspaceId(WS_GONE);
+    await repository.save(
+      makeScan({
+        id: "gone-old",
+        workspaceId: ws,
+        storageKey: `quarantine/${WS_GONE}/gone-old.jpg`,
+        now: new Date("2026-11-10T10:00:00.000Z"),
+      }),
+    );
+    // The deleted row sits in the MIDDLE of the newest-first order:
+    // only a real predicate (not a page-trim) removes it.
+    await repository.save(
+      makeScan({
+        id: "gone-mid",
+        workspaceId: ws,
+        storageKey: `quarantine/${WS_GONE}/gone-mid.jpg`,
+        now: new Date("2026-11-10T11:00:00.000Z"),
+      }),
+    );
+    await repository.save(
+      makeScan({
+        id: "gone-new",
+        workspaceId: ws,
+        storageKey: `quarantine/${WS_GONE}/gone-new.jpg`,
+        now: new Date("2026-11-10T12:00:00.000Z"),
+      }),
+    );
+    const stored = await repository.findById(ws, "gone-mid");
+    stored!.markMediaDeleted(new Date("2026-11-15T00:00:00.000Z"));
+    await repository.save(stored!);
+
+    const listed = await repository.listByWorkspace(ws, { limit: 50 });
+    expect(listed.scans.map((s) => s.id)).toEqual(["gone-new", "gone-old"]);
+
+    // Keyset walk with limit 1: the deleted row is skipped at query
+    // level — the cursor keeps working across its position, no gaps,
+    // no repeats, and it never appears in any page.
+    const page1 = await repository.listByWorkspace(ws, { limit: 1 });
+    expect(page1.scans.map((s) => s.id)).toEqual(["gone-new"]);
+    expect(page1.hasMore).toBe(true);
+    const last = page1.scans.at(-1)!;
+    const page2 = await repository.listByWorkspace(ws, {
+      limit: 1,
+      after: { createdAt: last.createdAt, id: last.id },
+    });
+    expect(page2.scans.map((s) => s.id)).toEqual(["gone-old"]);
+    expect(page2.hasMore).toBe(false);
+  });
+
+  it("listMediaPurgeCandidates selects only this workspace's live-media rows at/before the createdAt cutoff, oldest first; stampMediaDeleted marks a row once (receipt-retention-30d T6, S6)", async () => {
+    const ws = workspaceId(WS_PURGE);
+    const base = new Date("2026-11-30T12:00:00.000Z");
+    const DAY = 24 * 60 * 60 * 1000;
+    const seed = (id: string, ageDays: number, otherWs = false) =>
+      makeScan({
+        id,
+        workspaceId: otherWs ? workspaceId(WS_B) : ws,
+        storageKey: `quarantine/${otherWs ? WS_B : WS_PURGE}/${id}.jpg`,
+        now: new Date(base.getTime() - ageDays * DAY),
+      });
+    await repository.save(seed("purge-20d", 20));
+    await repository.save(seed("purge-10d", 10));
+    await repository.save(seed("purge-5d", 5));
+    // Old but media already gone — never selected again (idempotent).
+    const gone = seed("purge-gone", 40);
+    gone.markMediaDeleted(new Date(base.getTime() - 5 * DAY));
+    await repository.save(gone);
+    // Old enough but ANOTHER workspace — the manual purge never
+    // reaches across workspaces (S6: user action, workspace-scoped).
+    await repository.save(seed("purge-foreign", 40, true));
+    // Exactly at the cutoff boundary — `lte` matches the daily job's
+    // convention (S6: "older than the window", boundary inclusive).
+    await repository.save(seed("purge-edge", 7));
+    const cutoff = new Date(base.getTime() - 7 * DAY);
+
+    const candidates = await repository.listMediaPurgeCandidates(
+      ws,
+      cutoff,
+      500,
+    );
+
+    expect(candidates.map((c) => c.id)).toEqual([
+      "purge-20d",
+      "purge-10d",
+      "purge-edge",
+    ]);
+    // Candidates carry the storage key for the object delete.
+    expect(candidates[0]?.storageKey).toBe(
+      `quarantine/${WS_PURGE}/purge-20d.jpg`,
+    );
+
+    // Guarded stamp: first mark wins, a later stamp never overwrites
+    // (a concurrent early user DELETE keeps its own timestamp).
+    const stampedAt = new Date("2026-11-30T13:00:00.000Z");
+    await repository.stampMediaDeleted("purge-10d", stampedAt);
+    expect(
+      (await repository.findById(ws, "purge-10d"))?.mediaDeletedAt,
+    ).toEqual(stampedAt);
+    const later = new Date("2026-11-30T14:00:00.000Z");
+    await repository.stampMediaDeleted("purge-10d", later);
+    expect(
+      (await repository.findById(ws, "purge-10d"))?.mediaDeletedAt,
+    ).toEqual(stampedAt);
+    // And the stamped row drops out of a repeated selection (idempotent).
+    expect(
+      (await repository.listMediaPurgeCandidates(ws, cutoff, 500)).map(
+        (c) => c.id,
+      ),
+    ).toEqual(["purge-20d", "purge-edge"]);
   });
 
   it("UNIQUE(workspaceId, fileHash) rejects a second row with the same hash", async () => {
