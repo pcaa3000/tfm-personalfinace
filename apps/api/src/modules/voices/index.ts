@@ -80,6 +80,15 @@ export {
   type VoiceUploadPolicy,
 } from "./application/upload-voice-note.use-case.js";
 export { GetVoiceNoteUseCase } from "./application/get-voice-note.use-case.js";
+export { GetVoiceDraftUseCase } from "./application/get-voice-draft.use-case.js";
+export {
+  ConfirmVoiceDraftUseCase,
+  type ConfirmVoiceDraftCommand,
+  type ConfirmVoiceDraftResult,
+  type ConfirmVoiceSplitInput,
+} from "./application/confirm-voice-draft.use-case.js";
+export { RejectVoiceNoteUseCase } from "./application/reject-voice-note.use-case.js";
+export { RetryVoiceNoteUseCase } from "./application/retry-voice-note.use-case.js";
 export {
   GetVoiceFileUseCase,
   type VoiceFileView,

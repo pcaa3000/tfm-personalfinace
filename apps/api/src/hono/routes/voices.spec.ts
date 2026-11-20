@@ -6,13 +6,17 @@ import {
   WorkspaceId,
   err,
   ok,
+  type Result,
 } from "../../modules/shared-kernel/index.js";
 import { CryptoFileHasher } from "../../modules/receipts/index.js";
 import {
   encodeVoiceNoteCursor,
   UploadVoiceNoteUseCase,
+  type ConfirmVoiceDraftCommand,
+  type ConfirmVoiceDraftResult,
   type UploadVoiceNoteCommand,
   type VoiceDraftDispatcher,
+  type VoiceDraftPayload,
   type VoiceFileHashPort,
   type VoiceNote,
   type VoiceNoteListItem,
@@ -58,6 +62,53 @@ const LIST_ITEM: VoiceNoteListItem = {
   transactionId: null,
   expiresAt: "2026-12-10T12:00:00.000Z",
   mediaDeletedAt: null,
+};
+
+const DRAFT_VIEW: VoiceDraftPayload = {
+  transcript: "compré un sol de pan",
+  type: "expense",
+  concept: "Pan",
+  businessDate: "2026-11-10",
+  dateHint: null,
+  currency: "PEN",
+  currencyConflict: false,
+  totalMinorUnits: 100,
+  totalMismatch: false,
+  splits: [
+    {
+      categoryKey: "food",
+      newCategory: null,
+      amountMinorUnits: 100,
+      itemCount: 1,
+      confidenceAvg: 0.95,
+      lowConfidence: false,
+    },
+  ],
+  items: [],
+  possibleDuplicates: [],
+};
+
+const CONFIRM_VIEW: ConfirmVoiceDraftResult = {
+  transaction: {
+    id: "trx-1",
+    workspaceId: "ws-1",
+    type: "expense",
+    amount: "1.00",
+    currency: "PEN",
+    businessDate: "2026-11-10",
+    timezone: "UTC",
+    concept: "Pan",
+    accountId: "acc-1",
+    destinationAccountId: null,
+    categoryId: "cat-food",
+    status: "confirmed",
+    origin: "voice",
+    originReference: "note-1",
+    confirmedAt: "2026-11-10T12:00:00.000Z",
+    revisionCount: 0,
+    splits: [{ categoryId: "cat-food", amount: "1.00" }],
+  },
+  createdCategories: [],
 };
 
 function buildApp(options: {
@@ -111,6 +162,35 @@ function buildApp(options: {
               mimeType: "audio/webm",
               originalFilename: "nota.webm",
             })
+          : err(new DomainError("VOICE_NOT_FOUND", "not found")),
+      ),
+    },
+    getVoiceDraft: {
+      execute: vi.fn(async (_workspaceId: WorkspaceId, id: string) =>
+        id === "note-1"
+          ? ok(DRAFT_VIEW)
+          : err(new DomainError("VOICE_NOT_FOUND", "not found")),
+      ),
+    },
+    confirmVoiceDraft: {
+      execute: vi.fn(
+        async (
+          _command: ConfirmVoiceDraftCommand,
+        ): Promise<Result<ConfirmVoiceDraftResult, DomainError>> =>
+          ok(CONFIRM_VIEW),
+      ),
+    },
+    rejectVoiceNote: {
+      execute: vi.fn(async (_workspaceId: WorkspaceId, id: string) =>
+        id === "note-1"
+          ? ok({ ...NOTE_VIEW, status: "rejected" })
+          : err(new DomainError("VOICE_NOT_FOUND", "not found")),
+      ),
+    },
+    retryVoiceNote: {
+      execute: vi.fn(async (_workspaceId: WorkspaceId, id: string) =>
+        id === "note-1"
+          ? ok({ ...NOTE_VIEW, status: "pending" })
           : err(new DomainError("VOICE_NOT_FOUND", "not found")),
       ),
     },
@@ -430,6 +510,245 @@ describe("GET /api/v1/voices/:id (polling)", () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe("VOICE_NOT_FOUND");
+  });
+});
+
+describe("GET /api/v1/voices/:id/draft (voice-drafts T3)", () => {
+  it("returns the draft payload for a draft_ready note", async () => {
+    const { app } = buildApp();
+
+    const res = await app.request("/api/v1/voices/note-1/draft", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(DRAFT_VIEW);
+  });
+
+  it("maps VOICE_NOT_READY to 409", async () => {
+    const { app, deps } = buildApp();
+    vi.mocked(deps.getVoiceDraft.execute).mockResolvedValueOnce(
+      err(new DomainError("VOICE_NOT_READY", "pending")),
+    );
+
+    const res = await app.request("/api/v1/voices/note-1/draft", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("VOICE_NOT_READY");
+  });
+
+  it("maps VOICE_NOT_FOUND to 404", async () => {
+    const { app } = buildApp();
+
+    const res = await app.request("/api/v1/voices/nope/draft", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("VOICE_NOT_FOUND");
+  });
+});
+
+describe("POST /api/v1/voices/:id/confirm (voice-drafts T3, S2+S4+S5)", () => {
+  const confirmBody = {
+    accountId: "acc-1",
+    type: "expense",
+    idempotencyKey: "confirm-note-1",
+    splits: [
+      { categoryId: "cat-food", amountMinorUnits: 100 },
+      {
+        newCategory: { name: "Cuidado personal", nature: "essential" },
+        amountMinorUnits: 50,
+      },
+      { categoryId: null, amountMinorUnits: 25 },
+    ],
+  };
+
+  it("forwards the reviewed splits and workspace context to the use case and returns 201", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request("/api/v1/voices/note-1/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-dev-user": "t" },
+      body: JSON.stringify(confirmBody),
+    });
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual(CONFIRM_VIEW);
+    expect(deps.confirmVoiceDraft.execute).toHaveBeenCalledWith({
+      workspaceId: WS,
+      voiceNoteId: "note-1",
+      accountId: "acc-1",
+      type: "expense",
+      idempotencyKey: "confirm-note-1",
+      timezone: "UTC",
+      defaultCurrency: "PEN",
+      splits: [
+        { categoryId: "cat-food", newCategory: null, amountMinorUnits: 100 },
+        {
+          categoryId: null,
+          newCategory: { name: "Cuidado personal", nature: "essential" },
+          amountMinorUnits: 50,
+        },
+        { categoryId: null, newCategory: null, amountMinorUnits: 25 },
+      ],
+      actor: "user-1",
+    });
+  });
+
+  it("rejects a confirm without idempotencyKey with 400 IDEMPOTENCY_KEY_REQUIRED", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request("/api/v1/voices/note-1/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-dev-user": "t" },
+      body: JSON.stringify({ ...confirmBody, idempotencyKey: undefined }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
+    expect(deps.confirmVoiceDraft.execute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["empty splits", { splits: [] }],
+    ["a split with both categoryId and newCategory", {
+      splits: [
+        {
+          categoryId: "cat-food",
+          newCategory: { name: "X", nature: "essential" },
+          amountMinorUnits: 100,
+        },
+      ],
+    }],
+    ["a non-positive split amount", {
+      splits: [{ categoryId: "cat-food", amountMinorUnits: 0 }],
+    }],
+  ])("rejects %s with 400 INVALID_BODY", async (_label, override) => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request("/api/v1/voices/note-1/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-dev-user": "t" },
+      body: JSON.stringify({ ...confirmBody, ...override }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("INVALID_BODY");
+    expect(deps.confirmVoiceDraft.execute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [409, "VOICE_NOT_READY"],
+    [409, "VOICE_ALREADY_FINAL"],
+    [400, "VOICE_SPLITS_REQUIRED"],
+    [400, "VOICE_DRAFT_INVALID"],
+    [404, "VOICE_NOT_FOUND"],
+  ])("maps %s to HTTP %i", async (_status, code) => {
+    const { app, deps } = buildApp();
+    vi.mocked(deps.confirmVoiceDraft.execute).mockResolvedValueOnce(
+      err(new DomainError(code, `${code} detail`)),
+    );
+
+    const res = await app.request("/api/v1/voices/note-1/confirm", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-dev-user": "t" },
+      body: JSON.stringify(confirmBody),
+    });
+
+    expect(res.status).toBe(_status);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body).toEqual({ code, message: `${code} detail` });
+  });
+});
+
+describe("POST /api/v1/voices/:id/reject (voice-drafts T3)", () => {
+  it("rejects the note and returns its view", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request("/api/v1/voices/note-1/reject", {
+      method: "POST",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string };
+    expect(body.status).toBe("rejected");
+    expect(deps.rejectVoiceNote.execute).toHaveBeenCalledWith(WS, "note-1");
+  });
+
+  it("maps VOICE_ALREADY_FINAL to 409", async () => {
+    const { app, deps } = buildApp();
+    vi.mocked(deps.rejectVoiceNote.execute).mockResolvedValueOnce(
+      err(new DomainError("VOICE_ALREADY_FINAL", "terminal")),
+    );
+
+    const res = await app.request("/api/v1/voices/note-1/reject", {
+      method: "POST",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("VOICE_ALREADY_FINAL");
+  });
+
+  it("maps VOICE_NOT_FOUND to 404", async () => {
+    const { app } = buildApp();
+
+    const res = await app.request("/api/v1/voices/nope/reject", {
+      method: "POST",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/v1/voices/:id/retry (voice-drafts T3)", () => {
+  it("re-enqueues a failed note and returns its pending view", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request("/api/v1/voices/note-1/retry", {
+      method: "POST",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string };
+    expect(body.status).toBe("pending");
+    expect(deps.retryVoiceNote.execute).toHaveBeenCalledWith(WS, "note-1");
+  });
+
+  it("maps VOICE_ALREADY_FINAL to 409", async () => {
+    const { app, deps } = buildApp();
+    vi.mocked(deps.retryVoiceNote.execute).mockResolvedValueOnce(
+      err(new DomainError("VOICE_ALREADY_FINAL", "terminal")),
+    );
+
+    const res = await app.request("/api/v1/voices/note-1/retry", {
+      method: "POST",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(409);
+  });
+
+  it("maps VOICE_NOT_FOUND to 404", async () => {
+    const { app } = buildApp();
+
+    const res = await app.request("/api/v1/voices/nope/retry", {
+      method: "POST",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(404);
   });
 });
 

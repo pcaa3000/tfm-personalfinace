@@ -248,6 +248,19 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     getVoiceFile: {
       execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },
+    // voice-drafts T3 — stubs; these specs never call them.
+    getVoiceDraft: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    confirmVoiceDraft: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    rejectVoiceNote: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    retryVoiceNote: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
   };
 }
 

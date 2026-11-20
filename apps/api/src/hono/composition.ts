@@ -85,6 +85,10 @@ import {
 import { UploadVoiceNoteUseCase } from "../modules/voices/application/upload-voice-note.use-case.js";
 import { GetVoiceNoteUseCase } from "../modules/voices/application/get-voice-note.use-case.js";
 import { GetVoiceFileUseCase } from "../modules/voices/application/get-voice-file.use-case.js";
+import { GetVoiceDraftUseCase } from "../modules/voices/application/get-voice-draft.use-case.js";
+import { ConfirmVoiceDraftUseCase } from "../modules/voices/application/confirm-voice-draft.use-case.js";
+import { RejectVoiceNoteUseCase } from "../modules/voices/application/reject-voice-note.use-case.js";
+import { RetryVoiceNoteUseCase } from "../modules/voices/application/retry-voice-note.use-case.js";
 import { ListVoiceNotesUseCase } from "../modules/voices/application/list-voice-notes.use-case.js";
 import { VOICE_MAX_BYTES_DEFAULT } from "../modules/voices/domain/voice-upload.js";
 
@@ -349,6 +353,28 @@ export function buildApp(env: AppEnv): BuiltApp {
     listVoiceNotes: new ListVoiceNotesUseCase(voiceNotes),
     getVoiceNote: new GetVoiceNoteUseCase(voiceNotes),
     getVoiceFile: new GetVoiceFileUseCase(voiceNotes, receiptStorage),
+    // voice-drafts T3: draft review + confirm (same wiring shape as
+    // receipts — read-time duplicates, create-or-reuse categories,
+    // retry without re-upload).
+    getVoiceDraft: new GetVoiceDraftUseCase(
+      voiceNotes,
+      new DrizzleTransactionDuplicatesAdapter(db),
+    ),
+    confirmVoiceDraft: new ConfirmVoiceDraftUseCase(
+      voiceNotes,
+      transactions,
+      recordManual,
+      createCategory,
+      categoryValidation,
+      categories,
+      clock,
+    ),
+    rejectVoiceNote: new RejectVoiceNoteUseCase(voiceNotes, clock),
+    retryVoiceNote: new RetryVoiceNoteUseCase(
+      voiceNotes,
+      voiceDraftDispatcher,
+      clock,
+    ),
   };
 
   return {

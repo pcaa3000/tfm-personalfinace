@@ -1,11 +1,16 @@
 import type { Hono } from "hono";
 import { z } from "zod";
 
+import type { CategoryNature } from "../../modules/categorization/index.js";
 import {
   decodeVoiceNoteCursor,
+  type ConfirmVoiceDraftUseCase,
+  type GetVoiceDraftUseCase,
   type GetVoiceFileUseCase,
   type GetVoiceNoteUseCase,
   type ListVoiceNotesUseCase,
+  type RejectVoiceNoteUseCase,
+  type RetryVoiceNoteUseCase,
   type UploadVoiceNoteUseCase,
   type VoiceNoteCursor,
 } from "../../modules/voices/index.js";
@@ -19,6 +24,9 @@ import {
 import { HttpError } from "../middleware/errors.js";
 import { sanitizeZodIssues } from "../middleware/zod-details.js";
 
+/** State-transition conflicts on the note lifecycle (T3). */
+const CONFLICT_CODES = new Set(["VOICE_NOT_READY", "VOICE_ALREADY_FINAL"]);
+
 /**
  * S7: "media gone" answers 410 — deliberately distinct from the 404
  * "note not found" so clients can show a deleted-media state instead
@@ -26,13 +34,15 @@ import { sanitizeZodIssues } from "../middleware/zod-details.js";
  */
 const GONE_CODES = new Set(["VOICE_MEDIA_DELETED"]);
 
-/** Same mapping as the other resource routers, plus the 410 media code. */
+/** Same mapping as the other resource routers, plus 409/410 voice codes. */
 function toHttpError(error: DomainError): HttpError {
   const status = error.code.endsWith("_NOT_FOUND")
     ? 404
-    : GONE_CODES.has(error.code)
-      ? 410
-      : 400;
+    : CONFLICT_CODES.has(error.code)
+      ? 409
+      : GONE_CODES.has(error.code)
+        ? 410
+        : 400;
   return new HttpError(status, {
     code: error.code,
     message: error.message,
@@ -51,11 +61,55 @@ const listVoicesQuerySchema = z.object({
   cursor: z.string().min(1).max(512).optional(),
 });
 
+const CATEGORY_NATURES: readonly CategoryNature[] = [
+  "income",
+  "essential",
+  "discretionary",
+  "obligation",
+  "transfer",
+];
+
+/**
+ * Confirm contract (voice-drafts T3, S4): each split is a catalog
+ * `categoryId`, an approved `newCategory` proposal, or `null` for the
+ * system uncategorized fallback — exactly one per split, same shape
+ * as the receipts confirm.
+ */
+const confirmSplitSchema = z
+  .object({
+    categoryId: z.string().min(1).nullable().optional(),
+    newCategory: z
+      .object({
+        name: z.string().min(1).max(120),
+        nature: z.enum(CATEGORY_NATURES as [CategoryNature, ...CategoryNature[]]),
+      })
+      .nullable()
+      .optional(),
+    amountMinorUnits: z.number().int().positive(),
+  })
+  .refine((split) => !(split.categoryId && split.newCategory), {
+    message: "Provide either categoryId or newCategory, not both",
+  });
+
+const confirmVoiceSchema = z.object({
+  accountId: z.string().min(1),
+  type: z.enum(["expense", "income"]),
+  idempotencyKey: z.string().min(8).max(128).optional(),
+  businessDate: z.string().min(10).max(10).optional(),
+  currency: z.string().length(3).optional(),
+  concept: z.string().min(1).max(500).optional(),
+  splits: z.array(confirmSplitSchema).min(1),
+});
+
 export interface VoiceRouteDeps extends AuthDeps {
   readonly uploadVoiceNote: Pick<UploadVoiceNoteUseCase, "execute">;
   readonly listVoiceNotes: Pick<ListVoiceNotesUseCase, "execute">;
   readonly getVoiceNote: Pick<GetVoiceNoteUseCase, "execute">;
   readonly getVoiceFile: Pick<GetVoiceFileUseCase, "execute">;
+  readonly getVoiceDraft: Pick<GetVoiceDraftUseCase, "execute">;
+  readonly confirmVoiceDraft: Pick<ConfirmVoiceDraftUseCase, "execute">;
+  readonly rejectVoiceNote: Pick<RejectVoiceNoteUseCase, "execute">;
+  readonly retryVoiceNote: Pick<RetryVoiceNoteUseCase, "execute">;
 }
 
 /** True for the multipart field shapes Hono yields (File, or File-like). */
@@ -75,6 +129,12 @@ function isUploadedFile(value: unknown): value is File {
  *   GET  /api/v1/voices          workspace note list, newest first
  *        — registered BEFORE /:id
  *   GET  /api/v1/voices/:id      note row for status polling
+ *   GET  /api/v1/voices/:id/draft draft payload for review (T3)
+ *   POST /api/v1/voices/:id/confirm approve the draft → transaction
+ *        with origin "voice" (T3, S4)
+ *   POST /api/v1/voices/:id/reject user discard (T3)
+ *   POST /api/v1/voices/:id/retry re-queue a failed note without
+ *        re-uploading the audio (T3)
  *   GET  /api/v1/voices/:id/file stored bytes (interim for signed URLs)
  * Quarantine codes (VOICE_EMPTY / VOICE_TOO_LARGE /
  * VOICE_TYPE_NOT_ALLOWED) arrive as 400 {code, message} envelopes;
@@ -146,6 +206,92 @@ export function registerVoiceRoutes(
   app.get("/api/v1/voices/:id", auth, async (c) => {
     const { workspace } = authContext(c);
     const result = await deps.getVoiceNote.execute(
+      workspace.workspaceId,
+      c.req.param("id"),
+    );
+    if (!result.ok) {
+      throw toHttpError(result.error);
+    }
+    return c.json(result.value);
+  });
+
+  app.get("/api/v1/voices/:id/draft", auth, async (c) => {
+    const { workspace } = authContext(c);
+    const result = await deps.getVoiceDraft.execute(
+      workspace.workspaceId,
+      c.req.param("id"),
+    );
+    if (!result.ok) {
+      throw toHttpError(result.error);
+    }
+    return c.json(result.value);
+  });
+
+  app.post("/api/v1/voices/:id/confirm", auth, async (c) => {
+    const parsed = confirmVoiceSchema.safeParse(
+      await c.req.json().catch(() => undefined),
+    );
+    if (!parsed.success) {
+      throw new HttpError(400, {
+        code: "INVALID_BODY",
+        message: "Invalid voice confirm payload",
+        details: sanitizeZodIssues(parsed.error.issues),
+      });
+    }
+    const idempotencyKey = parsed.data.idempotencyKey;
+    if (!idempotencyKey) {
+      throw new HttpError(400, {
+        code: "IDEMPOTENCY_KEY_REQUIRED",
+        message: "An idempotencyKey is required to confirm a voice draft",
+      });
+    }
+
+    const { caller, workspace } = authContext(c);
+    const result = await deps.confirmVoiceDraft.execute({
+      workspaceId: workspace.workspaceId,
+      voiceNoteId: c.req.param("id"),
+      accountId: parsed.data.accountId,
+      type: parsed.data.type,
+      idempotencyKey,
+      ...(parsed.data.businessDate !== undefined
+        ? { businessDate: parsed.data.businessDate }
+        : {}),
+      ...(parsed.data.currency !== undefined
+        ? { currency: parsed.data.currency }
+        : {}),
+      ...(parsed.data.concept !== undefined
+        ? { concept: parsed.data.concept }
+        : {}),
+      timezone: workspace.timezone,
+      defaultCurrency: workspace.defaultCurrency,
+      splits: parsed.data.splits.map((split) => ({
+        categoryId: split.categoryId ?? null,
+        newCategory: split.newCategory ?? null,
+        amountMinorUnits: split.amountMinorUnits,
+      })),
+      actor: caller.subject,
+    });
+    if (!result.ok) {
+      throw toHttpError(result.error);
+    }
+    return c.json(result.value, 201);
+  });
+
+  app.post("/api/v1/voices/:id/reject", auth, async (c) => {
+    const { workspace } = authContext(c);
+    const result = await deps.rejectVoiceNote.execute(
+      workspace.workspaceId,
+      c.req.param("id"),
+    );
+    if (!result.ok) {
+      throw toHttpError(result.error);
+    }
+    return c.json(result.value);
+  });
+
+  app.post("/api/v1/voices/:id/retry", auth, async (c) => {
+    const { workspace } = authContext(c);
+    const result = await deps.retryVoiceNote.execute(
       workspace.workspaceId,
       c.req.param("id"),
     );
