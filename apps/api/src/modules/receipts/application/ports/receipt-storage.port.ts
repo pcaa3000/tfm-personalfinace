@@ -13,6 +13,12 @@ export interface ReceiptStoragePort {
   save(key: string, bytes: Uint8Array, mimeType: string): Promise<string>;
   /** Reads the object back; null when absent. */
   open(key: string): Promise<Uint8Array | null>;
+  /**
+   * Deletes the object (receipt-retention-30d T2, S3+S4): early user
+   * deletion and the scheduled purge share this. Idempotent — an
+   * already-absent object is a successful delete, not an error.
+   */
+  delete(key: string): Promise<void>;
 }
 
 export const RECEIPT_STORAGE = Symbol("RECEIPT_STORAGE");

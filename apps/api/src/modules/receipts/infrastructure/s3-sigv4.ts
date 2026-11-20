@@ -2,7 +2,7 @@ import { createHash, createHmac } from "node:crypto";
 
 /**
  * Minimal AWS Signature Version 4 signer for single-object S3 requests
- * (PUT/GET). Self-contained so the S3 driver needs no SDK dependency —
+ * (PUT/GET/DELETE). Self-contained so the S3 driver needs no SDK dependency —
  * works for Supabase Storage S3 endpoints and MinIO alike (path-style
  * URLs only).
  */
@@ -43,7 +43,7 @@ export interface SignedRequestHeaders {
  * headers to send. `payload` may be omitted (GET → empty-body hash).
  */
 export function signS3Request(input: {
-  readonly method: "GET" | "PUT";
+  readonly method: "GET" | "PUT" | "DELETE";
   readonly endpoint: string;
   readonly bucket: string;
   readonly key: string;

@@ -16,6 +16,11 @@ import {
   handleReceiptScan,
   type ReceiptScanJob,
 } from "./jobs/receipt-scan.js";
+import {
+  purgeExpiredReceiptMedia,
+  RECEIPT_MEDIA_PURGE_CRON,
+  RECEIPT_MEDIA_PURGE_QUEUE,
+} from "./jobs/purge-receipt-media.js";
 import { DrizzleCategoryValidationAdapter } from "./modules/categorization/index.js";
 import { SystemClock } from "./modules/ledger/infrastructure/system-clock.adapter.js";
 import {
@@ -45,6 +50,7 @@ async function main(): Promise<void> {
   await boss.start();
   await boss.createQueue(LEDGER_EVENTS_QUEUE);
   await boss.createQueue(RECEIPT_SCAN_QUEUE);
+  await boss.createQueue(RECEIPT_MEDIA_PURGE_QUEUE);
 
   await boss.work(LEDGER_EVENTS_QUEUE, async (jobs) => {
     for (const job of jobs) {
@@ -69,6 +75,20 @@ async function main(): Promise<void> {
     for (const job of jobs) {
       await handleReceiptScan(receiptScanDeps, job.data as ReceiptScanJob);
     }
+  });
+
+  // receipt-retention-30d T4 (S4): daily purge of expired media —
+  // pg-boss `schedule` (v12 supports cron schedules) enqueues onto the
+  // purge queue; the handler deletes objects + stamps mediaDeletedAt.
+  const purgeStorage = receiptScanDeps.storage;
+  const purgeClock = new SystemClock();
+  await boss.schedule(RECEIPT_MEDIA_PURGE_QUEUE, RECEIPT_MEDIA_PURGE_CRON);
+  await boss.work(RECEIPT_MEDIA_PURGE_QUEUE, async () => {
+    await purgeExpiredReceiptMedia({
+      db,
+      storage: purgeStorage,
+      clock: purgeClock,
+    });
   });
 
   const timer = setInterval(() => {

@@ -33,6 +33,8 @@ function scanWithStatus(status: ReceiptScanStatus): ReceiptScan {
     error: status === "failed" ? "gemini exploded" : null,
     createdAt: new Date("2026-11-10T12:00:00.000Z"),
     updatedAt: new Date("2026-11-10T12:00:00.000Z"),
+    expiresAt: new Date("2026-12-10T12:00:00.000Z"),
+    mediaDeletedAt: null,
   });
 }
 

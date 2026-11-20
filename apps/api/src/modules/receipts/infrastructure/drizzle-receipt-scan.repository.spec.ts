@@ -119,6 +119,36 @@ describe("DrizzleReceiptScanRepository (integration, real Postgres)", () => {
     expect(found!.updatedAt).toBeInstanceOf(Date);
   });
 
+  it("persists expiresAt (= createdAt + 30d) and mediaDeletedAt (receipt-retention-30d T1, S1+S2)", async () => {
+    const created = new Date("2026-11-10T12:00:00.000Z");
+    const scan = makeScan({ id: "scan-spec-expiry", now: created });
+    await repository.save(scan);
+
+    const found = await repository.findById(
+      workspaceId(WS_A),
+      "scan-spec-expiry",
+    );
+    // Backfill semantics (S2): persisted expiresAt must equal
+    // createdAt + 30 days — the same expression the migration uses.
+    expect(found?.expiresAt).toEqual(
+      new Date(created.getTime() + 30 * 24 * 60 * 60 * 1000),
+    );
+    expect(found?.mediaDeletedAt).toBeNull();
+
+    // markMediaDeleted survives a save/reload round-trip (S3).
+    const deletedAt = new Date("2026-11-20T12:00:00.000Z");
+    found!.markMediaDeleted(deletedAt);
+    await repository.save(found!);
+    const reloaded = await repository.findById(
+      workspaceId(WS_A),
+      "scan-spec-expiry",
+    );
+    expect(reloaded?.mediaDeletedAt).toEqual(deletedAt);
+    expect(reloaded?.expiresAt).toEqual(found?.expiresAt);
+    // CA-012: status/transaction untouched by media deletion.
+    expect(reloaded?.status).toBe("pending");
+  });
+
   it("findById is workspace-scoped: other workspaces and unknown ids get null", async () => {
     await repository.save(makeScan({ id: "scan-spec-scope" }));
 

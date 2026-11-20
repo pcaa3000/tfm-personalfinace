@@ -82,6 +82,19 @@ export class UploadReceiptUseCase {
       // `confirmed` stays returned as-is — the voucher already
       // materialized a transaction, that IS the dedup.
       if (existing.status === "rejected") {
+        // receipt-retention-30d (S3): the stored object was
+        // early-deleted or purged — re-store the SAME bytes under the
+        // ORIGINAL storageKey and clear the marker so the re-enqueued
+        // scan job finds it. The cheap dedup path (media still
+        // present) never touches storage.
+        if (existing.mediaDeletedAt !== null) {
+          await this.storage.save(
+            existing.storageKey,
+            command.bytes,
+            existing.mimeType,
+          );
+          existing.restoreMedia(this.clock.now());
+        }
         existing.resetToPending(this.clock.now());
         await this.scans.save(existing);
         try {

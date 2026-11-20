@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { CategoryNature } from "../../modules/categorization/index.js";
 import type {
   ConfirmReceiptDraftUseCase,
+  DeleteReceiptFileUseCase,
   GetReceiptDraftUseCase,
   GetReceiptFileUseCase,
   GetReceiptScanUseCase,
@@ -25,13 +26,22 @@ import { sanitizeZodIssues } from "../middleware/zod-details.js";
 /** State-transition conflicts on the scan lifecycle (T6). */
 const CONFLICT_CODES = new Set(["RECEIPT_NOT_READY", "RECEIPT_ALREADY_FINAL"]);
 
-/** Same mapping as the other resource routers, plus 409 lifecycle conflicts. */
+/**
+ * receipt-retention-30d T3 (S3): "media gone" answers 410 — deliberately
+ * distinct from the 404 "scan not found" so the web can show a deleted
+ * thumbnail state instead of an error.
+ */
+const GONE_CODES = new Set(["RECEIPT_MEDIA_DELETED"]);
+
+/** Same mapping as the other resource routers, plus 409/410 receipts codes. */
 function toHttpError(error: DomainError): HttpError {
   const status = error.code.endsWith("_NOT_FOUND")
     ? 404
     : CONFLICT_CODES.has(error.code)
       ? 409
-      : 400;
+      : GONE_CODES.has(error.code)
+        ? 410
+        : 400;
   return new HttpError(status, {
     code: error.code,
     message: error.message,
@@ -82,6 +92,7 @@ export interface ReceiptRouteDeps extends AuthDeps {
   readonly listReceiptScans: Pick<ListReceiptScansUseCase, "execute">;
   readonly getReceiptScan: Pick<GetReceiptScanUseCase, "execute">;
   readonly getReceiptFile: Pick<GetReceiptFileUseCase, "execute">;
+  readonly deleteReceiptFile: Pick<DeleteReceiptFileUseCase, "execute">;
   readonly getReceiptDraft: Pick<GetReceiptDraftUseCase, "execute">;
   readonly confirmReceiptDraft: Pick<ConfirmReceiptDraftUseCase, "execute">;
   readonly rejectReceiptScan: Pick<RejectReceiptScanUseCase, "execute">;
@@ -261,5 +272,19 @@ export function registerReceiptRoutes(
       `inline; filename="${result.value.originalFilename.replace(/["\\]/g, "_")}"`,
     );
     return c.body(result.value.bytes as unknown as ArrayBuffer);
+  });
+
+  // receipt-retention-30d T3 (S3, CA-012): early media deletion — 204,
+  // idempotent, workspace-scoped; the scan row/transaction survive.
+  app.delete("/api/v1/receipts/:id/file", auth, async (c) => {
+    const { workspace } = authContext(c);
+    const result = await deps.deleteReceiptFile.execute(
+      workspace.workspaceId,
+      c.req.param("id"),
+    );
+    if (!result.ok) {
+      throw toHttpError(result.error);
+    }
+    return c.body(null, 204);
   });
 }

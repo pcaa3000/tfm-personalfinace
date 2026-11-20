@@ -94,6 +94,8 @@ const LIST_ITEM: ReceiptScanListItem = {
   fileMimeType: "image/jpeg",
   createdAt: "2026-11-10T12:00:00.000Z",
   transactionId: null,
+  expiresAt: "2026-12-10T12:00:00.000Z",
+  mediaDeletedAt: null,
 };
 
 const SCAN_VIEW: ReceiptScanView = {
@@ -107,6 +109,8 @@ const SCAN_VIEW: ReceiptScanView = {
   error: null,
   createdAt: "2026-11-10T12:00:00.000Z",
   updatedAt: "2026-11-10T12:00:00.000Z",
+  expiresAt: "2026-12-10T12:00:00.000Z",
+  mediaDeletedAt: null,
 };
 
 function buildApp(options: {
@@ -147,6 +151,13 @@ function buildApp(options: {
       execute: vi.fn(async (workspaceId: WorkspaceId, id: string) =>
         id === "scan-1"
           ? ok({ bytes: JPEG, mimeType: "image/jpeg", originalFilename: "ticket.jpg" })
+          : err(new DomainError("RECEIPT_NOT_FOUND", "not found")),
+      ),
+    },
+    deleteReceiptFile: {
+      execute: vi.fn(async (workspaceId: WorkspaceId, id: string) =>
+        id === "scan-1"
+          ? ok({ ...SCAN_VIEW, mediaDeletedAt: "2026-11-20T12:00:00.000Z" })
           : err(new DomainError("RECEIPT_NOT_FOUND", "not found")),
       ),
     },
@@ -209,6 +220,7 @@ function buildDedupApp() {
   const storage: ReceiptStoragePort = {
     save: vi.fn(async (key: string) => key),
     open: vi.fn(async () => null),
+    delete: vi.fn(async () => undefined),
   };
   const scans: ReceiptScanRepositoryPort = {
     save: vi.fn(async (scan: ReceiptScan) => {
@@ -436,6 +448,70 @@ describe("GET /api/v1/receipts/:id/file", () => {
     });
 
     expect(res.status).toBe(404);
+  });
+
+  it("maps RECEIPT_MEDIA_DELETED to 410 — media gone is distinct from 404 scan-not-found", async () => {
+    const { app, deps } = buildApp();
+    vi.mocked(deps.getReceiptFile.execute).mockResolvedValueOnce(
+      err(new DomainError("RECEIPT_MEDIA_DELETED", "media deleted")),
+    );
+
+    const res = await app.request("/api/v1/receipts/scan-1/file", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("RECEIPT_MEDIA_DELETED");
+  });
+});
+
+describe("DELETE /api/v1/receipts/:id/file (receipt-retention-30d T3, S3, CA-012)", () => {
+  it("deletes the stored medium and returns 204 — idempotent on repeat", async () => {
+    const { app, deps } = buildApp();
+
+    const first = await app.request("/api/v1/receipts/scan-1/file", {
+      method: "DELETE",
+      headers: { "x-dev-user": "t" },
+    });
+    const second = await app.request("/api/v1/receipts/scan-1/file", {
+      method: "DELETE",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(first.status).toBe(204);
+    expect(second.status).toBe(204);
+    expect(await first.text()).toBe("");
+    expect(deps.deleteReceiptFile.execute).toHaveBeenCalledWith(
+      WS,
+      "scan-1",
+    );
+    expect(deps.deleteReceiptFile.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns 404 for a missing or foreign scan", async () => {
+    const { app } = buildApp();
+
+    const res = await app.request("/api/v1/receipts/nope/file", {
+      method: "DELETE",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("RECEIPT_NOT_FOUND");
+  });
+
+  it("rejects unauthenticated deletes with 401", async () => {
+    const { app, deps } = buildApp({ authenticated: false });
+
+    const res = await app.request("/api/v1/receipts/scan-1/file", {
+      method: "DELETE",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(401);
+    expect(deps.deleteReceiptFile.execute).not.toHaveBeenCalled();
   });
 });
 

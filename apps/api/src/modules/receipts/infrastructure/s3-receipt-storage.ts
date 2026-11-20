@@ -69,4 +69,22 @@ export class S3ReceiptStorage implements ReceiptStoragePort {
     }
     return new Uint8Array(await res.arrayBuffer());
   }
+
+  async delete(key: string): Promise<void> {
+    const { url, headers } = signS3Request({
+      method: "DELETE",
+      endpoint: this.config.endpoint,
+      bucket: this.config.bucket,
+      key,
+      credentials: this.config,
+    });
+    const res = await this.fetchImpl(url, { method: "DELETE", headers });
+    // Idempotent: already-absent media (404) is a successful delete.
+    if (res.status === 404) {
+      return;
+    }
+    if (!res.ok) {
+      throw new Error(`S3 DELETE ${key} failed: ${res.status}`);
+    }
+  }
 }

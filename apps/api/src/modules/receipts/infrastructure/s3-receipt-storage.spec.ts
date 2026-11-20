@@ -80,4 +80,37 @@ describe("S3ReceiptStorage (receipt-scan-drafts T3, D2 s3 driver — SigV4 path-
     });
     expect(await storage2.open("quarantine/ws-1/none.jpg")).toBeNull();
   });
+
+  it("delete() issues a signed DELETE for the object key (receipt-retention-30d T2, S3+S4)", async () => {
+    const { fetchImpl, calls } = fakeFetch(204);
+    const storage = new S3ReceiptStorage({ ...CONFIG, fetch: fetchImpl });
+
+    await storage.delete("quarantine/ws-1/scan-1.jpg");
+
+    expect(calls).toHaveLength(1);
+    const { url, init } = calls[0]!;
+    expect(init.method).toBe("DELETE");
+    expect(url).toBe(
+      "https://storage.example.com/receipts-quarantine/quarantine/ws-1/scan-1.jpg",
+    );
+    const headers = new Headers(init.headers);
+    expect(headers.get("authorization")).toMatch(/^AWS4-HMAC-SHA256 /);
+  });
+
+  it("delete() tolerates 404 (already-gone media) but throws on other errors", async () => {
+    const gone = fakeFetch(404);
+    const storage = new S3ReceiptStorage({ ...CONFIG, fetch: gone.fetchImpl });
+    await expect(
+      storage.delete("quarantine/ws-1/none.jpg"),
+    ).resolves.toBeUndefined();
+
+    const broken = fakeFetch(500);
+    const storage2 = new S3ReceiptStorage({
+      ...CONFIG,
+      fetch: broken.fetchImpl,
+    });
+    await expect(
+      storage2.delete("quarantine/ws-1/scan-1.jpg"),
+    ).rejects.toThrow();
+  });
 });

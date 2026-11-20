@@ -64,6 +64,7 @@ import { UploadReceiptUseCase } from "../modules/receipts/application/upload-rec
 import { GetReceiptScanUseCase } from "../modules/receipts/application/get-receipt-scan.use-case.js";
 import { ListReceiptScansUseCase } from "../modules/receipts/application/list-receipt-scans.use-case.js";
 import { GetReceiptFileUseCase } from "../modules/receipts/application/get-receipt-file.use-case.js";
+import { DeleteReceiptFileUseCase } from "../modules/receipts/application/delete-receipt-file.use-case.js";
 import { GetReceiptDraftUseCase } from "../modules/receipts/application/get-receipt-draft.use-case.js";
 import { ConfirmReceiptDraftUseCase } from "../modules/receipts/application/confirm-receipt-draft.use-case.js";
 import { RejectReceiptScanUseCase } from "../modules/receipts/application/reject-receipt-scan.use-case.js";
@@ -237,6 +238,12 @@ export function buildApp(env: AppEnv): BuiltApp {
     listReceiptScans: new ListReceiptScansUseCase(receiptScans),
     getReceiptScan: new GetReceiptScanUseCase(receiptScans),
     getReceiptFile: new GetReceiptFileUseCase(receiptScans, receiptStorage),
+    // receipt-retention-30d T3 (S3): early media deletion.
+    deleteReceiptFile: new DeleteReceiptFileUseCase(
+      receiptScans,
+      receiptStorage,
+      clock,
+    ),
     // receipt draft review + confirm (receipt-scan-drafts T6);
     // T13 (S12): read-time semantic duplicates over ledger expenses.
     getReceiptDraft: new GetReceiptDraftUseCase(

@@ -80,6 +80,7 @@ export {
   GetReceiptFileUseCase,
   type ReceiptFileView,
 } from "./application/get-receipt-file.use-case.js";
+export { DeleteReceiptFileUseCase } from "./application/delete-receipt-file.use-case.js";
 export {
   toReceiptScanListItem,
   toReceiptScanView,

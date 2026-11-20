@@ -231,6 +231,9 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     getReceiptFile: {
       execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },
+    deleteReceiptFile: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
     getReceiptDraft: {
       execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },

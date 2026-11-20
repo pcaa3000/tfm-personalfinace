@@ -235,6 +235,14 @@ export const receiptScans = pgTable(
     // have no hash and never collide (NULLs don't match in unique indexes).
     fileHash: text("fileHash"),
     error: text("error"),
+    // receipt-retention-30d T1 (S1+S2): fixed 30-day media retention —
+    // persisted at creation (createdAt + 30d) and backfilled for legacy
+    // rows by migration 0007; never extended by configuration.
+    expiresAt: timestamp("expiresAt", { mode: "date", precision: 3 })
+      .notNull(),
+    // Early/purged media deletion (S3+S4): the storage object is gone;
+    // the scan row and its transaction survive (CA-012).
+    mediaDeletedAt: timestamp("mediaDeletedAt", { mode: "date", precision: 3 }),
     createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
       .notNull()
       .defaultNow(),

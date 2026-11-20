@@ -23,6 +23,14 @@ export const RECEIPT_SCAN_STATUSES = [
 
 export type ReceiptScanStatus = (typeof RECEIPT_SCAN_STATUSES)[number];
 
+/**
+ * Fixed media retention (receipt-retention-30d T1, S1): 30 days from
+ * capture — a domain constant, deliberately not a configuration knob
+ * (RF-071: fixed and not configurable above 30 days).
+ */
+export const RECEIPT_MEDIA_RETENTION_DAYS = 30;
+const RETENTION_MS = RECEIPT_MEDIA_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
 /** States the scan never leaves: user-confirmed, user-rejected, pipeline-dead. */
 export const RECEIPT_TERMINAL_STATUSES: readonly ReceiptScanStatus[] = [
   "confirmed",
@@ -61,6 +69,10 @@ export interface ReceiptScanState {
   readonly error: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  /** Fixed media expiry (S1+S2): `createdAt + 30 days`, persisted. */
+  readonly expiresAt: Date;
+  /** Set when the stored object was deleted early or purged (S3+S4). */
+  readonly mediaDeletedAt: Date | null;
 }
 
 const FILENAME_MAX_LENGTH = 255;
@@ -94,6 +106,8 @@ export class ReceiptScan {
     private _error: string | null,
     readonly createdAt: Date,
     private _updatedAt: Date,
+    readonly expiresAt: Date,
+    private _mediaDeletedAt: Date | null,
   ) {}
 
   get status(): ReceiptScanStatus {
@@ -123,6 +137,10 @@ export class ReceiptScan {
 
   get updatedAt(): Date {
     return this._updatedAt;
+  }
+
+  get mediaDeletedAt(): Date | null {
+    return this._mediaDeletedAt;
   }
 
   /**
@@ -185,8 +203,32 @@ export class ReceiptScan {
         null,
         input.now,
         input.now,
+        // S1+S2: media expiry stamped at capture — createdAt + 30 days.
+        new Date(input.now.getTime() + RETENTION_MS),
+        null,
       ),
     );
+  }
+
+  /**
+   * T3 (S3, CA-012): the stored object is gone — early user deletion or
+   * the scheduled purge — while the scan row and its confirmed
+   * transaction survive untouched.
+   */
+  markMediaDeleted(now: Date): void {
+    this._mediaDeletedAt = now;
+    this._updatedAt = now;
+  }
+
+  /**
+   * Dedup re-upload after early delete/purge (receipt-retention-30d S3):
+   * the SAME bytes were re-stored under the original `storageKey`, so
+   * the deletion marker clears and the re-scan finds the object. The
+   * ONLY path that un-sets `mediaDeletedAt`.
+   */
+  restoreMedia(now: Date): void {
+    this._mediaDeletedAt = null;
+    this._updatedAt = now;
   }
 
   /**
@@ -265,6 +307,8 @@ export class ReceiptScan {
       state.error,
       state.createdAt,
       state.updatedAt,
+      state.expiresAt,
+      state.mediaDeletedAt,
     );
   }
 }

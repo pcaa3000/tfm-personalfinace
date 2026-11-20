@@ -35,11 +35,23 @@ export class GetReceiptFileUseCase {
         new DomainError("RECEIPT_NOT_FOUND", `Receipt scan not found: ${id}`),
       );
     }
+    // receipt-retention-30d T3 (S3): media deleted early or purged —
+    // a distinct code mapped to 410 so clients tell "media gone" apart
+    // from "scan not found" (404). Storage drift (object absent without
+    // a marker) reads the same way: the medium is gone either way.
+    if (scan.mediaDeletedAt !== null) {
+      return err(
+        new DomainError(
+          "RECEIPT_MEDIA_DELETED",
+          `Media deleted for receipt scan: ${id}`,
+        ),
+      );
+    }
     const bytes = await this.storage.open(scan.storageKey);
     if (bytes === null) {
       return err(
         new DomainError(
-          "RECEIPT_FILE_MISSING",
+          "RECEIPT_MEDIA_DELETED",
           `Stored object missing for receipt scan: ${id}`,
         ),
       );

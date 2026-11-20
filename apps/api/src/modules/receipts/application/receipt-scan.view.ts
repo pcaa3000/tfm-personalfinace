@@ -16,6 +16,10 @@ export interface ReceiptScanView {
   readonly error: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** ISO instant the stored medium expires (fixed capture + 30d, S2). */
+  readonly expiresAt: string;
+  /** ISO instant the medium was deleted — null while it exists (S3). */
+  readonly mediaDeletedAt: string | null;
 }
 
 /**
@@ -30,6 +34,10 @@ export interface ReceiptScanListItem {
   readonly fileMimeType: string;
   readonly createdAt: string;
   readonly transactionId: string | null;
+  /** ISO instant the stored medium expires (fixed capture + 30d, S2). */
+  readonly expiresAt: string;
+  /** ISO instant the medium was deleted — null while it exists (S3). */
+  readonly mediaDeletedAt: string | null;
 }
 
 export function toReceiptScanListItem(scan: ReceiptScan): ReceiptScanListItem {
@@ -40,6 +48,8 @@ export function toReceiptScanListItem(scan: ReceiptScan): ReceiptScanListItem {
     fileMimeType: scan.mimeType,
     createdAt: scan.createdAt.toISOString(),
     transactionId: scan.transactionId,
+    expiresAt: scan.expiresAt.toISOString(),
+    mediaDeletedAt: scan.mediaDeletedAt?.toISOString() ?? null,
   };
 }
 
@@ -55,5 +65,7 @@ export function toReceiptScanView(scan: ReceiptScan): ReceiptScanView {
     error: scan.error,
     createdAt: scan.createdAt.toISOString(),
     updatedAt: scan.updatedAt.toISOString(),
+    expiresAt: scan.expiresAt.toISOString(),
+    mediaDeletedAt: scan.mediaDeletedAt?.toISOString() ?? null,
   };
 }

@@ -29,6 +29,7 @@ function makeDeps() {
   const storage: ReceiptStoragePort = {
     save: vi.fn(async (key: string) => key),
     open: vi.fn(async () => null),
+    delete: vi.fn(async () => undefined),
   };
   const scans: ReceiptScanRepositoryPort = {
     save: vi.fn(async (scan: ReceiptScan) => {
@@ -67,6 +68,8 @@ function makeDeps() {
 function storedScan(overrides: Partial<{
   id: string;
   status: "pending" | "failed" | "rejected";
+  /** Media early-deleted/purged (receipt-retention-30d S3). */
+  mediaDeleted: boolean;
 }> = {}): ReceiptScan {
   const scan = ReceiptScan.quarantine({
     id: overrides.id ?? "scan-existing",
@@ -85,6 +88,9 @@ function storedScan(overrides: Partial<{
   }
   if (overrides.status === "rejected") {
     scan.value.markRejected(NOW);
+  }
+  if (overrides.mediaDeleted) {
+    scan.value.markMediaDeleted(new Date("2026-11-09T12:00:00.000Z"));
   }
   return scan.value;
 }
@@ -114,6 +120,12 @@ describe("UploadReceiptUseCase — quarantine gate (receipt-scan-drafts T3, S1+S
     expect(view.mimeType).toBe("image/jpeg");
     expect(view.sizeBytes).toBe(JPEG.byteLength);
     expect(view.originalFilename).toBe("ticket.jpg");
+    // receipt-retention-30d T1 (S1+S2): the view serializes the fixed
+    // 30-day expiry and a null mediaDeletedAt for fresh media.
+    expect(view.expiresAt).toBe(
+      new Date(NOW.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    );
+    expect(view.mediaDeletedAt).toBeNull();
 
     // Bytes persisted under a quarantine key derived from the sniffed mime,
     // not from the client-supplied extension.
@@ -285,6 +297,39 @@ describe("UploadReceiptUseCase — exact-hash dedup (T13, S12)", () => {
       WS.value,
     );
     expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it("a rejected dedup hit with media deleted re-stores the bytes under the original key and clears the marker (receipt-retention-30d S3)", async () => {
+    const { useCase, storage, scans, fileHashes, dispatcher } = makeDeps();
+    const rejected = storedScan({
+      id: "scan-rej-media",
+      status: "rejected",
+      mediaDeleted: true,
+    });
+    vi.mocked(fileHashes.findByFileHash).mockResolvedValueOnce(rejected);
+
+    const result = await useCase.execute(command());
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.id).toBe("scan-rej-media");
+      expect(result.value.status).toBe("pending");
+      expect(result.value.mediaDeletedAt).toBeNull();
+    }
+    // The object is gone (early delete/purge): re-store the SAME bytes
+    // under the ORIGINAL storageKey so the re-enqueued scan job finds it.
+    expect(storage.save).toHaveBeenCalledWith(
+      "quarantine/ws-1/scan-rej-media.jpg",
+      JPEG,
+      "image/jpeg",
+    );
+    expect(rejected.mediaDeletedAt).toBeNull();
+    expect(rejected.status).toBe("pending");
+    expect(scans.save).toHaveBeenCalledWith(rejected);
+    expect(dispatcher.enqueueScan).toHaveBeenCalledWith(
+      "scan-rej-media",
+      WS.value,
+    );
   });
 
   it("a rejected dedup hit whose re-enqueue fails is marked failed — never stuck pending (R4-RETRY-LOST-JOB)", async () => {

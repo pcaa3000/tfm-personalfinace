@@ -39,13 +39,13 @@ describe("workspace locale removal migration (S1/T3)", () => {
     expect(sql).not.toMatch(/-->|CREATE|INSERT|UPDATE|DELETE|DROP TABLE|ADD COLUMN/);
   });
 
-  it("journal registers 0006 as the head migration", () => {
+  it("journal registers 0006 (no longer head since receipt-retention 0007)", () => {
     const { entries } = JSON.parse(read("meta/_journal.json")) as {
       entries: { idx: number; tag: string; when: number }[];
     };
-    expect(entries.at(-1)).toMatchObject({ idx: 6, tag: "0006_spooky_luminals" });
+    expect(entries[6]).toMatchObject({ idx: 6, tag: "0006_spooky_luminals" });
     expect(entries.map((e) => e.idx)).toEqual(entries.map((_, i) => i));
-    expect(entries.at(-1)?.when).toBeGreaterThan(entries.at(-2)?.when ?? 0);
+    expect(entries[6]?.when).toBeGreaterThan(entries[5]?.when ?? 0);
   });
 
   it("snapshot 0006 drops only locale from the workspace table", () => {

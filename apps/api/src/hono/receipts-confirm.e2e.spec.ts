@@ -469,10 +469,15 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
     const itemsAfter = after.body as unknown as typeof itemsBefore;
     const confirmedItem = itemsAfter.find((item) => item.id === scanId);
     expect(confirmedItem).toBeDefined();
+    // receipt-retention-30d T1 (S2): the list contract gained
+    // expiresAt/mediaDeletedAt — the key set is asserted exactly so a
+    // shape drift fails here.
     expect(Object.keys(confirmedItem!).sort()).toEqual([
       "createdAt",
+      "expiresAt",
       "fileMimeType",
       "id",
+      "mediaDeletedAt",
       "originalFilename",
       "status",
       "transactionId",

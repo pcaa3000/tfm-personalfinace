@@ -67,6 +67,8 @@ function scanState(status: ReceiptScanStatus): ReceiptScanState {
     error: null,
     createdAt: NOW,
     updatedAt: NOW,
+    expiresAt: new Date(NOW.getTime() + 30 * 24 * 60 * 60 * 1000),
+    mediaDeletedAt: null,
   };
 }
 
@@ -92,6 +94,7 @@ function makeDeps(options: {
     open: vi.fn(async () =>
       "bytes" in options ? options.bytes! : Uint8Array.from([1, 2, 3]),
     ),
+    delete: vi.fn(async () => undefined),
   };
   const categories: CategoryCatalogPort = {
     listForWorkspace: vi.fn(async () => CATALOG),

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { isAbsolute, join, normalize, resolve, sep } from "node:path";
 
 import type { ReceiptStoragePort } from "../application/ports/receipt-storage.port.js";
@@ -38,6 +38,19 @@ export class LocalReceiptStorage implements ReceiptStoragePort {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return null;
+      }
+      throw error;
+    }
+  }
+
+  async delete(key: string): Promise<void> {
+    const path = this.resolveKey(key);
+    try {
+      await unlink(path);
+    } catch (error) {
+      // Idempotent purge/delete: already-absent media is a success.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return;
       }
       throw error;
     }

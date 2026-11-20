@@ -33,6 +33,8 @@ function toState(row: Row): ReceiptScanState {
     error: row.error,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    expiresAt: row.expiresAt,
+    mediaDeletedAt: row.mediaDeletedAt,
   };
 }
 
@@ -70,6 +72,8 @@ export class DrizzleReceiptScanRepository
         error: scan.error,
         createdAt: scan.createdAt,
         updatedAt: scan.updatedAt,
+        expiresAt: scan.expiresAt,
+        mediaDeletedAt: scan.mediaDeletedAt,
       })
       .onConflictDoUpdate({
         target: receiptScans.id,
@@ -86,6 +90,9 @@ export class DrizzleReceiptScanRepository
           transactionId: scan.transactionId,
           error: scan.error,
           updatedAt: scan.updatedAt,
+          // expiresAt is immutable (fixed at capture) — only the media
+          // deletion marker is mutable state on this row.
+          mediaDeletedAt: scan.mediaDeletedAt,
         },
       });
   }

@@ -48,6 +48,9 @@ describe("ListReceiptScansUseCase (receipt-review-link T1, S1)", () => {
         fileMimeType: "image/jpeg",
         createdAt: "2026-11-10T12:00:00.000Z",
         transactionId: null,
+        // receipt-retention-30d T1 (S2): fixed capture + 30d, live media.
+        expiresAt: "2026-12-10T12:00:00.000Z",
+        mediaDeletedAt: null,
       },
       {
         id: "scan-confirmed",
@@ -56,6 +59,8 @@ describe("ListReceiptScansUseCase (receipt-review-link T1, S1)", () => {
         fileMimeType: "image/jpeg",
         createdAt: "2026-11-10T12:00:00.000Z",
         transactionId: "trx-9",
+        expiresAt: "2026-12-10T12:00:00.000Z",
+        mediaDeletedAt: null,
       },
     ]);
   });

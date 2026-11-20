@@ -58,4 +58,32 @@ describe("LocalReceiptStorage (receipt-scan-drafts T3, D2 local driver)", () => 
       storage.save(key, Uint8Array.from([1]), "image/jpeg"),
     ).rejects.toThrow();
   });
+
+  it("delete() removes the stored object (receipt-retention-30d T2, S3+S4)", async () => {
+    const root = await makeRoot();
+    const storage = new LocalReceiptStorage(root);
+    await storage.save(
+      "quarantine/ws-1/scan-1.jpg",
+      Uint8Array.from([1, 2, 3]),
+      "image/jpeg",
+    );
+
+    await storage.delete("quarantine/ws-1/scan-1.jpg");
+
+    expect(await storage.open("quarantine/ws-1/scan-1.jpg")).toBeNull();
+  });
+
+  it("delete() tolerates a missing object (idempotent purge of gone media)", async () => {
+    const storage = new LocalReceiptStorage(await makeRoot());
+
+    await expect(
+      storage.delete("quarantine/ws-1/missing.jpg"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("delete() rejects traversal keys — deletes never escape the root either", async () => {
+    const storage = new LocalReceiptStorage(await makeRoot());
+
+    await expect(storage.delete("../escape.jpg")).rejects.toThrow();
+  });
 });
