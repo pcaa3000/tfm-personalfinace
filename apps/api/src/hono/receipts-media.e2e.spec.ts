@@ -307,9 +307,9 @@ describe("receipt media deletion e2e (receipt-retention-30d T3, S3, CA-012)", ()
 
     const list = await json("/api/v1/receipts", { headers: ALICE });
     expect(list.status).toBe(200);
-    const item = (list.body as unknown as Array<Record<string, unknown>>).find(
-      (i) => i.id === scanId,
-    );
+    const item = (
+      list.body as unknown as { items: Array<Record<string, unknown>> }
+    ).items.find((i) => i.id === scanId);
     expect(item).toBeDefined();
     expect(typeof item!.expiresAt).toBe("string");
     expect(typeof item!.mediaDeletedAt).toBe("string");

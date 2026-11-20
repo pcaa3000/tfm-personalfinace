@@ -40,6 +40,9 @@ import { ok, WorkspaceId } from "../modules/shared-kernel/index.js";
 const MARKER = "|e2e-rcpt-";
 const ALICE = { "x-dev-user": "e2e-rcpt-alice" };
 const BOB = { "x-dev-user": "e2e-rcpt-bob" };
+// T5 (S4): a fresh identity → a workspace holding ONLY this spec's
+// scans, so cursor walks end at a deterministic nextCursor=null.
+const CAROL = { "x-dev-user": "e2e-rcpt-carol" };
 
 const JPEG = Uint8Array.from([
   0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
@@ -428,16 +431,21 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
     const wsId = await workspaceIdOf(ALICE);
 
     // Before confirm the scan is listed with a null transactionId.
+    // T5 (S4): the list is a paginated envelope, not a bare array.
     const before = await json("/api/v1/receipts", { headers: ALICE });
     expect(before.status).toBe(200);
-    const itemsBefore = before.body as unknown as Array<{
-      id: string;
-      status: string;
-      originalFilename: string;
-      fileMimeType: string;
-      createdAt: string;
-      transactionId: string | null;
-    }>;
+    const pageBefore = before.body as unknown as {
+      items: Array<{
+        id: string;
+        status: string;
+        originalFilename: string;
+        fileMimeType: string;
+        createdAt: string;
+        transactionId: string | null;
+      }>;
+      nextCursor: string | null;
+    };
+    const itemsBefore = pageBefore.items;
     expect(Array.isArray(itemsBefore)).toBe(true);
     const pendingItem = itemsBefore.find((item) => item.id === scanId);
     expect(pendingItem).toBeDefined();
@@ -466,7 +474,7 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
 
     // After confirm the same list item carries the transaction link.
     const after = await json("/api/v1/receipts", { headers: ALICE });
-    const itemsAfter = after.body as unknown as typeof itemsBefore;
+    const itemsAfter = (after.body as unknown as typeof pageBefore).items;
     const confirmedItem = itemsAfter.find((item) => item.id === scanId);
     expect(confirmedItem).toBeDefined();
     // receipt-retention-30d T1 (S2): the list contract gained
@@ -490,10 +498,62 @@ describe("receipt draft review + confirm e2e (T6, S2+S4+S7+S10)", () => {
       transactionId: transaction.id,
     });
 
-    // Workspace isolation: BOB has no scans and sees an empty list.
+    // Workspace isolation: BOB has no scans and sees an empty page.
     const foreign = await json("/api/v1/receipts", { headers: BOB });
     expect(foreign.status).toBe(200);
-    expect(foreign.body).toEqual([]);
+    expect(foreign.body).toEqual({ items: [], nextCursor: null });
+  });
+
+  it("GET /api/v1/receipts paginates with an opaque cursor — page 2 continues without overlap and ends nextCursor=null (receipt-review-link T5, S4)", async () => {
+    // CAROL's workspace holds exactly the three scans uploaded here.
+    const uploaded: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const upload = await uploadReceipt(CAROL);
+      expect(upload.status).toBe(201);
+      uploaded.push(upload.body.id as string);
+    }
+
+    const page1 = await json("/api/v1/receipts?limit=2", { headers: CAROL });
+    expect(page1.status).toBe(200);
+    const first = page1.body as unknown as {
+      items: Array<{ id: string; createdAt: string }>;
+      nextCursor: string | null;
+    };
+    expect(first.items).toHaveLength(2);
+    expect(typeof first.nextCursor).toBe("string");
+
+    const page2 = await json(
+      `/api/v1/receipts?limit=2&cursor=${encodeURIComponent(first.nextCursor!)}`,
+      { headers: CAROL },
+    );
+    expect(page2.status).toBe(200);
+    const second = page2.body as unknown as typeof first;
+    expect(second.items).toHaveLength(1);
+    expect(second.nextCursor).toBeNull();
+
+    // No overlap, no gaps: the walk covers exactly the three uploads,
+    // newest-first (upload order reversed under equal-ms createdAt is
+    // still a total order via the id tiebreak — assert disjoint sets).
+    const walked = [...first.items, ...second.items].map((i) => i.id);
+    expect(new Set(walked).size).toBe(3);
+    expect([...walked].sort()).toEqual([...uploaded].sort());
+    const stamps = [...first.items, ...second.items].map((i) =>
+      Date.parse(i.createdAt),
+    );
+    expect(stamps).toEqual([...stamps].sort((a, b) => b - a));
+
+    // Pinned validation: bad cursor → 400 INVALID_CURSOR; bad limit →
+    // 400 INVALID_QUERY (never clamped, never silently empty).
+    const badCursor = await json("/api/v1/receipts?cursor=%%%", {
+      headers: CAROL,
+    });
+    expect(badCursor.status).toBe(400);
+    expect((badCursor.body as { code: string }).code).toBe("INVALID_CURSOR");
+    const badLimit = await json("/api/v1/receipts?limit=0", {
+      headers: CAROL,
+    });
+    expect(badLimit.status).toBe(400);
+    expect((badLimit.body as { code: string }).code).toBe("INVALID_QUERY");
   });
 
   it("replaying the same confirm returns the same transaction without duplicates", async () => {

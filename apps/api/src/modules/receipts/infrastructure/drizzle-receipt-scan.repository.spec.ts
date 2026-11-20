@@ -13,7 +13,10 @@ const DATABASE_URL =
 
 const WS_A = "receipt-repo-spec-a";
 const WS_B = "receipt-repo-spec-b";
-const WORKSPACES = [WS_A, WS_B];
+// receipt-review-link T5 (S4): a dedicated workspace so keyset pages
+// see ONLY this spec's rows — leftover WS_A scans would interleave.
+const WS_PAGES = "receipt-repo-spec-pages";
+const WORKSPACES = [WS_A, WS_B, WS_PAGES];
 
 function workspaceId(value: string): WorkspaceId {
   const id = WorkspaceId.create(value);
@@ -213,19 +216,92 @@ describe("DrizzleReceiptScanRepository (integration, real Postgres)", () => {
       makeScan({ id: "scan-list-b", workspaceId: workspaceId(WS_B) }),
     );
 
-    const listed = await repository.listByWorkspace(workspaceId(WS_A));
+    const listed = await repository.listByWorkspace(workspaceId(WS_A), {
+      limit: 50,
+    });
 
-    // Only WS_A rows, newest first.
-    expect(listed.every((s) => s.workspaceId.value === WS_A)).toBe(true);
-    expect(listed.some((s) => s.id === "scan-list-b")).toBe(false);
-    const interest = listed
+    // Only WS_A rows, newest first, no next page at this limit.
+    expect(listed.hasMore).toBe(false);
+    expect(listed.scans.every((s) => s.workspaceId.value === WS_A)).toBe(true);
+    expect(listed.scans.some((s) => s.id === "scan-list-b")).toBe(false);
+    const interest = listed.scans
       .filter((s) => ["scan-list-older", "scan-list-newer"].includes(s.id))
       .map((s) => s.id);
     expect(interest).toEqual(["scan-list-newer", "scan-list-older"]);
     // The persisted transaction link survives reconstitution.
-    const newerListed = listed.find((s) => s.id === "scan-list-newer");
+    const newerListed = listed.scans.find((s) => s.id === "scan-list-newer");
     expect(newerListed?.status).toBe("confirmed");
     expect(newerListed?.transactionId).toBe("trx-list-1");
+  });
+
+  it("paginates with a (createdAt, id) keyset — no overlap, no gaps, ends hasMore=false (receipt-review-link T5, S4)", async () => {
+    const ws = workspaceId(WS_PAGES);
+    // Two rows SHARE a createdAt on purpose: only the id tiebreak makes
+    // the keyset total — an offset or createdAt-only cursor would skip
+    // or repeat one of them.
+    const seeds: Array<{ id: string; now: string }> = [
+      { id: "page-e", now: "2026-11-10T15:00:00.000Z" },
+      { id: "page-d", now: "2026-11-10T14:00:00.000Z" },
+      { id: "page-c", now: "2026-11-10T13:00:00.000Z" },
+      { id: "page-b", now: "2026-11-10T13:00:00.000Z" },
+      { id: "page-a", now: "2026-11-10T12:00:00.000Z" },
+    ];
+    for (const seed of seeds) {
+      await repository.save(
+        makeScan({
+          id: seed.id,
+          workspaceId: ws,
+          storageKey: `quarantine/${WS_PAGES}/${seed.id}.jpg`,
+          now: new Date(seed.now),
+        }),
+      );
+    }
+
+    const page1 = await repository.listByWorkspace(ws, { limit: 2 });
+    expect(page1.scans.map((s) => s.id)).toEqual(["page-e", "page-d"]);
+    expect(page1.hasMore).toBe(true);
+
+    const last1 = page1.scans.at(-1)!;
+    const page2 = await repository.listByWorkspace(ws, {
+      limit: 2,
+      after: { createdAt: last1.createdAt, id: last1.id },
+    });
+    // Same-instant rows ordered by id desc: page-c then page-b.
+    expect(page2.scans.map((s) => s.id)).toEqual(["page-c", "page-b"]);
+    expect(page2.hasMore).toBe(true);
+
+    const last2 = page2.scans.at(-1)!;
+    const page3 = await repository.listByWorkspace(ws, {
+      limit: 2,
+      after: { createdAt: last2.createdAt, id: last2.id },
+    });
+    expect(page3.scans.map((s) => s.id)).toEqual(["page-a"]);
+    expect(page3.hasMore).toBe(false);
+
+    // No overlap and no gaps across the walk — every seeded row once.
+    const walked = [
+      ...page1.scans,
+      ...page2.scans,
+      ...page3.scans,
+    ].map((s) => s.id);
+    expect(new Set(walked).size).toBe(walked.length);
+    expect(walked).toEqual(["page-e", "page-d", "page-c", "page-b", "page-a"]);
+
+    // A cursor past the end yields an empty page, still workspace-scoped.
+    const tail = await repository.listByWorkspace(ws, {
+      limit: 2,
+      after: { createdAt: last2.createdAt, id: last2.id },
+    });
+    const beyond = await repository.listByWorkspace(ws, {
+      limit: 2,
+      after: {
+        createdAt: page3.scans.at(-1)!.createdAt,
+        id: page3.scans.at(-1)!.id,
+      },
+    });
+    expect(tail.scans).toHaveLength(1);
+    expect(beyond.scans).toHaveLength(0);
+    expect(beyond.hasMore).toBe(false);
   });
 
   it("UNIQUE(workspaceId, fileHash) rejects a second row with the same hash", async () => {

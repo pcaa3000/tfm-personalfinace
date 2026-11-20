@@ -221,7 +221,9 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     rejectReceiptScan: {
       execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },
-    listReceiptScans: { execute: vi.fn(async () => []) },
+    listReceiptScans: {
+      execute: vi.fn(async () => ({ items: [], nextCursor: null })),
+    },
     retryReceiptScan: {
       execute: vi.fn(async () => err(new DomainError("X", "x"))),
     },

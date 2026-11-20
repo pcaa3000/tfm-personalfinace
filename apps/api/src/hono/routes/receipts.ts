@@ -2,16 +2,18 @@ import type { Hono } from "hono";
 import { z } from "zod";
 
 import type { CategoryNature } from "../../modules/categorization/index.js";
-import type {
-  ConfirmReceiptDraftUseCase,
-  DeleteReceiptFileUseCase,
-  GetReceiptDraftUseCase,
-  GetReceiptFileUseCase,
-  GetReceiptScanUseCase,
-  ListReceiptScansUseCase,
-  RejectReceiptScanUseCase,
-  RetryReceiptScanUseCase,
-  UploadReceiptUseCase,
+import {
+  decodeReceiptScanCursor,
+  type ConfirmReceiptDraftUseCase,
+  type DeleteReceiptFileUseCase,
+  type GetReceiptDraftUseCase,
+  type GetReceiptFileUseCase,
+  type GetReceiptScanUseCase,
+  type ListReceiptScansUseCase,
+  type ReceiptScanCursor,
+  type RejectReceiptScanUseCase,
+  type RetryReceiptScanUseCase,
+  type UploadReceiptUseCase,
 } from "../../modules/receipts/index.js";
 import { DomainError } from "../../modules/shared-kernel/index.js";
 import {
@@ -76,6 +78,18 @@ const confirmSplitSchema = z
   .refine((split) => !(split.categoryId && split.newCategory), {
     message: "Provide either categoryId or newCategory, not both",
   });
+
+/**
+ * receipt-review-link T5 (S4): cursor-paginated list. `limit` is
+ * pinned to 1..100 with default 50 — out-of-range/non-numeric values
+ * are rejected (400 INVALID_QUERY), never clamped. `cursor` is an
+ * opaque keyset token; a malformed one is rejected (400
+ * INVALID_CURSOR), never treated as an empty page.
+ */
+const listReceiptsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.string().min(1).max(512).optional(),
+});
 
 const confirmReceiptSchema = z.object({
   accountId: z.string().min(1),
@@ -152,11 +166,37 @@ export function registerReceiptRoutes(
   });
 
   // receipt-review-link T1 (S1): the exact-path GET must be registered
-  // before /:id so "list" is not captured as a scan id.
+  // before /:id so "list" is not captured as a scan id. T5 (S4):
+  // {items, nextCursor} keyset page — breaking change vs the bare array.
   app.get("/api/v1/receipts", auth, async (c) => {
+    const parsed = listReceiptsQuerySchema.safeParse(c.req.query());
+    if (!parsed.success) {
+      throw new HttpError(400, {
+        code: "INVALID_QUERY",
+        message: "Invalid receipt list query",
+        details: sanitizeZodIssues(parsed.error.issues),
+      });
+    }
+    let after: ReceiptScanCursor | undefined;
+    if (parsed.data.cursor !== undefined) {
+      const decoded = decodeReceiptScanCursor(parsed.data.cursor);
+      if (!decoded) {
+        throw new HttpError(400, {
+          code: "INVALID_CURSOR",
+          message: "Invalid receipts cursor",
+        });
+      }
+      after = decoded;
+    }
+
     const { workspace } = authContext(c);
-    const items = await deps.listReceiptScans.execute(workspace.workspaceId);
-    return c.json(items);
+    const page = await deps.listReceiptScans.execute(
+      workspace.workspaceId,
+      after === undefined
+        ? { limit: parsed.data.limit }
+        : { limit: parsed.data.limit, after },
+    );
+    return c.json(page);
   });
 
   app.get("/api/v1/receipts/:id", auth, async (c) => {

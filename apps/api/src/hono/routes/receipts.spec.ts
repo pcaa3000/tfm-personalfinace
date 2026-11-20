@@ -11,6 +11,7 @@ import {
 import {
   CryptoFileHasher,
   UploadReceiptUseCase,
+  encodeReceiptScanCursor,
   type ConfirmReceiptDraftCommand,
   type ConfirmReceiptDraftResult,
   type ReceiptDraftPayload,
@@ -18,6 +19,7 @@ import {
   type ReceiptScan,
   type ReceiptScanDispatcher,
   type ReceiptScanListItem,
+  type ReceiptScanListPage,
   type ReceiptScanRepositoryPort,
   type ReceiptScanView,
   type ReceiptStoragePort,
@@ -140,7 +142,12 @@ function buildApp(options: {
       ),
     },
     listReceiptScans: {
-      execute: vi.fn(async (_workspaceId: WorkspaceId) => [LIST_ITEM]),
+      execute: vi.fn(
+        async (_workspaceId: WorkspaceId): Promise<ReceiptScanListPage> => ({
+          items: [LIST_ITEM],
+          nextCursor: null,
+        }),
+      ),
     },
     getReceiptScan: {
       execute: vi.fn(async (workspaceId: WorkspaceId, id: string) =>
@@ -366,8 +373,8 @@ describe("POST /api/v1/receipts (receipt-scan-drafts T3, S1+S9)", () => {
   });
 });
 
-describe("GET /api/v1/receipts (receipt-review-link T1, S1)", () => {
-  it("returns the workspace scans as list items", async () => {
+describe("GET /api/v1/receipts (receipt-review-link T1, S1; T5, S4)", () => {
+  it("returns a {items, nextCursor} page with the default limit 50", async () => {
     const { app, deps } = buildApp();
 
     const res = await app.request("/api/v1/receipts", {
@@ -375,8 +382,91 @@ describe("GET /api/v1/receipts (receipt-review-link T1, S1)", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([LIST_ITEM]);
-    expect(deps.listReceiptScans.execute).toHaveBeenCalledWith(WS);
+    expect(await res.json()).toEqual({
+      items: [LIST_ITEM],
+      nextCursor: null,
+    });
+    expect(deps.listReceiptScans.execute).toHaveBeenCalledWith(WS, {
+      limit: 50,
+    });
+  });
+
+  it("forwards ?limit and a decoded ?cursor to the use case", async () => {
+    const { app, deps } = buildApp();
+    const cursor = encodeReceiptScanCursor({
+      createdAt: new Date("2026-11-10T12:00:00.000Z"),
+      id: "scan-1",
+    });
+    vi.mocked(deps.listReceiptScans.execute).mockResolvedValueOnce({
+      items: [],
+      nextCursor: null,
+    });
+
+    const res = await app.request(
+      `/api/v1/receipts?limit=2&cursor=${encodeURIComponent(cursor)}`,
+      { headers: { "x-dev-user": "t" } },
+    );
+
+    expect(res.status).toBe(200);
+    expect(deps.listReceiptScans.execute).toHaveBeenCalledWith(WS, {
+      limit: 2,
+      after: {
+        createdAt: new Date("2026-11-10T12:00:00.000Z"),
+        id: "scan-1",
+      },
+    });
+    expect(await res.json()).toEqual({ items: [], nextCursor: null });
+  });
+
+  it("echoes the use-case nextCursor so a client can walk pages (T5, S4)", async () => {
+    const { app, deps } = buildApp();
+    const nextCursor = encodeReceiptScanCursor({
+      createdAt: new Date("2026-11-10T12:00:00.000Z"),
+      id: "scan-1",
+    });
+    vi.mocked(deps.listReceiptScans.execute).mockResolvedValueOnce({
+      items: [LIST_ITEM],
+      nextCursor,
+    });
+
+    const res = await app.request("/api/v1/receipts?limit=1", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      items: [LIST_ITEM],
+      nextCursor,
+    });
+  });
+
+  it.each([["limit=0"], ["limit=101"], ["limit=abc"], ["limit=1.5"]])(
+    "rejects an invalid limit with 400 INVALID_QUERY (%s — pinned, not clamped)",
+    async (query) => {
+      const { app, deps } = buildApp();
+
+      const res = await app.request(`/api/v1/receipts?${query}`, {
+        headers: { "x-dev-user": "t" },
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { code: string };
+      expect(body.code).toBe("INVALID_QUERY");
+      expect(deps.listReceiptScans.execute).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects a malformed cursor with 400 INVALID_CURSOR (pinned, not silently empty)", async () => {
+    const { app, deps } = buildApp();
+
+    const res = await app.request("/api/v1/receipts?cursor=not-a-cursor", {
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("INVALID_CURSOR");
+    expect(deps.listReceiptScans.execute).not.toHaveBeenCalled();
   });
 
   it("rejects unauthenticated requests with 401", async () => {

@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, lt, or } from "drizzle-orm";
 
 import type { DrizzleDb } from "../../../drizzle/db.js";
 import { receiptScans } from "../../../drizzle/schema.js";
@@ -11,6 +11,8 @@ import {
 import type { ReceiptFileHashPort } from "../application/ports/receipt-file-hash.port.js";
 import type {
   ReceiptScanListPort,
+  ReceiptScanListQuery,
+  ReceiptScanListSlice,
   ReceiptScanRepositoryPort,
 } from "../application/ports/receipt-scan-repository.port.js";
 
@@ -114,14 +116,41 @@ export class DrizzleReceiptScanRepository
     return row ? ReceiptScan.reconstitute(toState(row)) : null;
   }
 
-  /** receipt-review-link T1 (S1): newest-first workspace listing. */
-  async listByWorkspace(workspaceId: WorkspaceId): Promise<ReceiptScan[]> {
+  /**
+   * receipt-review-link T1 (S1) + T5 (S4): newest-first workspace
+   * listing with keyset/seek pagination — `ORDER BY createdAt DESC,
+   * id DESC` and an exclusive `(createdAt, id) < cursor` predicate, so
+   * a concurrent insert can never shift or repeat a client's page the
+   * way OFFSET would. Fetches limit+1 to detect `hasMore`.
+   */
+  async listByWorkspace(
+    workspaceId: WorkspaceId,
+    query: ReceiptScanListQuery,
+  ): Promise<ReceiptScanListSlice> {
+    const conditions = [eq(receiptScans.workspaceId, workspaceId.value)];
+    if (query.after) {
+      const after = query.after;
+      const keyset = or(
+        lt(receiptScans.createdAt, after.createdAt),
+        and(
+          eq(receiptScans.createdAt, after.createdAt),
+          lt(receiptScans.id, after.id),
+        ),
+      );
+      if (keyset) conditions.push(keyset);
+    }
     const rows = await this.db
       .select()
       .from(receiptScans)
-      .where(eq(receiptScans.workspaceId, workspaceId.value))
-      .orderBy(desc(receiptScans.createdAt));
-    return rows.map((row) => ReceiptScan.reconstitute(toState(row)));
+      .where(and(...conditions))
+      .orderBy(desc(receiptScans.createdAt), desc(receiptScans.id))
+      .limit(query.limit + 1);
+    const hasMore = rows.length > query.limit;
+    const page = hasMore ? rows.slice(0, query.limit) : rows;
+    return {
+      scans: page.map((row) => ReceiptScan.reconstitute(toState(row))),
+      hasMore,
+    };
   }
 
   /**
