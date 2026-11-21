@@ -4,6 +4,10 @@ import {
   Button,
   Card,
   CardContent,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   Stack,
   TextField,
@@ -29,8 +33,13 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [demoSubmitting, setDemoSubmitting] = useState(false);
   const [error, setError] = useState(false);
+  // demo-maria-session T3 (S1): the demo entry opens a small prompt
+  // that asks ONLY for the demo password — the email is fixed in the
+  // auth context (DEMO_EMAIL).
+  const [demoOpen, setDemoOpen] = useState(false);
+  const [demoPassword, setDemoPassword] = useState("");
+  const [demoSubmitting, setDemoSubmitting] = useState(false);
   const [demoError, setDemoError] = useState(false);
 
   const signup = mode === "signup";
@@ -52,15 +61,28 @@ export function LoginPage() {
     }
   };
 
-  // demo-maria-login T2 (S1): the demo entry re-seeds the workspace
-  // server-side and then opens a client-side demo session — a failed
-  // reset surfaces the demo-specific error, never the credentials one.
-  const tryDemo = async () => {
-    setDemoSubmitting(true);
+  // T3 (S1): the prompt submits the demo password to signInDemo,
+  // which signs in with the fixed demo email and then creates the
+  // per-tab ephemeral workspace — a failure surfaces the demo-specific
+  // error inside the prompt, never the credentials one.
+  const openDemoPrompt = () => {
+    setDemoPassword("");
     setDemoError(false);
     setError(false);
+    setDemoOpen(true);
+  };
+
+  const closeDemoPrompt = () => {
+    if (!demoSubmitting) setDemoOpen(false);
+  };
+
+  const submitDemo = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setDemoSubmitting(true);
+    setDemoError(false);
     try {
-      await signInDemo();
+      await signInDemo(demoPassword);
+      setDemoOpen(false);
     } catch {
       setDemoError(true);
     } finally {
@@ -122,12 +144,6 @@ export function LoginPage() {
                 {t(signup ? "login.signUpError" : "login.error")}
               </Alert>
             ) : null}
-            {demoError ? (
-              <Alert severity="error" sx={{ width: "100%" }}>
-                {t("login.demoError")}
-              </Alert>
-            ) : null}
-
             <Stack spacing={1.25} sx={{ width: "100%" }}>
               <Button
                 variant="outlined"
@@ -148,21 +164,11 @@ export function LoginPage() {
               <Button
                 variant="outlined"
                 fullWidth
-                disabled={demoSubmitting}
-                onClick={() => void tryDemo()}
+                onClick={openDemoPrompt}
                 sx={{ textTransform: "none" }}
               >
-                {demoSubmitting
-                  ? t("login.demoSubmitting")
-                  : t("login.tryDemo")}
+                {t("login.tryDemo")}
               </Button>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ textAlign: "center" }}
-              >
-                {t("login.demoHint")}
-              </Typography>
             </Stack>
 
             <Divider sx={{ width: "100%" }}>{t("login.or")}</Divider>
@@ -229,6 +235,55 @@ export function LoginPage() {
           </Stack>
         </CardContent>
       </Card>
+
+      {/* T3 (S1): password-only prompt for the "María" demo — the
+          email is fixed; the hint warns that changes are discarded. */}
+      <Dialog
+        open={demoOpen}
+        onClose={closeDemoPrompt}
+        maxWidth="xs"
+        fullWidth
+      >
+        <Box component="form" onSubmit={submitDemo} noValidate>
+          <DialogTitle>{t("login.demoDialogTitle")}</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ pt: 0.5 }}>
+              {demoError ? (
+                <Alert severity="error">{t("login.demoError")}</Alert>
+              ) : null}
+              <Typography variant="body2" color="text.secondary">
+                {t("login.demoHint")}
+              </Typography>
+              <TextField
+                id="demo-password"
+                label={t("login.demoPassword")}
+                type="password"
+                autoComplete="off"
+                required
+                fullWidth
+                size="small"
+                autoFocus
+                value={demoPassword}
+                onChange={(event) => setDemoPassword(event.target.value)}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={closeDemoPrompt} disabled={demoSubmitting}>
+              {t("login.demoCancel")}
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={demoSubmitting}
+            >
+              {demoSubmitting
+                ? t("login.demoSubmitting")
+                : t("login.demoSubmit")}
+            </Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
     </Box>
   );
 }

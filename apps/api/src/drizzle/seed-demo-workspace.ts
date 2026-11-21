@@ -14,7 +14,7 @@ import {
   outboxEvents,
   workspaces,
 } from "./schema.js";
-import type { DrizzleSchema } from "./db.js";
+import type { DrizzleDb, DrizzleSchema } from "./db.js";
 import {
   buildDemoPlan,
   DEMO_CURRENCY,
@@ -49,6 +49,28 @@ import { WorkspaceId } from "../modules/shared-kernel/index.js";
 export const DEMO_IDENTITY_KEY = "local|demo-maria";
 const DEMO_WORKSPACE_ID = "ws-demo-maria";
 const DEMO_ACTOR = "demo-maria";
+
+/**
+ * demo-maria-session T1 (S2): the seed is no longer bound to the single
+ * `local|demo-maria` workspace — session sign-ins seed ephemeral
+ * `issuer|subject|sid` workspaces of kind `demo` through the same code
+ * path, so every INV-* invariant still applies verbatim.
+ */
+export interface DemoWorkspaceTarget {
+  readonly identityKey: string;
+  readonly workspaceId: string;
+  readonly kind: string;
+}
+
+export interface SeedDemoWorkspaceOptions extends Partial<DemoWorkspaceTarget> {
+  readonly now?: Date;
+}
+
+const DEFAULT_TARGET: DemoWorkspaceTarget = {
+  identityKey: DEMO_IDENTITY_KEY,
+  workspaceId: DEMO_WORKSPACE_ID,
+  kind: "personal",
+};
 
 // Mirrors GLOBAL_CATEGORIES in seed.ts — kept as a copy because seed.ts
 // runs side effects at import time and cannot be imported from here.
@@ -105,15 +127,38 @@ function minorToDecimal(minor: bigint | number): string {
  */
 export async function seedDemoWorkspace(
   db: NodePgDatabase<DrizzleSchema>,
-  now: Date = new Date(),
+  options: SeedDemoWorkspaceOptions | Date = {},
 ): Promise<DemoSeedResult> {
-  return db.transaction(async (tx) => {
+  // Backwards compatibility: callers used to pass `now` positionally.
+  const resolved: SeedDemoWorkspaceOptions =
+    options instanceof Date ? { now: options } : options;
+  const target: DemoWorkspaceTarget = {
+    identityKey: resolved.identityKey ?? DEFAULT_TARGET.identityKey,
+    workspaceId: resolved.workspaceId ?? DEFAULT_TARGET.workspaceId,
+    kind: resolved.kind ?? DEFAULT_TARGET.kind,
+  };
+  return db.transaction(async (tx) =>
+    seedDemoWorkspaceInTransaction(tx, target, resolved.now ?? new Date()),
+  );
+}
+
+/**
+ * Transaction-bound core of {@link seedDemoWorkspace} — exported so the
+ * demo-session flow (demo-maria-session T1) can run the advisory lock +
+ * stale-workspace cleanup + seed in ONE transaction.
+ */
+export async function seedDemoWorkspaceInTransaction(
+  tx: DrizzleDb,
+  target: DemoWorkspaceTarget,
+  now: Date,
+): Promise<DemoSeedResult> {
+  {
     // ── Workspace bootstrap (S7): dedicated demo workspace, separate
     // from local|dev-user. Same pattern as seed.ts.
     const [existingWorkspace] = await tx
       .select()
       .from(workspaces)
-      .where(eq(workspaces.identityKey, DEMO_IDENTITY_KEY))
+      .where(eq(workspaces.identityKey, target.identityKey))
       .limit(1);
     const workspace =
       existingWorkspace ??
@@ -121,9 +166,9 @@ export async function seedDemoWorkspace(
         await tx
           .insert(workspaces)
           .values({
-            id: DEMO_WORKSPACE_ID,
-            identityKey: DEMO_IDENTITY_KEY,
-            kind: "personal",
+            id: target.workspaceId,
+            identityKey: target.identityKey,
+            kind: target.kind,
             timezone: DEMO_TIMEZONE,
             defaultCurrency: DEMO_CURRENCY,
           })
@@ -138,6 +183,7 @@ export async function seedDemoWorkspace(
       throw workspaceIdResult.error;
     }
     const workspaceId = workspaceIdResult.value;
+
 
     await tx
       .insert(currencies)
@@ -327,7 +373,7 @@ export async function seedDemoWorkspace(
     }
 
     return {
-      identityKey: DEMO_IDENTITY_KEY,
+      identityKey: target.identityKey,
       workspaceId: workspace.id,
       counts,
       totalTransactions: plan.transactions.length,
@@ -337,5 +383,5 @@ export async function seedDemoWorkspace(
         balance: minorToDecimal(balanceByKey.get(account.key) ?? 0n),
       })),
     };
-  });
+  }
 }

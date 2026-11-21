@@ -7,7 +7,7 @@ const signUp = vi.hoisted(() => vi.fn());
 const signInDemo = vi.hoisted(() => vi.fn());
 const signInWithOAuth = vi.hoisted(() => vi.fn());
 vi.mock("../auth/auth", () => ({
-  useAuth: () => ({ configured: true, loading: false, session: null, demoSession: false, signIn, signUp, signInDemo, signInWithOAuth, signOut: vi.fn() }),
+  useAuth: () => ({ configured: true, loading: false, session: null, signIn, signUp, signInDemo, signInWithOAuth, signOut: vi.fn() }),
 }));
 
 import i18n from "../../i18n";
@@ -101,10 +101,10 @@ describe("LoginPage", () => {
     );
   });
 
-  // demo-maria-login T2 (S1): a visible demo entry next to the OAuth
-  // buttons delegates to signInDemo, which re-seeds the demo workspace
-  // server-side before opening the client-side demo session.
-  it("offers a visible demo entry that signs in via signInDemo", async () => {
+  // demo-maria-session T3 (S1): the demo entry asks ONLY for the demo
+  // password in a small prompt — the email is fixed in the auth
+  // context — and delegates the password to signInDemo.
+  it("asks only for the demo password and delegates it to signInDemo", async () => {
     signInDemo.mockResolvedValue(undefined);
     render(<LoginPage />);
 
@@ -112,31 +112,75 @@ describe("LoginPage", () => {
       screen.getByRole("button", { name: "Probar con datos de María" }),
     );
 
-    await waitFor(() => {
-      expect(signInDemo).toHaveBeenCalledTimes(1);
+    const passwordInput = document.getElementById(
+      "demo-password",
+    ) as HTMLInputElement | null;
+    expect(passwordInput).toBeTruthy();
+    // S1: password only — no email field in the demo prompt.
+    expect(document.getElementById("demo-email")).toBeNull();
+
+    fireEvent.change(passwordInput as HTMLInputElement, {
+      target: { value: "demo-secret" },
     });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Entrar a la demo" }),
+    );
+
+    await waitFor(() => {
+      expect(signInDemo).toHaveBeenCalledWith("demo-secret");
+    });
+    expect(signInDemo).toHaveBeenCalledTimes(1);
     expect(signIn).not.toHaveBeenCalled();
     expect(signInWithOAuth).not.toHaveBeenCalled();
   });
 
-  it("warns that demo changes are discarded", () => {
-    render(<LoginPage />);
-
-    expect(screen.getByText(/se descartan/i)).toBeTruthy();
-  });
-
-  it("surfaces a localized error when the demo sign-in fails", async () => {
-    signInDemo.mockRejectedValue(new Error("reset failed"));
+  it("warns inside the prompt that demo changes are discarded on sign-out", () => {
     render(<LoginPage />);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Probar con datos de María" }),
     );
 
+    expect(
+      screen.getByText(/se descartan al cerrar la sesión/i),
+    ).toBeTruthy();
+  });
+
+  it("surfaces the localized demo error when the demo sign-in fails", async () => {
+    signInDemo.mockRejectedValue(new Error("invalid demo password"));
+    render(<LoginPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Probar con datos de María" }),
+    );
+    fireEvent.change(
+      document.getElementById("demo-password") as HTMLInputElement,
+      { target: { value: "bad" } },
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Entrar a la demo" }),
+    );
+
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toBe(
       "No se pudo iniciar la demo. Intentá de nuevo.",
     );
+  });
+
+  it("closes the demo prompt on cancel without calling signInDemo", async () => {
+    render(<LoginPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Probar con datos de María" }),
+    );
+    expect(document.getElementById("demo-password")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => {
+      expect(document.getElementById("demo-password")).toBeNull();
+    });
+    expect(signInDemo).not.toHaveBeenCalled();
   });
 
   it("toggles to sign-up mode and calls signUp", async () => {

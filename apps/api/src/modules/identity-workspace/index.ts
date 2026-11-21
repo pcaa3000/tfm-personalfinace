@@ -11,6 +11,11 @@ export {
   CALLER_RESOLVER,
   type CallerResolverPort,
 } from "./application/caller-resolver.port.js";
+export { DemoSessionError } from "./application/demo-session.error.js";
+// demo-maria-session T1 (S5): fail-closed demo workspace resolver and
+// the dev/oidc caller resolvers it composes with in the HTTP layer.
+export { DemoSessionWorkspaceResolver } from "./infrastructure/demo-session-workspace.resolver.js";
+export { DevHeaderCallerResolver } from "./infrastructure/http/dev-header-caller.resolver.js";
 export {
   WORKSPACE_CATALOG_PROVISIONER,
   type WorkspaceCatalogProvisionerPort,

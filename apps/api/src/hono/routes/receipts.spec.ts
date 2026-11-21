@@ -117,6 +117,9 @@ const SCAN_VIEW: ReceiptScanView = {
 
 function buildApp(options: {
   authenticated?: boolean;
+  subject?: string;
+  /** demo-maria-session T2 (S7): the wired DEMO_SUBJECT. */
+  demoSubject?: string;
   uploadResult?: ReturnType<typeof ok<ReceiptScanView>> | ReturnType<typeof err<DomainError>>;
   /** T13: inject the real use case (dedup specs) instead of the mock. */
   uploadReceipt?: Pick<UploadReceiptUseCase, "execute">;
@@ -125,9 +128,14 @@ function buildApp(options: {
   const deps = {
     callerResolver: {
       resolve: vi.fn(async () =>
-        authenticated ? { issuer: "test", subject: "user-1" } : null,
+        authenticated
+          ? { issuer: "test", subject: options.subject ?? "user-1" }
+          : null,
       ),
     },
+    ...(options.demoSubject === undefined
+      ? {}
+      : { demoSubject: options.demoSubject }),
     workspaceContext: {
       resolve: vi.fn(async () => ({
         workspaceId: WS,
@@ -975,5 +983,69 @@ describe("POST /api/v1/receipts/:id/retry (T12, S11)", () => {
     });
 
     expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * demo-maria-session T2 (S7): the demo subject must never reach the
+ * paid extraction provider. The cheapest correct gate is at the route:
+ * the ONLY paths that dispatch a scan job to the Gemini adapter (upload
+ * and retry) answer a controlled 403 for DEMO_SUBJECT before the use
+ * case runs, in both pgboss and inline dispatcher modes.
+ */
+describe("demo subject provider gate (demo-maria-session T2, S7)", () => {
+  const DEMO_SUBJECT = "demo-maria";
+
+  it("rejects receipt uploads for the demo subject with 403 — no scan is ever queued", async () => {
+    const { app, deps } = buildApp({
+      subject: DEMO_SUBJECT,
+      demoSubject: DEMO_SUBJECT,
+    });
+
+    const res = await app.request(
+      "/api/v1/receipts",
+      uploadRequest({ bytes: JPEG, name: "ticket.jpg", type: "image/jpeg" }),
+    );
+
+    expect(res.status).toBe(403);
+    expect((await res.json()) as { code: string }).toEqual({
+      code: "DEMO_PROVIDER_FORBIDDEN",
+      message: "Demo sessions cannot invoke paid providers",
+    });
+    expect(deps.uploadReceipt.execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects scan retries for the demo subject with 403 — the job is never re-dispatched", async () => {
+    const { app, deps } = buildApp({
+      subject: DEMO_SUBJECT,
+      demoSubject: DEMO_SUBJECT,
+    });
+
+    const res = await app.request("/api/v1/receipts/scan-1/retry", {
+      method: "POST",
+      headers: { "x-dev-user": "t" },
+    });
+
+    expect(res.status).toBe(403);
+    expect((await res.json()) as { code: string }).toEqual({
+      code: "DEMO_PROVIDER_FORBIDDEN",
+      message: "Demo sessions cannot invoke paid providers",
+    });
+    expect(deps.retryReceiptScan.execute).not.toHaveBeenCalled();
+  });
+
+  it("does not affect non-demo uploads when a demo subject is configured", async () => {
+    const { app, deps } = buildApp({
+      subject: "user-1",
+      demoSubject: DEMO_SUBJECT,
+    });
+
+    const res = await app.request(
+      "/api/v1/receipts",
+      uploadRequest({ bytes: JPEG, name: "ticket.jpg", type: "image/jpeg" }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(deps.uploadReceipt.execute).toHaveBeenCalledTimes(1);
   });
 });

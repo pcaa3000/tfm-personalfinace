@@ -14,6 +14,8 @@ import { seedDemoWorkspace } from "../drizzle/seed-demo-workspace.js";
 import { DevHeaderCallerResolver } from "../modules/identity-workspace/infrastructure/http/dev-header-caller.resolver.js";
 import { JwtCallerResolver } from "../modules/identity-workspace/infrastructure/http/jwt-caller.resolver.js";
 import { DrizzleWorkspaceAdapter } from "../modules/identity-workspace/infrastructure/drizzle-workspace.adapter.js";
+import { DemoSessionWorkspaceResolver } from "../modules/identity-workspace/infrastructure/demo-session-workspace.resolver.js";
+import { DrizzleDemoSessionService } from "../modules/demo/infrastructure/drizzle-demo-session.service.js";
 import { UpdateWorkspacePreferencesUseCase } from "../modules/identity-workspace/application/update-workspace-preferences.use-case.js";
 import { DrizzleAccountRepository } from "../modules/accounts/infrastructure/drizzle-account.repository.js";
 import { CreateAccountUseCase } from "../modules/accounts/application/create-account.use-case.js";
@@ -120,6 +122,13 @@ export type ReceiptScanDispatcherEnv =
 export interface AppEnv {
   readonly databaseUrl: string;
   readonly authMode: "dev" | "oidc";
+  /**
+   * demo-maria-session T1 (S4): DEMO_SUBJECT gates POST /demo/session
+   * and the demo workspace resolver. Dev mode defaults to "demo-maria";
+   * under oidc an unset value leaves the endpoint refusing everyone
+   * (fail closed).
+   */
+  readonly demoSubject?: string;
   readonly oidc?: {
     readonly issuer: string;
     readonly audience: string;
@@ -153,6 +162,14 @@ export function buildApp(env: AppEnv): BuiltApp {
     db,
     (tx) => new DrizzleCurrencyRepository(tx),
     (tx) => new DrizzleCategoryRepository(tx),
+  );
+  // demo-maria-session T1 (S5): for DEMO_SUBJECT the workspace comes
+  // from the x-demo-session sid (issuer|subject|sid, kind='demo') —
+  // fail closed; every other caller delegates to the lazy-create path.
+  const workspaceResolver = new DemoSessionWorkspaceResolver(
+    db,
+    workspace,
+    env.demoSubject,
   );
 
   const callerResolver =
@@ -188,7 +205,13 @@ export function buildApp(env: AppEnv): BuiltApp {
 
   const deps: HonoDeps = {
     callerResolver,
-    workspaceContext: workspace,
+    workspaceContext: workspaceResolver,
+    // demo-maria-session T1+T2 (S2–S5, S7): ephemeral demo workspaces +
+    // the paid-provider gate subject — injected in ALL auth modes.
+    demoSession: new DrizzleDemoSessionService(db),
+    ...(env.demoSubject === undefined
+      ? {}
+      : { demoSubject: env.demoSubject }),
     // transactions
     recordManual,
     listTransactions: new ListTransactionsUseCase(transactions),
@@ -389,6 +412,9 @@ export function envFromProcess(): AppEnv {
       authMode: "oidc",
       security,
       receipts,
+      ...(process.env.DEMO_SUBJECT
+        ? { demoSubject: process.env.DEMO_SUBJECT }
+        : {}),
       oidc: {
         issuer: required("OIDC_ISSUER"),
         audience: required("OIDC_AUDIENCE"),
@@ -402,7 +428,13 @@ export function envFromProcess(): AppEnv {
         "AUTH_MODE=dev is forbidden when NODE_ENV=production",
       );
     }
-    return { databaseUrl, authMode: "dev", security, receipts };
+    return {
+      databaseUrl,
+      authMode: "dev",
+      security,
+      receipts,
+      demoSubject: process.env.DEMO_SUBJECT || "demo-maria",
+    };
   }
   throw new Error(
     `AUTH_MODE must be "dev" or "oidc"; got ${

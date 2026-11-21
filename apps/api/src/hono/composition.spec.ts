@@ -31,6 +31,7 @@ const ENV_KEYS = [
   "RECEIPT_SCAN_DISPATCHER",
   "GEMINI_API_KEY",
   "GEMINI_MODEL",
+  "DEMO_SUBJECT",
 ] as const;
 
 const DATABASE_URL = "postgresql://u:p@db:5432/spec";
@@ -352,6 +353,57 @@ describe("POST /api/v1/demo/reset mounting (demo-maria-login T1, S4)", () => {
     } finally {
       await built.close();
     }
+  });
+});
+
+/**
+ * demo-maria-session T1 (S4): DEMO_SUBJECT gates POST /demo/session +
+ * the demo workspace resolver. Dev mode defaults to the local demo
+ * subject; oidc/prod fails closed — unset means the endpoint refuses.
+ */
+describe("envFromProcess — DEMO_SUBJECT (demo-maria-session T1, S4/S7)", () => {
+  it("defaults to demo-maria in dev mode when DEMO_SUBJECT is unset", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+
+    const env = envFromProcess();
+
+    expect(env.demoSubject).toBe("demo-maria");
+  });
+
+  it("honors an explicit DEMO_SUBJECT in dev mode", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.DEMO_SUBJECT = "qa-demo-sub";
+
+    const env = envFromProcess();
+
+    expect(env.demoSubject).toBe("qa-demo-sub");
+  });
+
+  it("is undefined in oidc mode when DEMO_SUBJECT is unset — the endpoint refuses (fail closed)", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "oidc";
+    process.env.OIDC_ISSUER = "https://issuer.example";
+    process.env.OIDC_AUDIENCE = "aud";
+    process.env.OIDC_JWKS_URI = "https://issuer.example/jwks.json";
+
+    const env = envFromProcess();
+
+    expect(env.demoSubject).toBeUndefined();
+  });
+
+  it("honors DEMO_SUBJECT in oidc mode (qa/prod demo sign-in)", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "oidc";
+    process.env.OIDC_ISSUER = "https://issuer.example";
+    process.env.OIDC_AUDIENCE = "aud";
+    process.env.OIDC_JWKS_URI = "https://issuer.example/jwks.json";
+    process.env.DEMO_SUBJECT = "supabase-demo-user-uuid";
+
+    const env = envFromProcess();
+
+    expect(env.demoSubject).toBe("supabase-demo-user-uuid");
   });
 });
 

@@ -26,6 +26,7 @@ afterEach(async () => {
   isAuthBypassed.mockReturnValue(false);
   setAccessTokenProvider(null);
   localStorage.clear();
+  sessionStorage.clear();
   vi.unstubAllGlobals();
   queryClient.clear();
   await ledgerDb.pendingTransactions.clear();
@@ -514,17 +515,32 @@ describe("AuthProvider", () => {
     expect(queryClient.getQueryData(["transactions"])).toBeDefined();
   });
 
-  // demo-maria-login T2 (S2+S3): the demo session is client-side —
-  // signInDemo re-seeds the workspace through POST /demo/reset before
-  // the localStorage flag is set, and signOut wipes flag + caches
-  // without touching Supabase (no real session was ever created).
-  it("signInDemo resets the demo workspace, then sets the flag and a demo session", async () => {
+  // demo-maria-session T3 (S1+S2+S3): signInDemo does a real Supabase
+  // password sign-in with the fixed demo email, then POSTs
+  // /demo/session with the bearer and stores the returned sid in
+  // sessionStorage (per-tab). The demo is a normal signed-in session —
+  // no pseudo-session, no localStorage flag.
+  it("signInDemo signs in with the fixed demo email, creates the demo session and stores the sid", async () => {
     isAuthConfigured.mockReturnValue(true);
-    const client = makeClient();
+    let currentSession: unknown = null;
+    const demoSession = {
+      access_token: "demo-tok",
+      user: { id: "demo-1", email: "mariademo@example.com" },
+    };
+    const client = makeClient({
+      getSession: vi.fn(async () => ({
+        data: { session: currentSession },
+        error: null,
+      })),
+      signInWithPassword: vi.fn(async () => {
+        currentSession = demoSession;
+        return { data: { session: demoSession }, error: null };
+      }),
+    });
     getSupabaseClient.mockReturnValue(client);
     const fetchSpy = vi.fn<typeof fetch>(
       async () =>
-        new Response("{}", {
+        new Response(JSON.stringify({ sessionId: "sid-1" }), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
@@ -532,11 +548,13 @@ describe("AuthProvider", () => {
     vi.stubGlobal("fetch", fetchSpy);
 
     function DemoProbe() {
-      const { demoSession, signInDemo } = useAuth();
+      const { session, signInDemo } = useAuth();
       return (
         <>
-          <span data-testid="demo">{String(demoSession)}</span>
-          <button onClick={() => void signInDemo()}>demo</button>
+          <span data-testid="demo-email">
+            {session?.user.email ?? "none"}
+          </span>
+          <button onClick={() => void signInDemo("demo-pw")}>demo</button>
         </>
       );
     }
@@ -549,19 +567,102 @@ describe("AuthProvider", () => {
     fireEvent.click(await screen.findByRole("button", { name: "demo" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("demo").textContent).toBe("true");
+      expect(client.auth.signInWithPassword).toHaveBeenCalledWith({
+        email: "mariademo@example.com",
+        password: "demo-pw",
+      });
+    });
+    await waitFor(() => {
+      expect(sessionStorage.getItem("demo-sid")).toBe("sid-1");
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0] ?? [];
-    expect(String(url)).toBe("/api/v1/demo/reset");
+    expect(String(url)).toBe("/api/v1/demo/session");
     expect((init as RequestInit | undefined)?.method).toBe("POST");
-    expect(localStorage.getItem("demo-session")).toBe("1");
-    expect(client.auth.signInWithPassword).not.toHaveBeenCalled();
+    const headers = new Headers(
+      (init as RequestInit | undefined)?.headers,
+    );
+    expect(headers.get("authorization")).toBe("Bearer demo-tok");
+    expect(headers.get("x-dev-user")).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId("demo-email").textContent).toBe(
+        "mariademo@example.com",
+      );
+    });
+    // The old client-side flag flow is gone entirely (T3).
+    expect(localStorage.getItem("demo-session")).toBeNull();
   });
 
-  it("does not set the flag when the demo reset fails", async () => {
+  it("does not create a demo session or store a sid when the demo password sign-in fails", async () => {
     isAuthConfigured.mockReturnValue(true);
-    getSupabaseClient.mockReturnValue(makeClient());
+    const failure = new Error("Invalid login credentials");
+    const client = makeClient({
+      signInWithPassword: vi.fn(async () => ({ data: {}, error: failure })),
+    });
+    getSupabaseClient.mockReturnValue(client);
+    const fetchSpy = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    let caught: unknown = null;
+    function DemoProbe() {
+      const { session, signInDemo } = useAuth();
+      return (
+        <>
+          <span data-testid="demo-email">
+            {session?.user.email ?? "none"}
+          </span>
+          <button
+            onClick={async () => {
+              try {
+                await signInDemo("bad-pw");
+              } catch (error) {
+                caught = error;
+              }
+            }}
+          >
+            demo
+          </button>
+        </>
+      );
+    }
+    render(
+      <AuthProvider>
+        <DemoProbe />
+      </AuthProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "demo" }));
+
+    await waitFor(() => {
+      expect(caught).toBe(failure);
+    });
+    expect(client.auth.signInWithPassword).toHaveBeenCalledWith({
+      email: "mariademo@example.com",
+      password: "bad-pw",
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("demo-sid")).toBeNull();
+    expect(screen.getByTestId("demo-email").textContent).toBe("none");
+  });
+
+  it("rolls back the Supabase sign-in and stores no sid when /demo/session fails", async () => {
+    isAuthConfigured.mockReturnValue(true);
+    let currentSession: unknown = null;
+    const demoSession = {
+      access_token: "demo-tok",
+      user: { id: "demo-1", email: "mariademo@example.com" },
+    };
+    const client = makeClient({
+      getSession: vi.fn(async () => ({
+        data: { session: currentSession },
+        error: null,
+      })),
+      signInWithPassword: vi.fn(async () => {
+        currentSession = demoSession;
+        return { data: { session: demoSession }, error: null };
+      }),
+    });
+    getSupabaseClient.mockReturnValue(client);
     const fetchSpy = vi.fn<typeof fetch>(
       async () =>
         new Response(JSON.stringify({ code: "GENERIC" }), {
@@ -573,14 +674,16 @@ describe("AuthProvider", () => {
 
     let caught: unknown = null;
     function DemoProbe() {
-      const { demoSession, signInDemo } = useAuth();
+      const { session, signInDemo } = useAuth();
       return (
         <>
-          <span data-testid="demo">{String(demoSession)}</span>
+          <span data-testid="demo-email">
+            {session?.user.email ?? "none"}
+          </span>
           <button
             onClick={async () => {
               try {
-                await signInDemo();
+                await signInDemo("demo-pw");
               } catch (error) {
                 caught = error;
               }
@@ -602,66 +705,99 @@ describe("AuthProvider", () => {
     await waitFor(() => {
       expect(caught).not.toBeNull();
     });
-    expect(screen.getByTestId("demo").textContent).toBe("false");
-    expect(localStorage.getItem("demo-session")).toBeNull();
-  });
-
-  it("restores the demo session from the flag on mount without a Supabase session", async () => {
-    localStorage.setItem("demo-session", "1");
-    isAuthConfigured.mockReturnValue(true);
-    const client = makeClient();
-    getSupabaseClient.mockReturnValue(client);
-
-    function DemoProbe() {
-      const { demoSession } = useAuth();
-      return <span data-testid="demo">{String(demoSession)}</span>;
-    }
-    render(
-      <AuthProvider>
-        <DemoProbe />
-        <Probe />
-      </AuthProvider>,
-    );
-
-    expect(screen.getByTestId("demo").textContent).toBe("true");
-    // The pseudo-session exposes the demo identity to the app shell.
+    expect(sessionStorage.getItem("demo-sid")).toBeNull();
+    // A real demo session without sid would be fail-closed 401s on the
+    // API (S5), so the sign-in is rolled back.
+    expect(client.auth.signOut).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(screen.getByTestId("email").textContent).toBe("demo-maria");
+      expect(screen.getByTestId("demo-email").textContent).toBe("none");
     });
-    expect(localStorage.getItem("demo-session")).toBe("1");
   });
 
-  it("signOut ends the demo session and wipes caches without calling Supabase", async () => {
-    localStorage.setItem("demo-session", "1");
+  it("signOut calls the Supabase signOut and clears the demo sid together with the caches", async () => {
+    sessionStorage.setItem("demo-sid", "sid-9");
     isAuthConfigured.mockReturnValue(true);
-    const client = makeClient();
+    const session = {
+      access_token: "demo-tok",
+      user: { id: "demo-1", email: "mariademo@example.com" },
+    };
+    const client = makeClient({
+      getSession: vi.fn(async () => ({ data: { session }, error: null })),
+    });
     getSupabaseClient.mockReturnValue(client);
-    setAccessTokenProvider(null);
     await enqueueTransaction(inputFixture({ idempotencyKey: "demo-queued" }));
     queryClient.setQueryData(["transactions"], [{ id: "cached" }]);
 
-    function DemoProbe() {
-      const { demoSession } = useAuth();
-      return <span data-testid="demo">{String(demoSession)}</span>;
-    }
-    render(
-      <AuthProvider>
-        <DemoProbe />
-        <Probe />
-      </AuthProvider>,
-    );
-    expect(screen.getByTestId("demo").textContent).toBe("true");
+    renderProvider();
+    await waitFor(() => {
+      expect(screen.getByTestId("email").textContent).toBe(
+        "mariademo@example.com",
+      );
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "logout" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("demo").textContent).toBe("false");
+      expect(client.auth.signOut).toHaveBeenCalledTimes(1);
     });
-    expect(localStorage.getItem("demo-session")).toBeNull();
-    expect(await listPendingTransactions()).toHaveLength(0);
+    expect(sessionStorage.getItem("demo-sid")).toBeNull();
+    await waitFor(async () => {
+      expect(await listPendingTransactions()).toHaveLength(0);
+    });
     expect(queryClient.getQueryData(["transactions"])).toBeUndefined();
-    // The demo never owned a Supabase session, so no remote signOut.
-    expect(client.auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it("signOut keeps the demo sid when the auth call fails", async () => {
+    sessionStorage.setItem("demo-sid", "sid-9");
+    isAuthConfigured.mockReturnValue(true);
+    const session = {
+      access_token: "demo-tok",
+      user: { id: "demo-1", email: "mariademo@example.com" },
+    };
+    const failure = new Error("server error");
+    const client = makeClient({
+      getSession: vi.fn(async () => ({ data: { session }, error: null })),
+      signOut: vi.fn(async () => ({ error: failure })),
+    });
+    getSupabaseClient.mockReturnValue(client);
+
+    let caught: unknown = null;
+    function FailProbe() {
+      const { signOut } = useAuth();
+      return (
+        <button
+          onClick={async () => {
+            try {
+              await signOut();
+            } catch (error) {
+              caught = error;
+            }
+          }}
+        >
+          logout-error
+        </button>
+      );
+    }
+    render(
+      <AuthProvider>
+        <Probe />
+        <FailProbe />
+      </AuthProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("email").textContent).toBe(
+        "mariademo@example.com",
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "logout-error" }));
+
+    await waitFor(() => {
+      expect(caught).toBe(failure);
+    });
+    // The session is still valid, so the sid survives exactly like the
+    // queued data and the cache (S6 fail-safe).
+    expect(sessionStorage.getItem("demo-sid")).toBe("sid-9");
   });
 
   it("signOut clears the session through the auth client", async () => {

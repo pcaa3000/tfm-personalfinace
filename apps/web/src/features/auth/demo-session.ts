@@ -1,37 +1,42 @@
 /**
- * Client-side demo session flag (demo-maria-login T2, S3).
+ * Per-tab demo session handle (demo-maria-session T3, S2+S3).
  *
- * While set, the API client identifies every call as
- * `x-dev-user: demo-maria` (the `local|demo-maria` workspace) and the
- * auth context exposes a pseudo-session so the app shell works without
- * a Supabase session. The flag lives in localStorage so the demo
- * survives reloads; signOut clears it together with the client caches.
- * The demo workspace is re-seeded server-side on every demo sign-in,
- * so whatever a visitor changes is discarded on the next entry.
+ * The "María" demo is a real Supabase sign-in with a fixed email
+ * (`DEMO_EMAIL`). Right after signing in, the client POSTs
+ * `/api/v1/demo/session` with the bearer and the API materializes an
+ * ephemeral seeded workspace `oidc|<sub>|<sid>`; the returned sid is
+ * stored here and sent as `x-demo-session` on every API call.
+ *
+ * The sid lives in sessionStorage (per-tab, per browser session):
+ * closing the tab discards it, and a new demo sign-in always receives
+ * a fresh workspace — nothing a visitor changes persists across demo
+ * sessions. Sign-out clears the sid together with the client caches.
  */
 
-/** Subject the API dev mode maps to the seeded demo workspace. */
-export const DEMO_SUBJECT = "demo-maria";
+/** Fixed email of the manually provisioned demo account (S1). */
+export const DEMO_EMAIL =
+  (import.meta.env.VITE_DEMO_EMAIL as string | undefined) ??
+  "mariademo@example.com";
 
-const STORAGE_KEY = "demo-session";
-const FLAG_VALUE = "1";
+const STORAGE_KEY = "demo-sid";
 
 function storage(): Storage | null {
   try {
-    return globalThis.localStorage ?? null;
+    return globalThis.sessionStorage ?? null;
   } catch {
     return null;
   }
 }
 
-export function isDemoSession(): boolean {
-  return storage()?.getItem(STORAGE_KEY) === FLAG_VALUE;
+/** The per-tab demo session id, or null when no demo is active. */
+export function getDemoSessionId(): string | null {
+  return storage()?.getItem(STORAGE_KEY) ?? null;
 }
 
-export function startDemoSession(): void {
-  storage()?.setItem(STORAGE_KEY, FLAG_VALUE);
+export function setDemoSessionId(sid: string): void {
+  storage()?.setItem(STORAGE_KEY, sid);
 }
 
-export function endDemoSession(): void {
+export function clearDemoSessionId(): void {
   storage()?.removeItem(STORAGE_KEY);
 }

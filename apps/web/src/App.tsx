@@ -28,8 +28,7 @@ function ThemedApp() {
  */
 function AuthGate() {
   const { t } = useTranslation();
-  const { configured, misconfigured, loading, session, demoSession } =
-    useAuth();
+  const { configured, misconfigured, loading, session } = useAuth();
 
   if (misconfigured) {
     return (
@@ -52,11 +51,10 @@ function AuthGate() {
       </Box>
     );
   }
-  // T2 (S3): the demo session takes the app path even though no
-  // Supabase session exists — the context also exposes a
-  // pseudo-session, so `session` covers it, but `demoSession` keeps
-  // the intent explicit.
-  if (!configured || session || demoSession) {
+  // demo-maria-session T3: a demo sign-in is a real Supabase session
+  // (the per-tab sid only rides in request headers), so the gate
+  // needs no demo-specific branch.
+  if (!configured || session) {
     return <LedgerPage />;
   }
   if (loading) {

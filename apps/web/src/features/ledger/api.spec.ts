@@ -25,7 +25,7 @@ import {
   reviseCategory,
   reviseCurrency,
   reviseTransaction,
-  resetDemoWorkspace,
+  createDemoSession,
   retryReceiptScan,
   unarchiveAccount,
   updateWorkspace,
@@ -81,17 +81,18 @@ describe("dev auth bypass", () => {
 });
 
 /**
- * In-memory localStorage stub — api.spec runs in the node environment
- * where no localStorage exists, so the demo-session flag is faked
- * through vi.stubGlobal (demo-maria-login T2, S3).
+ * In-memory sessionStorage stub — api.spec runs in the node
+ * environment where no sessionStorage exists, so the per-tab demo
+ * session id is faked through a direct global assignment
+ * (demo-maria-session T3, S2+S3).
  */
-function stubDemoFlag(value: string | null) {
+function stubDemoSid(value: string | null) {
   const store = new Map<string, string>();
-  if (value !== null) store.set("demo-session", value);
+  if (value !== null) store.set("demo-sid", value);
   // Direct assignment (not vi.stubGlobal) so unstubAllGlobals can stay
   // out of the cleanup path — it would also remove the module-level
   // fetch stub and break every test that follows.
-  (globalThis as { localStorage?: unknown }).localStorage = {
+  (globalThis as { sessionStorage?: unknown }).sessionStorage = {
     getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, next: string) => void store.set(key, next),
     removeItem: (key: string) => void store.delete(key),
@@ -103,48 +104,42 @@ function stubDemoFlag(value: string | null) {
   };
 }
 
-function clearDemoFlagStub() {
-  delete (globalThis as { localStorage?: unknown }).localStorage;
+function clearDemoSidStub() {
+  delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
 }
 
-describe("demo session (demo-maria-login T2, S3)", () => {
+describe("demo session (demo-maria-session T3, S2+S3)", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
-    clearDemoFlagStub();
+    clearDemoSidStub();
     setAccessTokenProvider(null);
   });
 
-  it("sends x-dev-user: demo-maria when the demo-session flag is set", async () => {
-    stubDemoFlag("1");
-
-    await listAccounts();
-
-    expect(calledHeaders()["x-dev-user"]).toBe("demo-maria");
-  });
-
-  it("keeps demo-maria when the dev bypass is also on", async () => {
-    stubDemoFlag("1");
-    vi.stubEnv("DEV", true);
-    vi.stubEnv("VITE_AUTH_BYPASS", "true");
-
-    await listAccounts();
-
-    expect(calledHeaders()["x-dev-user"]).toBe("demo-maria");
-  });
-
-  it("wins over a stale bearer token so a real identity never leaks into the demo", async () => {
-    stubDemoFlag("1");
-    setAccessTokenProvider(async () => "stale-token");
+  it("sends x-demo-session alongside the bearer when a sid is stored", async () => {
+    stubDemoSid("sid-123");
+    setAccessTokenProvider(async () => "token-abc");
 
     await listAccounts();
 
     const headers = calledHeaders();
-    expect(headers["x-dev-user"]).toBe("demo-maria");
-    expect(headers["authorization"]).toBeUndefined();
+    expect(headers["x-demo-session"]).toBe("sid-123");
+    expect(headers["authorization"]).toBe("Bearer token-abc");
+    expect(headers["x-dev-user"]).toBeUndefined();
   });
 
-  it("keeps the dev-user identity when the flag is absent", async () => {
-    stubDemoFlag(null);
+  it("omits x-demo-session when no sid is stored", async () => {
+    stubDemoSid(null);
+    setAccessTokenProvider(async () => "token-abc");
+
+    await listAccounts();
+
+    const headers = calledHeaders();
+    expect(headers["x-demo-session"]).toBeUndefined();
+    expect(headers["authorization"]).toBe("Bearer token-abc");
+  });
+
+  it("keeps the dev-user identity when the dev bypass is on and no sid is stored", async () => {
+    stubDemoSid(null);
     vi.stubEnv("DEV", true);
     vi.stubEnv("VITE_AUTH_BYPASS", "true");
 
@@ -153,20 +148,27 @@ describe("demo session (demo-maria-login T2, S3)", () => {
     expect(calledHeaders()["x-dev-user"]).toBe("dev-user");
   });
 
-  it("resetDemoWorkspace posts to /demo/reset as demo-maria before the flag exists", async () => {
-    stubDemoFlag(null);
+  it("createDemoSession posts to /demo/session with the bearer and returns the sid", async () => {
+    setAccessTokenProvider(async () => "token-abc");
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ sessionId: "sid-9" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
 
-    await resetDemoWorkspace();
+    const result = await createDemoSession();
 
     const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(String(url)).toBe("/api/v1/demo/reset");
+    expect(String(url)).toBe("/api/v1/demo/session");
     expect(init?.method).toBe("POST");
     const headers = (init?.headers ?? {}) as Record<string, string>;
-    expect(headers["x-dev-user"]).toBe("demo-maria");
+    expect(headers["authorization"]).toBe("Bearer token-abc");
+    expect(result).toEqual({ sessionId: "sid-9" });
   });
 
-  it("resetDemoWorkspace propagates API errors so the flag is never set on failure", async () => {
-    stubDemoFlag(null);
+  it("createDemoSession propagates API errors so no sid is stored on failure", async () => {
+    setAccessTokenProvider(async () => "token-abc");
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ code: "GENERIC" }), {
         status: 500,
@@ -174,7 +176,7 @@ describe("demo session (demo-maria-login T2, S3)", () => {
       }),
     );
 
-    const error = await resetDemoWorkspace().catch((e: unknown) => e);
+    const error = await createDemoSession().catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ code: "GENERIC", status: 500 });

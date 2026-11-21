@@ -1,4 +1,4 @@
-import { DEMO_SUBJECT, isDemoSession } from "../auth/demo-session";
+import { getDemoSessionId } from "../auth/demo-session";
 import { isAuthBypassed } from "../auth/supabase";
 import type {
   ReceiptConfirmInput,
@@ -100,19 +100,25 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
-  // Demo session (demo-maria-login T2, S3): the client-side flag
-  // forces the `local|demo-maria` identity. It is checked before the
-  // bearer token so a stale Supabase session can never leak a real
-  // identity into the demo, and before the dev bypass so `demo-maria`
-  // — never `dev-user` — owns every call while the flag lives.
-  if (isDemoSession()) return { "x-dev-user": DEMO_SUBJECT };
+  const headers: Record<string, string> = {};
   const token = accessTokenProvider ? await accessTokenProvider() : null;
-  if (token) return { authorization: `Bearer ${token}` };
-  // Dev bypass (T26): AUTH_MODE=dev is fail-closed and requires the
-  // `x-dev-user` header (GAP-SEC-01). `dev-user` is the seeded subject
-  // (apps/api/src/drizzle/seed.ts). Never emitted outside dev builds.
-  if (isAuthBypassed()) return { "x-dev-user": "dev-user" };
-  return {};
+  if (token) {
+    headers["authorization"] = `Bearer ${token}`;
+  } else if (isAuthBypassed()) {
+    // Dev bypass (T26): AUTH_MODE=dev is fail-closed and requires the
+    // `x-dev-user` header (GAP-SEC-01). `dev-user` is the seeded
+    // subject (apps/api/src/drizzle/seed.ts). Never emitted outside
+    // dev builds.
+    headers["x-dev-user"] = "dev-user";
+  }
+  // Demo session (demo-maria-session T3, S2): the per-tab sid rides
+  // alongside the real bearer — the demo is an ordinary Supabase
+  // identity, and the API resolves `x-demo-session` to the ephemeral
+  // workspace `oidc|<sub>|<sid>`. No sid → no header (the demo
+  // subject then fails closed server-side, S5).
+  const sid = getDemoSessionId();
+  if (sid) headers["x-demo-session"] = sid;
+  return headers;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -145,22 +151,18 @@ async function requestMultipart<T>(
 }
 
 /**
- * `POST /demo/reset` — re-seeds the `local|demo-maria` workspace before
- * the demo session starts operating (demo-maria-login T2, S2). The
- * endpoint exists only while the API runs AUTH_MODE=dev and always
- * targets the demo workspace. The explicit `x-dev-user` header keeps
- * the call valid even before the demo-session flag is set — the flag
- * is only written after this reset succeeds.
+ * `POST /demo/session` — materializes a fresh ephemeral workspace for
+ * the signed-in demo subject and returns its per-tab session id
+ * (demo-maria-session T3, S2+S3). It goes through `request()` so the
+ * call carries the real bearer of the just-completed demo sign-in;
+ * the API seeds `oidc|<sub>|<sid>` and answers `{sessionId}`.
  */
-export async function resetDemoWorkspace(): Promise<void> {
-  const response = await fetch(`${BASE}/demo/reset`, {
+export async function createDemoSession(): Promise<{
+  sessionId: string;
+}> {
+  return request<{ sessionId: string }>("/demo/session", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-dev-user": DEMO_SUBJECT,
-    },
   });
-  return parseResponse<void>(response);
 }
 
 /** `GET /api/v1/balance` — per-currency aggregates for the strip (T24). */
