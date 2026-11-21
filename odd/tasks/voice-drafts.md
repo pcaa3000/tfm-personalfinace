@@ -61,8 +61,23 @@ El diff completo excedió `lens_context_budget_exceeded`; se revisa por slices e
   - R4-5 job resuelve OK en todos los fallos → pg-boss no distingue drafts fallidos; métricas solo en la columna `error` (worker.ts:106-110).
   - R4-6 inline dispatch no es at-least-once (fire-and-forget): crash mid-draft deja `pending` hasta retry manual (voice-draft.ts:69-71).
 
-Pendientes de revisión por slice: T1 (c367ba3, migración+upload), T3 (34ea419), T4 (74d4c0c), T5 (1cc8487, consent), T6+fix (d3437ac..02925dd).
+- `review-47e8b52564aa750b` — T5 (consent, base 74d4c0c, 42 paths/3647 líneas): **approved + acknowledged** tras 2 timeouts del relay + resubmit (lentes risk+resilience+reliability), 9 hallazgos advisory no bloqueantes:
+  - consent guard fail-open (`voice-draft-consent-guard.ts:50-52`): solo `revoked` explícito bloquea; sin registro, clientes no-web van a Gemini sin consent registrado (baseline, no regresión).
+  - PreferencesDialog traga errores (`PreferencesDialog.tsx:91-110`): PATCH fallido deja grant activo sin feedback; GET fallido oculta el control de revocación.
+  - Menores: doble guard en modo inline, estado stale en diálogo, wiring pgboss del gate sin spec de integración, copy es.ts:108-109 promete borrado 30d (resuelto de hecho por T6).
+- `review-c4eddc76d8c9e1a7` — T6+fix (purge + dev env-file, base 1cc8487, 6 paths/309 líneas): **approved + acknowledged** (lentes risk+resilience+reliability), 11 hallazgos advisory no bloqueantes:
+  - R1/R3/R4 `--env-file=.env` en script dev: checkout sin `.env` ya no bootea (regresión dev-tooling; `.env.example` retenido por política).
+  - R1-LOG-STORAGEKEY: failure path loguea storageKey completo → identificadores tenant a logs (purge-voice-media.ts:57-60).
+  - R1-TRANSCRIPT-RETENTION: purge borra audio pero deja `transcript` para siempre; deuda ya registrada vs docs/05 30d.
+  - R3-01/R4-purged-counter: contador `purged` se incrementa aunque el guarded update haga match 0 → sobreestima.
+  - R3-02: purge de voz awaited dentro del handler diario de receipts sin aislamiento de error ni test del wiring (worker.ts:148-152).
+  - R4-permanent-delete-failure: delete fallido persistente se traga con `continue` → fila re-seleccionada por cada corrida diaria, audio retenido indefinidamente (sin contador/dead-letter).
+
+Lineages abiertos (pausados por timeouts del proveedor relay `devin/*`, first-output 120s): `review-ba5b4b0acb969287` (T2-fixes a3bfcaa, worktree `.worktrees/review-t2fix`, lente resilience 3 timeouts), `review-1826b62783a79aef` (T3, worktree `.worktrees/review-t3`, 2 timeouts). Retomar con `gentle_review status` + resubmit del grupo re-offerido.
+
+Pendientes de revisión por slice: T1 (c367ba3, migración+upload), T4 (74d4c0c, web capture flow).
 
 - L10: "lanza la revision nativa" — full diff excedió budget; slice T2 aprobado y quemado en worktree `.worktrees/review-t2` (ver sección Revisión nativa RDD).
 - L11: Fix de hallazgos advisory del slice T2 (worker): R1-1 (Object.hasOwn + validación real de fecha ISO + days-ago \d{1,6}), R1-2 (amount/total acotados [0.005, MAX_SAFE_INTEGER/100]), R3-001/R4-2 (findById dentro del try + re-read en catch), R3-003 (status guard: nunca downgrade de draft_ready persistido a failed), R3-002/R4-4 (readBody envuelto → VOICE_DRAFT_FAILED), R4-1 (AbortSignal.timeout 60s configurable), R4-3 (1 retry acotado para 429/5xx/red/timeout; 4xx fail-fast), R4-5/R4-6 (comentarios corregidos). RED 27 fail → GREEN 73 focused, suite api 1131/1131. R3-004 queda como deuda.
 - L12: "primero ataca los hallazgos y luego continua con el slice de mayor riesgo" — fixes advisory commiteados (`a3bfcaa`, suite api 1131/1131). Slice T5 iniciado (`review-47e8b52564aa750b`, base 74d4c0c, 42 paths/3647 líneas, lentes risk+resilience+reliability): quedó ABIERTO en `reviewing` tras 2 timeouts consecutivos del proveedor relay (`devin/gemini-4-carbon` y `devin/glm-5-3-flash`, first-output 120s) — decisión del usuario: pausar y retomar más tarde. Worktree `.worktrees/review-t5` conservado; retomar con `gentle_review status` del lineage + resubmit del slot re-offerido.
+- L13: "si" (retomar reviews) — T5 aprobado y quemado tras resubmit (`review-47e8b52564aa750b`). Slice T6+fix aprobado y quemado (`review-c4eddc76d8c9e1a7`, 11 advisory findings). Iniciados y pausados por timeouts del relay `devin/*` (first-output 120s): T2-fixes (`review-ba5b4b0acb969287`, 3 timeouts) y T3 (`review-1826b62783a79aef`, 2 timeouts). Pendientes sin iniciar: T1, T4.
