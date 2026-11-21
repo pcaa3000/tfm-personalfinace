@@ -134,32 +134,32 @@ export async function handleVoiceDraft(
     await deps.notes.save(note);
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
-    if (note === null) {
-      // The row load itself failed — re-read so a transient DB error
-      // still ends in `failed` instead of a stranded `pending`.
-      note = await deps.notes
-        .findById(workspaceId.value, job.voiceNoteId)
-        .catch(() => null);
-    }
-    if (note === null) {
+    // Re-read the persisted row: the in-memory entity may already have
+    // advanced (e.g. to draft_ready) while the DB row is still `pending`,
+    // so only the stored status is a trustworthy discriminator.
+    const persisted = await deps.notes
+      .findById(workspaceId.value, job.voiceNoteId)
+      .catch(() => null);
+    if (persisted === null) {
+      // We could neither mark the row nor even re-read it: surface the
+      // failure so the dispatcher can redeliver instead of stranding the
+      // note `pending` with the job recorded as delivered.
       console.error(
         `[voice-draft] cannot load note ${job.voiceNoteId} to mark it failed: ${message}`,
       );
-      return;
+      throw cause;
     }
-    if (note.status !== "pending") {
-      // R3-003: the error came from persisting a transition the entity
-      // already applied (e.g. a draft_ready row committed before a
-      // dropped connection surfaced the error) — logging the failure
+    if (persisted.status !== "pending") {
+      // R3-003: a transition already committed — logging the failure
       // must never downgrade a committed state back to `failed`.
       console.error(
-        `[voice-draft] persist failed for ${job.voiceNoteId} in status ${note.status}: ${message}`,
+        `[voice-draft] persist failed for ${job.voiceNoteId} in status ${persisted.status}: ${message}`,
       );
       return;
     }
     try {
-      note.markFailed(`unexpected: ${message}`, deps.clock.now());
-      await deps.notes.save(note);
+      persisted.markFailed(`unexpected: ${message}`, deps.clock.now());
+      await deps.notes.save(persisted);
     } catch (saveError) {
       console.error(
         `[voice-draft] failed to persist failed state for ${job.voiceNoteId}:`,

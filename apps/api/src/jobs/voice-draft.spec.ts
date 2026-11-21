@@ -275,15 +275,35 @@ describe("handleVoiceDraft — voice-draft job (voice-drafts T2, S2+S3+S4+S5+S7)
     expect(saved[0]!.error).toContain("db down");
   });
 
-  it("when the row cannot be re-read after a load failure, the handler resolves after logging — no rejection escapes", async () => {
+  it("when the row cannot even be re-read, the failure escapes so the dispatcher can redeliver (R4-002)", async () => {
     const { deps, notes } = makeDeps({});
     vi.mocked(notes.findById).mockRejectedValue(new Error("db down"));
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    await expect(handleVoiceDraft(deps, JOB)).resolves.toBeUndefined();
+    await expect(handleVoiceDraft(deps, JOB)).rejects.toThrow("db down");
 
     expect(notes.save).not.toHaveBeenCalled();
     log.mockRestore();
+  });
+
+  it("a save rejection with the row still persisted pending marks the re-read row failed — in-memory status is not the discriminator (R3-001/R4-001)", async () => {
+    const { deps, notes, note, saved } = makeDeps({});
+    const persistedPending = VoiceNote.reconstitute(noteState("pending"));
+    vi.mocked(notes.findById)
+      .mockResolvedValueOnce(note)
+      .mockResolvedValue(persistedPending);
+    vi.mocked(notes.save).mockRejectedValueOnce(
+      new Error("deadlock before commit"),
+    );
+
+    await expect(handleVoiceDraft(deps, JOB)).resolves.toBeUndefined();
+
+    // The entity advanced to draft_ready in memory, but the persisted row
+    // never committed: the recovery path must mark the re-read row failed.
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toBe(persistedPending);
+    expect(saved[0]!.status).toBe("failed");
+    expect(saved[0]!.error).toContain("deadlock");
   });
 
   it("a save rejection after the draft_ready transition never downgrades the row back to failed (R3-003)", async () => {
