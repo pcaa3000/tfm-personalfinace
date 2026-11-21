@@ -44,3 +44,23 @@ Branch: `feature/voice-drafts` | Delivery: `single-pr` con commits por unidad de
 - L7: T5 cerrado por worker: `voices_voice_consents` + GET/PATCH consent + diálogo previo al primer envío + revocación en PreferencesDialog + guard server-side (enqueue/inline/drain). PATCH en vez de PUT por allowlist CORS. Deuda registrada: consent en receipts pendiente.
 - L8: T6 cerrado por worker: `purgeExpiredVoiceMedia` dentro del handler diario existente (storage.delete + mediaDeletedAt, fila+transcript sobreviven), vars VOICE_*/GEMINI_* ya documentadas en composition/worker + bloque estado Fase 3 en docs/06. Deuda anotada: borrado anticipado de voz y transcript ≤30d.
 - L9: "con pnpm dev, me sale el mensaje que no se pudieron cargar los movimientos" — diagnóstico: el API moría en boot (`GEMINI_API_KEY must be set`) porque `dev` no pasaba `--env-file=.env` (solo `dev:worker` lo tenía); con `VOICE_DISPATCHER=inline` default la key es fail-fast en el API. Fix: `--env-file=.env` en el script `dev` — boot verificado (listening :3000).
+
+## Revisión nativa RDD (post-implementación)
+
+El diff completo excedió `lens_context_budget_exceeded`; se revisa por slices en worktrees detached (mismo patrón que receipt-scan-drafts):
+
+- `review-1dfc9cb826c25930` — T2 (pipeline Gemini, base c367ba3, 20 paths/2035 líneas): **approved + acknowledged** (lentes risk+resilience+reliability), 12 hallazgos advisory no bloqueantes:
+  - R1-1 `resolveVoiceBusinessDate`: dateHint del LLM sin protección — claves `constructor`/`__proto__` pasan el undefined check → RangeError en vez de default today; `ISO_DAY_PATTERN` acepta fechas imposibles (2026-99-99) y `DAYS_AGO_PATTERN` dígitos ilimitados que desbordan Date (voice-draft.ts:179-195).
+  - R1-2 `voiceExtractionSchema`: `amount`/`total` sin bound inferior 0.01 ni superior safe-integer → valores sub-céntimo producen splits de 0 minor units; floats enormes → Infinity/null en JSONB (voice-extraction.schema.ts:21-48).
+  - R3-001/R4-2 `handleVoiceDraft`: awaits iniciales (findById, workspace context) fuera del try → fallo de DB rechaza sin persistir `failed` y la nota queda `pending` huérfana en modo inline (voice-draft.ts:57-68).
+  - R3-002/R4-4 `readBody` fuera del try → respuesta 200 no-JSON rompe el contrato Result y salta el retry correctivo (gemini-voice-draft.adapter.ts:189).
+  - R3-003 un solo catch cubre pipeline+persist: si `notes.save()` falla tras persistir el draft, el markFailed sobrescribe draft_ready→failed (voice-draft.ts:125-130).
+  - R3-004 wiring inline real (adapter+dispatcher sin seam) no ejercitado por la suite (composition.ts:696-711).
+  - R4-1 fetch a Gemini sin timeout/AbortSignal → stall deja la nota `pending` indefinidamente (adapter:157-170).
+  - R4-3 todo no-2xx (incl. 429/5xx transitorios) → `failed` terminal sin retry automático (adapter:180-187).
+  - R4-5 job resuelve OK en todos los fallos → pg-boss no distingue drafts fallidos; métricas solo en la columna `error` (worker.ts:106-110).
+  - R4-6 inline dispatch no es at-least-once (fire-and-forget): crash mid-draft deja `pending` hasta retry manual (voice-draft.ts:69-71).
+
+Pendientes de revisión por slice: T1 (c367ba3, migración+upload), T3 (34ea419), T4 (74d4c0c), T5 (1cc8487, consent), T6+fix (d3437ac..02925dd).
+
+- L10: "lanza la revision nativa" — full diff excedió budget; slice T2 aprobado y quemado en worktree `.worktrees/review-t2` (ver sección Revisión nativa RDD).
