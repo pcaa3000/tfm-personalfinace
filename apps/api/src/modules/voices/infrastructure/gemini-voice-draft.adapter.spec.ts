@@ -79,6 +79,8 @@ describe("GeminiVoiceDraftAdapter (voice-drafts T2, D1, S2+S3+S4)", () => {
     const headers = new Headers(init.headers);
     expect(headers.get("x-goog-api-key")).toBe("test-key");
     expect(headers.get("content-type")).toBe("application/json");
+    // R4-1: an explicit abort signal bounds every upstream call.
+    expect(init.signal).toBeInstanceOf(AbortSignal);
 
     const body = JSON.parse(String(init.body)) as {
       contents: Array<{ parts: Array<Record<string, unknown>> }>;
@@ -184,9 +186,9 @@ describe("GeminiVoiceDraftAdapter (voice-drafts T2, D1, S2+S3+S4)", () => {
     expect(calls).toHaveLength(2);
   });
 
-  it("fails fast on a non-2xx API response without retrying", async () => {
+  it("fails fast on a deliberate non-2xx API rejection without retrying (R4-3: only 429/5xx retry)", async () => {
     const { fetchImpl, calls } = fakeFetch([
-      new Response("quota exceeded", { status: 429 }),
+      new Response("bad request", { status: 400 }),
     ]);
 
     const result = await adapter(fetchImpl).processAudio(
@@ -198,9 +200,116 @@ describe("GeminiVoiceDraftAdapter (voice-drafts T2, D1, S2+S3+S4)", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe("VOICE_DRAFT_FAILED");
-      expect(result.error.message).toContain("429");
+      expect(result.error.message).toContain("400");
     }
     expect(calls).toHaveLength(1);
+  });
+
+  it.each([429, 500, 502, 503, 504])(
+    "retries a transient %s response exactly once, then succeeds (R4-3)",
+    async (status) => {
+      const { fetchImpl, calls } = fakeFetch([
+        new Response("transient", { status }),
+        geminiResponse(JSON.stringify(EXTRACTION)),
+      ]);
+      const sut = new GeminiVoiceDraftAdapter({
+        apiKey: "k",
+        model: "m",
+        fetchImpl,
+        retryDelayMs: 0,
+      });
+
+      const result = await sut.processAudio(WEBM, "audio/webm", CATALOG);
+
+      expect(result.ok).toBe(true);
+      expect(calls).toHaveLength(2);
+    },
+  );
+
+  it("fails after exactly one retry when a transient error persists", async () => {
+    const { fetchImpl, calls } = fakeFetch([
+      new Response("busy", { status: 503 }),
+      new Response("still busy", { status: 503 }),
+    ]);
+    const sut = new GeminiVoiceDraftAdapter({
+      apiKey: "k",
+      model: "m",
+      fetchImpl,
+      retryDelayMs: 0,
+    });
+
+    const result = await sut.processAudio(WEBM, "audio/webm", CATALOG);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("VOICE_DRAFT_FAILED");
+      expect(result.error.message).toContain("503");
+    }
+    expect(calls).toHaveLength(2);
+  });
+
+  it("retries a network failure exactly once before succeeding (R4-3)", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("socket reset"))
+      .mockResolvedValueOnce(geminiResponse(JSON.stringify(EXTRACTION)));
+    const sut = new GeminiVoiceDraftAdapter({
+      apiKey: "k",
+      model: "m",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      retryDelayMs: 0,
+    });
+
+    const result = await sut.processAudio(WEBM, "audio/webm", CATALOG);
+
+    expect(result.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("a 200 with a non-JSON body returns VOICE_DRAFT_FAILED instead of throwing past the retry contract (R3-002)", async () => {
+    const { fetchImpl, calls } = fakeFetch([
+      new Response("<html>gateway error page</html>", { status: 200 }),
+    ]);
+
+    const result = await adapter(fetchImpl).processAudio(
+      WEBM,
+      "audio/webm",
+      CATALOG,
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("VOICE_DRAFT_FAILED");
+    }
+    expect(calls).toHaveLength(1);
+  });
+
+  it("aborts a stalled upstream request after requestTimeoutMs and fails to VOICE_DRAFT_FAILED (R4-1)", async () => {
+    const fetchImpl = vi.fn((_url: string | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("timed out", "TimeoutError")),
+        );
+        // No signal wired (pre-fix shape) → the request hangs; the
+        // fallback keeps the RED observation fast and deterministic.
+        setTimeout(() => reject(new Error("never aborted")), 100);
+      }),
+    );
+    const sut = new GeminiVoiceDraftAdapter({
+      apiKey: "k",
+      model: "m",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      requestTimeoutMs: 5,
+      retryDelayMs: 0,
+    });
+
+    const result = await sut.processAudio(WEBM, "audio/webm", CATALOG);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("VOICE_DRAFT_FAILED");
+    }
+    expect(fetchImpl).toHaveBeenCalledTimes(2); // one transport retry
   });
 
   it("demotes a suggestedCategoryKey absent from the workspace catalog to null (S3)", async () => {

@@ -216,6 +216,33 @@ describe("buildVoiceDraft — relative date hint resolved server-side (S3)", () 
 
     expect(draft.businessDate).toBe("2026-11-10");
   });
+
+  it.each(["__proto__", "constructor", "toString"])(
+    "a prototype-inherited key hint %s falls back to today instead of crashing (R1-1)",
+    (hint) => {
+      const draft = buildVoiceDraft(extraction({ dateHint: hint }), CONTEXT);
+
+      expect(draft.businessDate).toBe("2026-11-10");
+    },
+  );
+
+  it.each(["2026-99-99", "2026-13-01", "2026-02-30", "2026-00-10"])(
+    "an impossible ISO date %s falls back to today instead of persisting verbatim (R1-1)",
+    (hint) => {
+      const draft = buildVoiceDraft(extraction({ dateHint: hint }), CONTEXT);
+
+      expect(draft.businessDate).toBe("2026-11-10");
+    },
+  );
+
+  it.each(["hace 9999999 días", "12345678 days ago"])(
+    "a days-ago hint beyond the bounded digit count (%s) falls back to today instead of overflowing Date (R1-1)",
+    (hint) => {
+      const draft = buildVoiceDraft(extraction({ dateHint: hint }), CONTEXT);
+
+      expect(draft.businessDate).toBe("2026-11-10");
+    },
+  );
 });
 
 describe("buildVoiceDraft — payload shape (S2+S7)", () => {

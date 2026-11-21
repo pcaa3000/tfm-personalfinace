@@ -116,6 +116,10 @@ async function main(): Promise<void> {
     new DrizzleVoiceConsentRepository(db),
     voiceDraftDeps.clock,
   );
+  // R4-5: handleVoiceDraft always resolves — it persists `failed` on
+  // the row itself, so pg-boss records failed drafts as DELIVERED.
+  // Failure metrics live in the row's `error` column / status, not in
+  // pg-boss failed-job counts.
   await boss.work(VOICE_DRAFT_QUEUE, async (jobs) => {
     for (const job of jobs) {
       const data = job.data as VoiceDraftJob;

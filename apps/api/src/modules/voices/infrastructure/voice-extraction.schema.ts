@@ -15,10 +15,24 @@ const newCategorySchema = z.object({
   nature: z.enum(NATURES),
 });
 
+/**
+ * Untrusted LLM amounts are bounded (review R1-2): ≥0.005 major units
+ * guarantees ≥1 minor unit after `toMinorUnits` rounding (no zero-unit
+ * splits); ≤ `MAX_SAFE_INTEGER / 100` keeps the major→minor conversion
+ * an exact safe integer (no Infinity/huge floats in JSONB).
+ */
+const MIN_MAJOR_UNITS = 0.005;
+const MAX_MAJOR_UNITS = Number.MAX_SAFE_INTEGER / 100;
+
+const boundedMajorUnits = z
+  .number()
+  .min(MIN_MAJOR_UNITS)
+  .max(MAX_MAJOR_UNITS);
+
 const itemSchema = z.object({
   concept: z.string().min(1),
   /** Major units the model heard — "sol cincuenta" → 1.50. */
-  amount: z.number().positive(),
+  amount: boundedMajorUnits,
   currency: z.string().regex(/^[A-Za-z]{3}$/).nullish(),
   suggestedCategoryKey: z.string().min(1).nullish(),
   suggestedNewCategory: newCategorySchema.nullish(),
@@ -36,7 +50,7 @@ export const voiceExtractionSchema = z.object({
   type: z.enum(["expense", "income"]),
   concept: z.string().nullish(),
   dateHint: z.string().min(1).nullish(),
-  total: z.number().positive().nullish(),
+  total: boundedMajorUnits.nullish(),
   items: z.array(itemSchema).min(1),
 });
 

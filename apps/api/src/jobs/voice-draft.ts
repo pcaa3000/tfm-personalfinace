@@ -3,6 +3,7 @@ import type { Clock } from "../modules/ledger/index.js";
 import { WorkspaceId } from "../modules/shared-kernel/index.js";
 import type {
   VoiceDraftPort,
+  VoiceNote,
   VoiceNoteRepositoryPort,
   VoiceStoragePort,
   VoiceWorkspaceContextPort,
@@ -47,8 +48,11 @@ function businessDay(now: Date, timezone: string): string {
  * extraction + categorization) → grouped draft → `draft_ready` with
  * the transcript persisted on the row. EVERY failure path marks the
  * row `failed` with its error — the handler never lets an exception
- * escape without persisting a terminal state, and a redelivery of a
- * non-pending row is a no-op (at-least-once idempotence).
+ * escape without persisting a terminal state. Delivery semantics
+ * differ per dispatcher (R4-6): pg-boss is at-least-once, so a
+ * redelivery of a non-pending row is a no-op; inline dispatch is
+ * fire-and-forget with NO redelivery — a crash mid-draft leaves the
+ * row `pending` until the user retries via POST /voices/:id/retry.
  */
 export async function handleVoiceDraft(
   deps: VoiceDraftJobDeps,
@@ -61,16 +65,21 @@ export async function handleVoiceDraft(
     );
     return;
   }
-  const note = await deps.notes.findById(workspaceId.value, job.voiceNoteId);
-  if (!note) {
-    console.error(`[voice-draft] note not found: ${job.voiceNoteId}`);
-    return;
-  }
-  if (note.status !== "pending") {
-    return; // already processed — pg-boss/inline is at-least-once
-  }
-
+  // The row load lives INSIDE the try (R3-001/R4-2): a DB failure
+  // must never reject out of the handler — every reachable failure
+  // persists `failed` so inline dispatch (no redelivery) does not
+  // strand the note `pending` forever.
+  let note: VoiceNote | null = null;
   try {
+    note = await deps.notes.findById(workspaceId.value, job.voiceNoteId);
+    if (!note) {
+      console.error(`[voice-draft] note not found: ${job.voiceNoteId}`);
+      return;
+    }
+    if (note.status !== "pending") {
+      return; // already processed — pg-boss is at-least-once
+    }
+
     const bytes = await deps.storage.open(note.storageKey);
     if (bytes === null) {
       note.markFailed(
@@ -125,6 +134,29 @@ export async function handleVoiceDraft(
     await deps.notes.save(note);
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
+    if (note === null) {
+      // The row load itself failed — re-read so a transient DB error
+      // still ends in `failed` instead of a stranded `pending`.
+      note = await deps.notes
+        .findById(workspaceId.value, job.voiceNoteId)
+        .catch(() => null);
+    }
+    if (note === null) {
+      console.error(
+        `[voice-draft] cannot load note ${job.voiceNoteId} to mark it failed: ${message}`,
+      );
+      return;
+    }
+    if (note.status !== "pending") {
+      // R3-003: the error came from persisting a transition the entity
+      // already applied (e.g. a draft_ready row committed before a
+      // dropped connection surfaced the error) — logging the failure
+      // must never downgrade a committed state back to `failed`.
+      console.error(
+        `[voice-draft] persist failed for ${job.voiceNoteId} in status ${note.status}: ${message}`,
+      );
+      return;
+    }
     try {
       note.markFailed(`unexpected: ${message}`, deps.clock.now());
       await deps.notes.save(note);

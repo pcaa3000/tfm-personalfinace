@@ -34,7 +34,25 @@ export interface GeminiVoiceDraftConfig {
   readonly baseUrl?: string;
   /** Injectable for specs; defaults to global fetch. */
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Per-request timeout (R4-1): a stalled upstream must fail fast to
+   * `failed` instead of leaving the note `pending` indefinitely.
+   */
+  readonly requestTimeoutMs?: number;
+  /** Backoff before the single transport retry (R4-3; 0 in specs). */
+  readonly retryDelayMs?: number;
 }
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+const DEFAULT_RETRY_DELAY_MS = 500;
+
+/**
+ * Transient statuses worth ONE bounded retry (R4-3). Deliberate API
+ * rejections (400/401/403/404/422) still fail immediately.
+ */
+const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([
+  429, 500, 502, 503, 504,
+]);
 
 /**
  * Structured-output schema (Gemini accepts an OpenAPI-3.0 subset). Kept
@@ -127,10 +145,15 @@ function buildPrompt(categories: readonly CategoryView[]): string {
 export class GeminiVoiceDraftAdapter implements VoiceDraftPort {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly requestTimeoutMs: number;
+  private readonly retryDelayMs: number;
 
   constructor(private readonly config: GeminiVoiceDraftConfig) {
     this.baseUrl = config.baseUrl ?? GEMINI_VOICE_DEFAULT_BASE_URL;
     this.fetchImpl = config.fetchImpl ?? fetch;
+    this.requestTimeoutMs =
+      config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
   }
 
   async processAudio(
@@ -152,41 +175,33 @@ export class GeminiVoiceDraftAdapter implements VoiceDraftPort {
     }> = [{ role: "user", parts: [{ text: prompt }, audioPart] }];
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      let response: Response;
-      try {
-        response = await this.fetchImpl(this.endpoint(), {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-goog-api-key": this.config.apiKey,
+      const fetched = await this.request(
+        JSON.stringify({
+          contents,
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: RESPONSE_SCHEMA,
           },
-          body: JSON.stringify({
-            contents,
-            generationConfig: {
-              responseMimeType: "application/json",
-              responseSchema: RESPONSE_SCHEMA,
-            },
-          }),
-        });
+        }),
+      );
+      if (!fetched.ok) return fetched;
+
+      // R3-002: the body read lives inside the Result contract — a
+      // 200 with a non-JSON body must err(VOICE_DRAFT_FAILED), never
+      // throw past the corrective-retry branch.
+      let body: GeminiResponseBody;
+      try {
+        body = await readBody(fetched.value);
       } catch (cause) {
         return err(
           new DomainError(
             "VOICE_DRAFT_FAILED",
-            `Gemini request failed: ${causeMessage(cause)}`,
+            `Gemini response body was not JSON: ${causeMessage(cause)}`,
           ),
         );
       }
 
-      if (!response.ok) {
-        return err(
-          new DomainError(
-            "VOICE_DRAFT_FAILED",
-            `Gemini API responded ${response.status}`,
-          ),
-        );
-      }
-
-      const text = extractText(await readBody(response));
+      const text = extractText(body);
       const failure = validateText(text, catalogKeys);
       if (failure.ok) {
         return failure;
@@ -218,6 +233,59 @@ export class GeminiVoiceDraftAdapter implements VoiceDraftPort {
   private endpoint(): string {
     return `${this.baseUrl}/v1beta/models/${this.config.model}:generateContent`;
   }
+
+  /**
+   * One HTTP call bounded by `requestTimeoutMs` (R4-1) with ONE
+   * transport retry after a short backoff (R4-3) — only transient
+   * failures retry (network errors, timeouts, 429/5xx); deliberate
+   * API rejections fail fast.
+   */
+  private async request(body: string): Promise<Result<Response, DomainError>> {
+    for (const lastAttempt of [false, true]) {
+      let response: Response;
+      try {
+        response = await this.fetchImpl(this.endpoint(), {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-goog-api-key": this.config.apiKey,
+          },
+          body,
+          signal: AbortSignal.timeout(this.requestTimeoutMs),
+        });
+      } catch (cause) {
+        if (!lastAttempt) {
+          await sleep(this.retryDelayMs);
+          continue;
+        }
+        return err(
+          new DomainError(
+            "VOICE_DRAFT_FAILED",
+            `Gemini request failed: ${causeMessage(cause)}`,
+          ),
+        );
+      }
+
+      if (response.ok) return ok(response);
+      if (RETRYABLE_STATUSES.has(response.status) && !lastAttempt) {
+        await sleep(this.retryDelayMs);
+        continue;
+      }
+      return err(
+        new DomainError(
+          "VOICE_DRAFT_FAILED",
+          `Gemini API responded ${response.status}`,
+        ),
+      );
+    }
+    return err(
+      new DomainError("VOICE_DRAFT_FAILED", "Gemini request failed"),
+    );
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function causeMessage(cause: unknown): string {

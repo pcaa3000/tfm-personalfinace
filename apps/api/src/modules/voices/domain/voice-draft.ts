@@ -108,7 +108,28 @@ function groupKey(item: VoiceExtractionItem): string {
   return UNCATEGORIZED;
 }
 
-const ISO_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_DAY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Real-calendar check for an LLM-supplied `YYYY-MM-DD` — the digit
+ * shape alone is not enough (untrusted hints can carry `2026-99-99`).
+ * Rollover components fail the round-trip comparison.
+ */
+function isRealIsoDay(isoDate: string): boolean {
+  const match = ISO_DAY_PATTERN.exec(isoDate);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
 
 /** Pure UTC calendar-day shift — businessDate strings are TZ-free. */
 function shiftIsoDay(isoDate: string, days: number): string {
@@ -152,8 +173,11 @@ const RELATIVE_EXACT: Readonly<Record<string, number>> = {
   "day before yesterday": -2,
 };
 
+// Digit count is bounded — an unbounded `\d+` lets a hostile hint
+// overflow Date arithmetic (review R1-1). 999,999 days ≈ 2,740 years
+// stays far inside the representable range.
 const DAYS_AGO_PATTERN =
-  /^(?:hace\s+(\d+)\s+d[ií]as?|(\d+)\s+days?\s+ago)$/i;
+  /^(?:hace\s+(\d{1,6})\s+d[ií]as?|(\d{1,6})\s+days?\s+ago)$/i;
 
 /**
  * Resolves the model's raw `dateHint` against the workspace business
@@ -176,10 +200,14 @@ export function resolveVoiceBusinessDate(
   if (dateHint === null) return today;
   const hint = dateHint.trim().toLowerCase();
   if (hint.length === 0) return today;
-  if (ISO_DAY_PATTERN.test(hint)) return hint;
+  if (isRealIsoDay(hint)) return hint;
 
   const stripped = hint.replace(/^(?:el|la|on|the)\s+/, "");
-  const exact = RELATIVE_EXACT[stripped];
+  // Object.hasOwn — plain-object indexing lets inherited keys like
+  // "constructor"/"__proto__" reach shiftIsoDay and throw (R1-1).
+  const exact = Object.hasOwn(RELATIVE_EXACT, stripped)
+    ? RELATIVE_EXACT[stripped]
+    : undefined;
   if (exact !== undefined) return shiftIsoDay(today, exact);
 
   const ago = DAYS_AGO_PATTERN.exec(stripped);
@@ -188,7 +216,9 @@ export function resolveVoiceBusinessDate(
     return shiftIsoDay(today, -n);
   }
 
-  const weekday = WEEKDAYS[stripped];
+  const weekday = Object.hasOwn(WEEKDAYS, stripped)
+    ? WEEKDAYS[stripped]
+    : undefined;
   if (weekday !== undefined) {
     const back = (dayOfWeek(today) - weekday + 7) % 7;
     return shiftIsoDay(today, -back);

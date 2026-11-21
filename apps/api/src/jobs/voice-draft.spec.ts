@@ -263,4 +263,43 @@ describe("handleVoiceDraft — voice-draft job (voice-drafts T2, S2+S3+S4+S5+S7)
     expect(saved[0]!.status).toBe("failed");
     expect(saved[0]!.error).toContain("boom");
   });
+
+  it("a findById rejection still resolves with the row marked failed — a transient DB error must not strand the note pending (R3-001)", async () => {
+    const { deps, notes, saved } = makeDeps({});
+    vi.mocked(notes.findById).mockRejectedValueOnce(new Error("db down"));
+
+    await expect(handleVoiceDraft(deps, JOB)).resolves.toBeUndefined();
+
+    expect(saved).toHaveLength(1);
+    expect(saved[0]!.status).toBe("failed");
+    expect(saved[0]!.error).toContain("db down");
+  });
+
+  it("when the row cannot be re-read after a load failure, the handler resolves after logging — no rejection escapes", async () => {
+    const { deps, notes } = makeDeps({});
+    vi.mocked(notes.findById).mockRejectedValue(new Error("db down"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(handleVoiceDraft(deps, JOB)).resolves.toBeUndefined();
+
+    expect(notes.save).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
+  it("a save rejection after the draft_ready transition never downgrades the row back to failed (R3-003)", async () => {
+    const { deps, notes, note } = makeDeps({});
+    vi.mocked(notes.save).mockRejectedValueOnce(
+      new Error("dropped connection after commit"),
+    );
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(handleVoiceDraft(deps, JOB)).resolves.toBeUndefined();
+
+    // The persist failure is logged, not re-marked: the entity already
+    // advanced to draft_ready, so markFailed must never overwrite it.
+    expect(notes.save).toHaveBeenCalledTimes(1);
+    expect(note!.status).toBe("draft_ready");
+    expect(note!.error).toBeNull();
+    log.mockRestore();
+  });
 });
