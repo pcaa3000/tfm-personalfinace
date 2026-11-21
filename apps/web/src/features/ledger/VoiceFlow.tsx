@@ -190,6 +190,7 @@ export function VoiceFlow({
   const previewRef = useRef<string | null>(null);
   const pendingTakeRef = useRef<File | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const startingRef = useRef(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const capTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -354,6 +355,10 @@ export function VoiceFlow({
   };
 
   const startRecording = async () => {
+    // Re-entrancy guard: a second click while getUserMedia is still pending
+    // must not run the flow twice (orphaned stream, timers and interleaved chunks).
+    if (startingRef.current || micState === "recording") return;
+    startingRef.current = true;
     setMicError(false);
     const mediaDevices = navigator.mediaDevices;
     if (
@@ -361,6 +366,7 @@ export function VoiceFlow({
       typeof MediaRecorder === "undefined"
     ) {
       setMicError(true);
+      startingRef.current = false;
       return;
     }
     let stream: MediaStream;
@@ -368,6 +374,7 @@ export function VoiceFlow({
       stream = await mediaDevices.getUserMedia({ audio: true });
     } catch {
       setMicError(true);
+      startingRef.current = false;
       return;
     }
     streamRef.current = stream;
@@ -400,6 +407,7 @@ export function VoiceFlow({
     };
     recorderRef.current = recorder;
     recorder.start();
+    startingRef.current = false;
     setElapsed(0);
     setMicState("recording");
     elapsedTimerRef.current = setInterval(

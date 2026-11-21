@@ -370,6 +370,23 @@ describe("VoiceFlow — recording (T4, S1)", () => {
     // The record action stays available to try again.
     expect(screen.getByRole("button", { name: "Grabar" })).toBeTruthy();
   });
+
+  it("ignores a second record click while getUserMedia is still pending", async () => {
+    let resolveMedia!: (stream: MediaStream) => void;
+    getUserMedia.mockImplementationOnce(
+      () => new Promise<MediaStream>((res) => (resolveMedia = res)),
+    );
+    renderFlow();
+
+    const button = screen.getByRole("button", { name: "Grabar" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    resolveMedia(fakeStream());
+
+    await screen.findByText(/Grabando/);
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(FakeMediaRecorder.instances).toHaveLength(1);
+  });
 });
 
 describe("VoiceFlow — upload → poll → review (T4, S2+S4)", () => {
