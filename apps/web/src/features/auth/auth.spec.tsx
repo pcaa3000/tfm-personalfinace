@@ -25,6 +25,8 @@ afterEach(async () => {
   cleanup();
   isAuthBypassed.mockReturnValue(false);
   setAccessTokenProvider(null);
+  localStorage.clear();
+  vi.unstubAllGlobals();
   queryClient.clear();
   await ledgerDb.pendingTransactions.clear();
 });
@@ -510,6 +512,156 @@ describe("AuthProvider", () => {
     });
     expect(await listPendingTransactions()).toHaveLength(1);
     expect(queryClient.getQueryData(["transactions"])).toBeDefined();
+  });
+
+  // demo-maria-login T2 (S2+S3): the demo session is client-side —
+  // signInDemo re-seeds the workspace through POST /demo/reset before
+  // the localStorage flag is set, and signOut wipes flag + caches
+  // without touching Supabase (no real session was ever created).
+  it("signInDemo resets the demo workspace, then sets the flag and a demo session", async () => {
+    isAuthConfigured.mockReturnValue(true);
+    const client = makeClient();
+    getSupabaseClient.mockReturnValue(client);
+    const fetchSpy = vi.fn<typeof fetch>(
+      async () =>
+        new Response("{}", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    function DemoProbe() {
+      const { demoSession, signInDemo } = useAuth();
+      return (
+        <>
+          <span data-testid="demo">{String(demoSession)}</span>
+          <button onClick={() => void signInDemo()}>demo</button>
+        </>
+      );
+    }
+    render(
+      <AuthProvider>
+        <DemoProbe />
+      </AuthProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "demo" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("demo").textContent).toBe("true");
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/demo/reset");
+    expect((init as RequestInit | undefined)?.method).toBe("POST");
+    expect(localStorage.getItem("demo-session")).toBe("1");
+    expect(client.auth.signInWithPassword).not.toHaveBeenCalled();
+  });
+
+  it("does not set the flag when the demo reset fails", async () => {
+    isAuthConfigured.mockReturnValue(true);
+    getSupabaseClient.mockReturnValue(makeClient());
+    const fetchSpy = vi.fn<typeof fetch>(
+      async () =>
+        new Response(JSON.stringify({ code: "GENERIC" }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    let caught: unknown = null;
+    function DemoProbe() {
+      const { demoSession, signInDemo } = useAuth();
+      return (
+        <>
+          <span data-testid="demo">{String(demoSession)}</span>
+          <button
+            onClick={async () => {
+              try {
+                await signInDemo();
+              } catch (error) {
+                caught = error;
+              }
+            }}
+          >
+            demo
+          </button>
+        </>
+      );
+    }
+    render(
+      <AuthProvider>
+        <DemoProbe />
+      </AuthProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "demo" }));
+
+    await waitFor(() => {
+      expect(caught).not.toBeNull();
+    });
+    expect(screen.getByTestId("demo").textContent).toBe("false");
+    expect(localStorage.getItem("demo-session")).toBeNull();
+  });
+
+  it("restores the demo session from the flag on mount without a Supabase session", async () => {
+    localStorage.setItem("demo-session", "1");
+    isAuthConfigured.mockReturnValue(true);
+    const client = makeClient();
+    getSupabaseClient.mockReturnValue(client);
+
+    function DemoProbe() {
+      const { demoSession } = useAuth();
+      return <span data-testid="demo">{String(demoSession)}</span>;
+    }
+    render(
+      <AuthProvider>
+        <DemoProbe />
+        <Probe />
+      </AuthProvider>,
+    );
+
+    expect(screen.getByTestId("demo").textContent).toBe("true");
+    // The pseudo-session exposes the demo identity to the app shell.
+    await waitFor(() => {
+      expect(screen.getByTestId("email").textContent).toBe("demo-maria");
+    });
+    expect(localStorage.getItem("demo-session")).toBe("1");
+  });
+
+  it("signOut ends the demo session and wipes caches without calling Supabase", async () => {
+    localStorage.setItem("demo-session", "1");
+    isAuthConfigured.mockReturnValue(true);
+    const client = makeClient();
+    getSupabaseClient.mockReturnValue(client);
+    setAccessTokenProvider(null);
+    await enqueueTransaction(inputFixture({ idempotencyKey: "demo-queued" }));
+    queryClient.setQueryData(["transactions"], [{ id: "cached" }]);
+
+    function DemoProbe() {
+      const { demoSession } = useAuth();
+      return <span data-testid="demo">{String(demoSession)}</span>;
+    }
+    render(
+      <AuthProvider>
+        <DemoProbe />
+        <Probe />
+      </AuthProvider>,
+    );
+    expect(screen.getByTestId("demo").textContent).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "logout" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("demo").textContent).toBe("false");
+    });
+    expect(localStorage.getItem("demo-session")).toBeNull();
+    expect(await listPendingTransactions()).toHaveLength(0);
+    expect(queryClient.getQueryData(["transactions"])).toBeUndefined();
+    // The demo never owned a Supabase session, so no remote signOut.
+    expect(client.auth.signOut).not.toHaveBeenCalled();
   });
 
   it("signOut clears the session through the auth client", async () => {

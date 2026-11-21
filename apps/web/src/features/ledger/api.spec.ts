@@ -25,6 +25,7 @@ import {
   reviseCategory,
   reviseCurrency,
   reviseTransaction,
+  resetDemoWorkspace,
   retryReceiptScan,
   unarchiveAccount,
   updateWorkspace,
@@ -76,6 +77,107 @@ describe("dev auth bypass", () => {
     vi.stubEnv("VITE_AUTH_BYPASS", "false");
     await listAccounts();
     expect(calledHeaders()["x-dev-user"]).toBeUndefined();
+  });
+});
+
+/**
+ * In-memory localStorage stub — api.spec runs in the node environment
+ * where no localStorage exists, so the demo-session flag is faked
+ * through vi.stubGlobal (demo-maria-login T2, S3).
+ */
+function stubDemoFlag(value: string | null) {
+  const store = new Map<string, string>();
+  if (value !== null) store.set("demo-session", value);
+  // Direct assignment (not vi.stubGlobal) so unstubAllGlobals can stay
+  // out of the cleanup path — it would also remove the module-level
+  // fetch stub and break every test that follows.
+  (globalThis as { localStorage?: unknown }).localStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, next: string) => void store.set(key, next),
+    removeItem: (key: string) => void store.delete(key),
+    clear: () => store.clear(),
+    key: () => null,
+    get length() {
+      return store.size;
+    },
+  };
+}
+
+function clearDemoFlagStub() {
+  delete (globalThis as { localStorage?: unknown }).localStorage;
+}
+
+describe("demo session (demo-maria-login T2, S3)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    clearDemoFlagStub();
+    setAccessTokenProvider(null);
+  });
+
+  it("sends x-dev-user: demo-maria when the demo-session flag is set", async () => {
+    stubDemoFlag("1");
+
+    await listAccounts();
+
+    expect(calledHeaders()["x-dev-user"]).toBe("demo-maria");
+  });
+
+  it("keeps demo-maria when the dev bypass is also on", async () => {
+    stubDemoFlag("1");
+    vi.stubEnv("DEV", true);
+    vi.stubEnv("VITE_AUTH_BYPASS", "true");
+
+    await listAccounts();
+
+    expect(calledHeaders()["x-dev-user"]).toBe("demo-maria");
+  });
+
+  it("wins over a stale bearer token so a real identity never leaks into the demo", async () => {
+    stubDemoFlag("1");
+    setAccessTokenProvider(async () => "stale-token");
+
+    await listAccounts();
+
+    const headers = calledHeaders();
+    expect(headers["x-dev-user"]).toBe("demo-maria");
+    expect(headers["authorization"]).toBeUndefined();
+  });
+
+  it("keeps the dev-user identity when the flag is absent", async () => {
+    stubDemoFlag(null);
+    vi.stubEnv("DEV", true);
+    vi.stubEnv("VITE_AUTH_BYPASS", "true");
+
+    await listAccounts();
+
+    expect(calledHeaders()["x-dev-user"]).toBe("dev-user");
+  });
+
+  it("resetDemoWorkspace posts to /demo/reset as demo-maria before the flag exists", async () => {
+    stubDemoFlag(null);
+
+    await resetDemoWorkspace();
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/demo/reset");
+    expect(init?.method).toBe("POST");
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect(headers["x-dev-user"]).toBe("demo-maria");
+  });
+
+  it("resetDemoWorkspace propagates API errors so the flag is never set on failure", async () => {
+    stubDemoFlag(null);
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: "GENERIC" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const error = await resetDemoWorkspace().catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ code: "GENERIC", status: 500 });
   });
 });
 

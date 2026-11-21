@@ -4,9 +4,10 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const signIn = vi.hoisted(() => vi.fn());
 const signUp = vi.hoisted(() => vi.fn());
+const signInDemo = vi.hoisted(() => vi.fn());
 const signInWithOAuth = vi.hoisted(() => vi.fn());
 vi.mock("../auth/auth", () => ({
-  useAuth: () => ({ configured: true, loading: false, session: null, signIn, signUp, signInWithOAuth, signOut: vi.fn() }),
+  useAuth: () => ({ configured: true, loading: false, session: null, demoSession: false, signIn, signUp, signInDemo, signInWithOAuth, signOut: vi.fn() }),
 }));
 
 import i18n from "../../i18n";
@@ -16,6 +17,7 @@ afterEach(() => {
   cleanup();
   signIn.mockReset();
   signUp.mockReset();
+  signInDemo.mockReset();
   signInWithOAuth.mockReset();
 });
 
@@ -96,6 +98,44 @@ describe("LoginPage", () => {
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toBe(
       "No se pudo iniciar sesión. Revisá los datos e intentá de nuevo.",
+    );
+  });
+
+  // demo-maria-login T2 (S1): a visible demo entry next to the OAuth
+  // buttons delegates to signInDemo, which re-seeds the demo workspace
+  // server-side before opening the client-side demo session.
+  it("offers a visible demo entry that signs in via signInDemo", async () => {
+    signInDemo.mockResolvedValue(undefined);
+    render(<LoginPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Probar con datos de María" }),
+    );
+
+    await waitFor(() => {
+      expect(signInDemo).toHaveBeenCalledTimes(1);
+    });
+    expect(signIn).not.toHaveBeenCalled();
+    expect(signInWithOAuth).not.toHaveBeenCalled();
+  });
+
+  it("warns that demo changes are discarded", () => {
+    render(<LoginPage />);
+
+    expect(screen.getByText(/se descartan/i)).toBeTruthy();
+  });
+
+  it("surfaces a localized error when the demo sign-in fails", async () => {
+    signInDemo.mockRejectedValue(new Error("reset failed"));
+    render(<LoginPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Probar con datos de María" }),
+    );
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toBe(
+      "No se pudo iniciar la demo. Intentá de nuevo.",
     );
   });
 

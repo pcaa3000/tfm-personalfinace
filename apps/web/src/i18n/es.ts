@@ -344,6 +344,11 @@ export const es = {
     signUpError: "No se pudo crear la cuenta. Revisá los datos e intentá de nuevo.",
     continueWithGoogle: "Continuar con Google",
     continueWithFacebook: "Continuar con Facebook",
+    tryDemo: "Probar con datos de María",
+    demoSubmitting: "Preparando la demo…",
+    demoHint:
+      "Explorá la app con datos de ejemplo. Los cambios se descartan en el próximo ingreso a la demo.",
+    demoError: "No se pudo iniciar la demo. Intentá de nuevo.",
     or: "o",
     loading: "Cargando…",
     misconfigTitle: "Autenticación mal configurada",

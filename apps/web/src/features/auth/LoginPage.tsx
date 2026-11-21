@@ -24,12 +24,14 @@ type Mode = "signin" | "signup";
  */
 export function LoginPage() {
   const { t } = useTranslation();
-  const { signIn, signInWithOAuth, signUp } = useAuth();
+  const { signIn, signInDemo, signInWithOAuth, signUp } = useAuth();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [demoSubmitting, setDemoSubmitting] = useState(false);
   const [error, setError] = useState(false);
+  const [demoError, setDemoError] = useState(false);
 
   const signup = mode === "signup";
 
@@ -47,6 +49,22 @@ export function LoginPage() {
       await signInWithOAuth(provider);
     } catch {
       setError(true);
+    }
+  };
+
+  // demo-maria-login T2 (S1): the demo entry re-seeds the workspace
+  // server-side and then opens a client-side demo session — a failed
+  // reset surfaces the demo-specific error, never the credentials one.
+  const tryDemo = async () => {
+    setDemoSubmitting(true);
+    setDemoError(false);
+    setError(false);
+    try {
+      await signInDemo();
+    } catch {
+      setDemoError(true);
+    } finally {
+      setDemoSubmitting(false);
     }
   };
 
@@ -104,6 +122,11 @@ export function LoginPage() {
                 {t(signup ? "login.signUpError" : "login.error")}
               </Alert>
             ) : null}
+            {demoError ? (
+              <Alert severity="error" sx={{ width: "100%" }}>
+                {t("login.demoError")}
+              </Alert>
+            ) : null}
 
             <Stack spacing={1.25} sx={{ width: "100%" }}>
               <Button
@@ -122,6 +145,24 @@ export function LoginPage() {
               >
                 {t("login.continueWithFacebook")}
               </Button>
+              <Button
+                variant="outlined"
+                fullWidth
+                disabled={demoSubmitting}
+                onClick={() => void tryDemo()}
+                sx={{ textTransform: "none" }}
+              >
+                {demoSubmitting
+                  ? t("login.demoSubmitting")
+                  : t("login.tryDemo")}
+              </Button>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ textAlign: "center" }}
+              >
+                {t("login.demoHint")}
+              </Typography>
             </Stack>
 
             <Divider sx={{ width: "100%" }}>{t("login.or")}</Divider>

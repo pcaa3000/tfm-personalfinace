@@ -28,7 +28,8 @@ function ThemedApp() {
  */
 function AuthGate() {
   const { t } = useTranslation();
-  const { configured, misconfigured, loading, session } = useAuth();
+  const { configured, misconfigured, loading, session, demoSession } =
+    useAuth();
 
   if (misconfigured) {
     return (
@@ -51,7 +52,11 @@ function AuthGate() {
       </Box>
     );
   }
-  if (!configured || session) {
+  // T2 (S3): the demo session takes the app path even though no
+  // Supabase session exists — the context also exposes a
+  // pseudo-session, so `session` covers it, but `demoSession` keeps
+  // the intent explicit.
+  if (!configured || session || demoSession) {
     return <LedgerPage />;
   }
   if (loading) {

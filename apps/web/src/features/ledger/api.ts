@@ -1,3 +1,4 @@
+import { DEMO_SUBJECT, isDemoSession } from "../auth/demo-session";
 import { isAuthBypassed } from "../auth/supabase";
 import type {
   ReceiptConfirmInput,
@@ -99,6 +100,12 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
+  // Demo session (demo-maria-login T2, S3): the client-side flag
+  // forces the `local|demo-maria` identity. It is checked before the
+  // bearer token so a stale Supabase session can never leak a real
+  // identity into the demo, and before the dev bypass so `demo-maria`
+  // — never `dev-user` — owns every call while the flag lives.
+  if (isDemoSession()) return { "x-dev-user": DEMO_SUBJECT };
   const token = accessTokenProvider ? await accessTokenProvider() : null;
   if (token) return { authorization: `Bearer ${token}` };
   // Dev bypass (T26): AUTH_MODE=dev is fail-closed and requires the
@@ -135,6 +142,25 @@ async function requestMultipart<T>(
     body: form,
   });
   return parseResponse<T>(response);
+}
+
+/**
+ * `POST /demo/reset` — re-seeds the `local|demo-maria` workspace before
+ * the demo session starts operating (demo-maria-login T2, S2). The
+ * endpoint exists only while the API runs AUTH_MODE=dev and always
+ * targets the demo workspace. The explicit `x-dev-user` header keeps
+ * the call valid even before the demo-session flag is set — the flag
+ * is only written after this reset succeeds.
+ */
+export async function resetDemoWorkspace(): Promise<void> {
+  const response = await fetch(`${BASE}/demo/reset`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-dev-user": DEMO_SUBJECT,
+    },
+  });
+  return parseResponse<void>(response);
 }
 
 /** `GET /api/v1/balance` — per-currency aggregates for the strip (T24). */

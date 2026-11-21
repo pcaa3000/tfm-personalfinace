@@ -10,6 +10,7 @@ import {
 } from "./app.js";
 import { requiredEnv } from "../env.js";
 import { createDrizzleDb, type DrizzleDb } from "../drizzle/db.js";
+import { seedDemoWorkspace } from "../drizzle/seed-demo-workspace.js";
 import { DevHeaderCallerResolver } from "../modules/identity-workspace/infrastructure/http/dev-header-caller.resolver.js";
 import { JwtCallerResolver } from "../modules/identity-workspace/infrastructure/http/jwt-caller.resolver.js";
 import { DrizzleWorkspaceAdapter } from "../modules/identity-workspace/infrastructure/drizzle-workspace.adapter.js";
@@ -274,6 +275,13 @@ export function buildApp(env: AppEnv): BuiltApp {
       receiptStorage,
       clock,
     ),
+    // demo-maria-login T1 (S2/S4): POST /api/v1/demo/reset exists ONLY
+    // in dev auth mode — the dep is absent under oidc, so createApp
+    // never mounts the route (fail-closed, same policy as the
+    // x-dev-user dev caller above).
+    ...(env.authMode === "dev"
+      ? { demoReset: { reset: async () => (await seedDemoWorkspace(db)).counts } }
+      : {}),
   };
 
   return {

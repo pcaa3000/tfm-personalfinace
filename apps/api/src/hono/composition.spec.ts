@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { envFromProcess } from "./composition.js";
+import { buildApp, envFromProcess, type AppEnv } from "./composition.js";
 
 /**
  * S3 (GAP-SEC-01): unknown/missing AUTH_MODE fails closed at boot.
@@ -285,6 +285,73 @@ describe("envFromProcess — receipt storage + upload limits (receipt-scan-draft
       accessKeyId: "ak",
       secretAccessKey: "sk",
     });
+  });
+});
+
+/**
+ * demo-maria-login T1 (S4): POST /api/v1/demo/reset exists ONLY under
+ * AUTH_MODE=dev — same fail-closed policy as the x-dev-user dev caller.
+ * The DB target is deliberately unreachable (127.0.0.1:1 refuses
+ * instantly): in oidc mode the request must 404 without touching the DB,
+ * and in dev mode reaching the seeder surfaces as a 500 — never a 404 —
+ * which proves the route is mounted.
+ */
+describe("POST /api/v1/demo/reset mounting (demo-maria-login T1, S4)", () => {
+  const unreachableDbEnv = (
+    authMode: AppEnv["authMode"],
+  ): AppEnv => ({
+    databaseUrl: "postgresql://u:p@127.0.0.1:1/unreachable",
+    authMode,
+    ...(authMode === "oidc"
+      ? {
+          oidc: {
+            issuer: "https://issuer.example",
+            audience: "aud",
+            jwksUri: "https://issuer.example/jwks.json",
+          },
+        }
+      : {}),
+    security: {
+      corsOrigins: [],
+      bodyLimitBytes: 1024,
+      rateLimit: { max: 0, windowMs: 60_000 },
+      rateLimitRead: { max: 0, windowMs: 60_000 },
+      receiptUploadBodyLimitBytes: 1024,
+    },
+    receipts: {
+      maxBytes: 1024,
+      storage: { driver: "local", dir: "/tmp/tfm-demo-reset-spec" },
+      scanDispatcher: { mode: "pgboss" },
+    },
+  });
+
+  it("answers 404 in oidc mode — the route is never mounted", async () => {
+    const built = buildApp(unreachableDbEnv("oidc"));
+    try {
+      const res = await built.app.request("/api/v1/demo/reset", {
+        method: "POST",
+      });
+      expect(res.status).toBe(404);
+    } finally {
+      await built.close();
+    }
+  });
+
+  it("mounts the route in dev mode — the request reaches the seeder", async () => {
+    const built = buildApp(unreachableDbEnv("dev"));
+    try {
+      const res = await built.app.request("/api/v1/demo/reset", {
+        method: "POST",
+      });
+      // The unreachable DB makes the seeder fail → 500; a missing route
+      // would have answered 404 instead.
+      expect(res.status).toBe(500);
+      expect(((await res.json()) as { code: string }).code).toBe(
+        "INTERNAL_ERROR",
+      );
+    } finally {
+      await built.close();
+    }
   });
 });
 

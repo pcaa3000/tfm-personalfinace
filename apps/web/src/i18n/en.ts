@@ -348,6 +348,11 @@ export const en: TranslationShape = {
     signUpError: "Could not create the account. Check your data and try again.",
     continueWithGoogle: "Continue with Google",
     continueWithFacebook: "Continue with Facebook",
+    tryDemo: "Try with María's data",
+    demoSubmitting: "Preparing the demo…",
+    demoHint:
+      "Explore the app with sample data. Your changes are discarded on the next demo sign-in.",
+    demoError: "Could not start the demo. Try again.",
     or: "or",
     loading: "Loading…",
     misconfigTitle: "Authentication is not configured",

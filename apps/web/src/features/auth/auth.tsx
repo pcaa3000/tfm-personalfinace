@@ -7,10 +7,16 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Session } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
 
-import { setAccessTokenProvider } from "../ledger/api";
+import { resetDemoWorkspace, setAccessTokenProvider } from "../ledger/api";
 import { clearClientCaches } from "./client-caches";
+import {
+  DEMO_SUBJECT,
+  endDemoSession,
+  isDemoSession,
+  startDemoSession,
+} from "./demo-session";
 import { getSupabaseClient, isAuthBypassed, isAuthConfigured } from "./supabase";
 import { useInactivityLogout } from "./use-inactivity-logout";
 
@@ -24,7 +30,17 @@ export interface AuthContextValue {
   /** True while the initial getSession() call is in flight. */
   loading: boolean;
   session: Session | null;
+  /** True while the client-side demo session flag is set (T2, S3). */
+  demoSession: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  /**
+   * Enters the "María" demo (demo-maria-login T2, S1–S3): re-seeds the
+   * demo workspace through `POST /demo/reset` and only then sets the
+   * client-side flag that makes the API client send
+   * `x-dev-user: demo-maria`. No Supabase session is created — the
+   * context exposes a pseudo-session instead.
+   */
+  signInDemo: () => Promise<void>;
   /**
    * Starts the OAuth PKCE redirect flow for a social provider (T30).
    * On success the browser navigates away to the provider, so no
@@ -43,7 +59,11 @@ const defaultValue: AuthContextValue = {
   misconfigured: false,
   loading: false,
   session: null,
+  demoSession: false,
   signIn: async () => {
+    throw new Error("Auth is not configured");
+  },
+  signInDemo: async () => {
     throw new Error("Auth is not configured");
   },
   signInWithOAuth: async () => {
@@ -60,6 +80,31 @@ const defaultValue: AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue>(defaultValue);
 
+/**
+ * Pseudo-session exposed while the demo flag lives (T2, S3): it lets
+ * the app shell (AuthGate, account menu, inactivity logout) treat the
+ * demo exactly like a signed-in identity without a Supabase session.
+ * `access_token` is never sent — `isDemoSession()` short-circuits the
+ * API headers to `x-dev-user` first.
+ */
+const DEMO_USER: User = {
+  id: DEMO_SUBJECT,
+  aud: "authenticated",
+  role: "authenticated",
+  email: DEMO_SUBJECT,
+  app_metadata: {},
+  user_metadata: {},
+  created_at: "",
+};
+
+const DEMO_PSEUDO_SESSION: Session = {
+  access_token: "demo",
+  refresh_token: "",
+  token_type: "bearer",
+  expires_in: 0,
+  user: DEMO_USER,
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   // T26: three explicit states — bypassed (dev passthrough), configured
   // (credentials present → login required) or misconfigured (fail closed).
@@ -67,8 +112,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasCredentials = isAuthConfigured();
   const configured = !bypassed && hasCredentials;
   const misconfigured = !bypassed && !hasCredentials;
-  const [session, setSession] = useState<Session | null>(null);
+  const [supabaseSession, setSupabaseSession] = useState<Session | null>(
+    null,
+  );
+  // T2 (S3): restored from the localStorage flag so a reload keeps the
+  // visitor inside the demo until they sign out.
+  const [demoSession, setDemoSession] = useState(isDemoSession);
   const [loading, setLoading] = useState(configured);
+  const session = demoSession ? DEMO_PSEUDO_SESSION : supabaseSession;
 
   useEffect(() => {
     if (!configured) return;
@@ -84,12 +135,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     void supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
-      setSession(data.session);
+      setSupabaseSession(data.session);
       setLoading(false);
     });
 
+    // Supabase events only update the stored real session; while the
+    // demo flag lives the exposed session stays the pseudo-session, so
+    // a stray SIGNED_IN/SIGNED_OUT event can't break the demo out of
+    // or into a real identity.
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next);
+      setSupabaseSession(next);
       setLoading(false);
     });
 
@@ -107,7 +162,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (error) throw error;
     // Reflect the new session immediately; onAuthStateChange may lag.
-    setSession(data.session);
+    setSupabaseSession(data.session);
+  }, []);
+
+  // demo-maria-login T2 (S2+S3): the API re-seeds `local|demo-maria`
+  // BEFORE the flag is written — a failed reset must never leave a
+  // half-open demo session pointing at stale data.
+  const signInDemo = useCallback(async () => {
+    await resetDemoWorkspace();
+    startDemoSession();
+    setDemoSession(true);
   }, []);
 
   // T30 (S13): the PKCE redirect flow navigates the browser away to
@@ -136,12 +200,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // a shared browser. Skipped when the auth call itself fails — the
   // session is still valid and the user's data must not be destroyed.
   const signOut = useCallback(async () => {
+    // Demo sign-out is local (T2, S3): the demo never created a
+    // Supabase session, so no remote signOut runs — the flag and the
+    // client caches are wiped exactly like a normal signOut.
+    if (demoSession) {
+      endDemoSession();
+      setDemoSession(false);
+      setSupabaseSession(null);
+      await clearClientCaches();
+      return;
+    }
     // supabase-js resolves {error} on server 5xx without throwing;
     // in that path the session is still valid, so the wipe must not run.
     const { error } = await getSupabaseClient().auth.signOut();
     if (error) throw error;
     await clearClientCaches();
-  }, []);
+  }, [demoSession]);
 
   const updatePassword = useCallback(async (newPassword: string) => {
     const { error } = await getSupabaseClient().auth.updateUser({
@@ -161,7 +235,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       misconfigured,
       loading,
       session,
+      demoSession,
       signIn,
+      signInDemo,
       signInWithOAuth,
       signUp,
       signOut,
@@ -173,7 +249,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       misconfigured,
       loading,
       session,
+      demoSession,
       signIn,
+      signInDemo,
       signInWithOAuth,
       signUp,
       signOut,

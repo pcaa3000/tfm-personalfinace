@@ -52,6 +52,7 @@ function authValue(overrides: Record<string, unknown> = {}) {
     misconfigured: false,
     loading: false,
     session: null,
+    demoSession: false,
     signIn: vi.fn(),
     signUp: vi.fn(),
     signOut: vi.fn(),
@@ -88,6 +89,20 @@ describe("App auth gate (T6-web)", () => {
     expect(
       await screen.findAllByText("Movimientos"),
     ).not.toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
+  });
+
+  // demo-maria-login T2 (S3): an active demo session takes the app
+  // path even though no Supabase session exists.
+  it("renders LedgerPage during a demo session without a Supabase session", async () => {
+    isAuthConfigured.mockReturnValue(true);
+    useAuth.mockReturnValue(authValue({ demoSession: true }));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Movimientos").length).toBeGreaterThan(0);
+    });
     expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
   });
 
