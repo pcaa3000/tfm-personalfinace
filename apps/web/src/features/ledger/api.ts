@@ -126,7 +126,15 @@ async function authHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * Shared JSON request path — exported so sibling features (e.g.
+ * reports-monthly T7) reuse the same auth headers (bearer,
+ * x-dev-user, x-demo-session) and ApiError envelope handling.
+ */
+export async function request<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
     ...(await authHeaders()),

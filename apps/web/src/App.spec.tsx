@@ -41,9 +41,46 @@ vi.mock("./features/ledger/offline/use-pending-sync", () => ({
   usePendingSync: () => {},
 }));
 
+// reports-monthly T7: the four report endpoints are stubbed so the
+// #/reports route can render without a network.
+vi.mock("./features/reports/api", () => {
+  const period = {
+    from: "2026-11-01",
+    to: "2026-11-12",
+    currency: "PEN",
+    periodStatus: "provisional",
+  };
+  return {
+    fetchCashFlowReport: vi.fn(async () => ({ period, accounts: [] })),
+    fetchExpensesByCategory: vi.fn(async () => ({
+      period,
+      totalExpenses: "0.00",
+      natureTotals: {},
+      categories: [],
+    })),
+    fetchAntExpenses: vi.fn(async () => ({
+      period,
+      totalDiscretionary: "0.00",
+      groups: [],
+    })),
+    fetchMonthlySavings: vi.fn(async () => ({
+      period,
+      income: "0.00",
+      expense: "0.00",
+      saved: "0.00",
+      observedRate: null,
+      note: "no_income",
+      deficit: null,
+    })),
+  };
+});
+
 import { App } from "./App";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.location.hash = "";
+});
 
 function authValue(overrides: Record<string, unknown> = {}) {
   return {
@@ -140,5 +177,45 @@ describe("App auth gate (T6-web)", () => {
     expect(screen.getByText(/VITE_AUTH_BYPASS/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
     expect(screen.queryByText("Movimientos")).toBeNull();
+  });
+
+  // reports-monthly T7 (S7): "#/reports" renders the reports page and
+  // "#/" stays on the ledger — hash routing replaces a router dep.
+  it("renders ReportsPage on the '#/reports' hash for a signed-in session", async () => {
+    window.location.hash = "#/reports";
+    isAuthConfigured.mockReturnValue(true);
+    useAuth.mockReturnValue(
+      authValue({
+        session: {
+          access_token: "tok",
+          user: { id: "u", email: "a@b.c" },
+        },
+      }),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText("Gastos hormiga")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
+  });
+
+  it("keeps LedgerPage on the default hash", async () => {
+    window.location.hash = "#/";
+    isAuthConfigured.mockReturnValue(true);
+    useAuth.mockReturnValue(
+      authValue({
+        session: {
+          access_token: "tok",
+          user: { id: "u", email: "a@b.c" },
+        },
+      }),
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Movimientos").length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText("Gastos hormiga")).toBeNull();
   });
 });

@@ -6,6 +6,8 @@ import { useTranslation } from "react-i18next";
 import { AuthProvider, useAuth } from "./features/auth/auth";
 import { LoginPage } from "./features/auth/LoginPage";
 import { LedgerPage } from "./features/ledger/LedgerPage";
+import { ReportsPage } from "./features/reports/ReportsPage";
+import { useAppRoute } from "./features/reports/route";
 import { buildAppTheme } from "./theme";
 import { queryClient } from "./query-client";
 import { ThemeModeProvider, useThemeMode } from "./theme-mode";
@@ -19,6 +21,15 @@ function ThemedApp() {
       <AuthGate />
     </ThemeProvider>
   );
+}
+
+/**
+ * reports-monthly T7 (S7): two top-level views behind a hash route —
+ * '#/reports' renders the reports page, anything else the ledger.
+ * The app has no router dependency; the hash keeps deep-linking free.
+ */
+function RoutedPage() {
+  return useAppRoute() === "reports" ? <ReportsPage /> : <LedgerPage />;
 }
 
 /**
@@ -56,7 +67,7 @@ function AuthGate() {
   // session (the per-tab sid only rides in request headers), so the
   // gate needs no demo-specific branch.
   if (!configured) {
-    return <LedgerPage />;
+    return <RoutedPage />;
   }
   // demo-maria-session T9 (S10): while the sid mints and the async
   // seed runs, hold a preparing state — landing on an empty ledger
@@ -77,7 +88,7 @@ function AuthGate() {
     );
   }
   if (session) {
-    return <LedgerPage />;
+    return <RoutedPage />;
   }
   if (loading) {
     return (

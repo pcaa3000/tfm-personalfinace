@@ -50,6 +50,7 @@ import { NewMovementDialog } from "./NewMovementDialog";
 import { createTransactionOrQueue, toPendingView } from "./offline/create-or-queue";
 import { listPendingTransactions } from "./offline/queue";
 import { PENDING_QUERY_KEY, usePendingSync } from "./offline/use-pending-sync";
+import { navigateToReports } from "../reports/route";
 import { currentMonthRange } from "./period";
 import { PreferencesDialog } from "./PreferencesDialog";
 import {
@@ -414,6 +415,7 @@ export function LedgerPage() {
           onToggleCollapsed={toggleRail}
           onOpenManagement={setManagement}
           onNavigateList={scrollToList}
+          onNavigateReports={navigateToReports}
         />
       ) : null}
 
@@ -537,6 +539,7 @@ export function LedgerPage() {
       {desktop ? null : (
         <MobileNav
           onNavigateList={scrollToList}
+          onNavigateReports={navigateToReports}
           onNewMovement={() => setMovementOpen(true)}
         />
       )}

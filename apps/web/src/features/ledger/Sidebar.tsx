@@ -49,11 +49,22 @@ export function persistRailCollapsed(collapsed: boolean): void {
   }
 }
 
+
+
 interface Props {
   collapsed: boolean;
   onToggleCollapsed: () => void;
-  onOpenManagement: (section: ManagementSection) => void;
+  /**
+   * reports-monthly T7: when omitted the Gestión group is hidden —
+   * the reports page reuses the sidebar for navigation only, since
+   * the management dialogs live on the ledger page.
+   */
+  onOpenManagement?: (section: ManagementSection) => void;
   onNavigateList: () => void;
+  /** reports-monthly T7: navigates to the '#/reports' route. */
+  onNavigateReports?: () => void;
+  /** Nav item rendered as current; defaults to the ledger panel. */
+  active?: "panel" | "reports";
 }
 
 interface NavItem {
@@ -61,7 +72,9 @@ interface NavItem {
   icon: React.ReactNode;
   label: string;
   current?: boolean;
-  onClick?: () => void;
+  // `| undefined`: exactOptionalPropertyTypes — callers may forward
+  // an optional callback (e.g. onNavigateReports) without a fallback.
+  onClick?: (() => void) | undefined;
 }
 
 /**
@@ -74,6 +87,8 @@ export function Sidebar({
   onToggleCollapsed,
   onOpenManagement,
   onNavigateList,
+  onNavigateReports,
+  active = "panel",
 }: Props) {
   const { t } = useTranslation();
 
@@ -82,7 +97,8 @@ export function Sidebar({
       key: "panel",
       icon: <HomeIcon fontSize="small" />,
       label: t("nav.panel"),
-      current: true,
+      current: active === "panel",
+      onClick: onNavigateList,
     },
     {
       key: "movements",
@@ -94,7 +110,8 @@ export function Sidebar({
       key: "reports",
       icon: <ChartIcon fontSize="small" />,
       label: t("nav.reports"),
-      onClick: onNavigateList,
+      current: active === "reports",
+      onClick: onNavigateReports,
     },
   ];
 
@@ -103,31 +120,31 @@ export function Sidebar({
       key: "accounts",
       icon: <WalletIcon fontSize="small" />,
       label: t("management.accounts"),
-      onClick: () => onOpenManagement("accounts"),
+      onClick: () => onOpenManagement?.("accounts"),
     },
     {
       key: "categories",
       icon: <TagIcon fontSize="small" />,
       label: t("management.categories"),
-      onClick: () => onOpenManagement("categories"),
+      onClick: () => onOpenManagement?.("categories"),
     },
     {
       key: "currencies",
       icon: <CoinIcon fontSize="small" />,
       label: t("management.currencies"),
-      onClick: () => onOpenManagement("currencies"),
+      onClick: () => onOpenManagement?.("currencies"),
     },
     {
       key: "tickets",
       icon: <ReceiptIcon fontSize="small" />,
       label: t("management.tickets"),
-      onClick: () => onOpenManagement("tickets"),
+      onClick: () => onOpenManagement?.("tickets"),
     },
     {
       key: "preferences",
       icon: <GearIcon fontSize="small" />,
       label: t("management.preferences"),
-      onClick: () => onOpenManagement("preferences"),
+      onClick: () => onOpenManagement?.("preferences"),
     },
   ];
 
@@ -230,7 +247,7 @@ export function Sidebar({
       )}
       <nav aria-label={t("nav.mainNav")}>
         <List disablePadding>{ledgerItems.map(renderItem)}</List>
-        {collapsed ? null : (
+        {collapsed || !onOpenManagement ? null : (
           <Typography
             variant="caption"
             sx={{
@@ -247,9 +264,11 @@ export function Sidebar({
             {t("nav.management")}
           </Typography>
         )}
-        <List disablePadding aria-label={t("nav.management")}>
-          {managementItems.map(renderItem)}
-        </List>
+        {onOpenManagement ? (
+          <List disablePadding aria-label={t("nav.management")}>
+            {managementItems.map(renderItem)}
+          </List>
+        ) : null}
       </nav>
     </Box>
   );

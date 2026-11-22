@@ -10,14 +10,27 @@ import {
 
 interface Props {
   onNavigateList: () => void;
-  onNewMovement: () => void;
+  /**
+   * reports-monthly T7: optional — the FAB is only rendered when a
+   * handler exists, so the reports page (no movement dialog) hides it.
+   */
+  onNewMovement?: () => void;
+  /** reports-monthly T7: navigates to the '#/reports' route. */
+  onNavigateReports?: () => void;
+  /** Nav item rendered as current; defaults to the ledger panel. */
+  active?: "panel" | "reports";
 }
 
 /**
  * Mobile chrome (S12-6): floating dark pill tabbar with the mint active
  * item + violet FAB that opens the movement dialog.
  */
-export function MobileNav({ onNavigateList, onNewMovement }: Props) {
+export function MobileNav({
+  onNavigateList,
+  onNewMovement,
+  onNavigateReports,
+  active = "panel",
+}: Props) {
   const { t } = useTranslation();
 
   const item = (
@@ -72,7 +85,12 @@ export function MobileNav({ onNavigateList, onNewMovement }: Props) {
           p: 0.5,
         }}
       >
-        {item(<HomeIcon sx={{ fontSize: 20 }} />, t("nav.panel"), true)}
+        {item(
+          <HomeIcon sx={{ fontSize: 20 }} />,
+          t("nav.panel"),
+          active === "panel",
+          active === "panel" ? undefined : onNavigateList,
+        )}
         {item(
           <ListIcon sx={{ fontSize: 20 }} />,
           t("nav.movements"),
@@ -82,11 +100,11 @@ export function MobileNav({ onNavigateList, onNewMovement }: Props) {
         {item(
           <ChartIcon sx={{ fontSize: 20 }} />,
           t("nav.reports"),
-          false,
-          onNavigateList,
+          active === "reports",
+          onNavigateReports,
         )}
       </Paper>
-      <Fab
+      {onNewMovement ? <Fab
         aria-label={t("topbar.newMovement")}
         onClick={onNewMovement}
         sx={{
@@ -104,7 +122,7 @@ export function MobileNav({ onNavigateList, onNewMovement }: Props) {
         }}
       >
         <PlusIcon />
-      </Fab>
+      </Fab> : null}
     </>
   );
 }

@@ -182,7 +182,10 @@ beforeEach(() => {
   mockMatchMedia(true); // desktop by default
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.location.hash = "";
+});
 
 describe("LedgerPage pagination (RF-013)", () => {
   it("requests the first page with limit and offset", async () => {
@@ -522,6 +525,22 @@ describe("LedgerPage responsive layout (S12-6)", () => {
     expect(await screen.findByRole("complementary")).toBeTruthy();
     expect(await screen.findByRole("table")).toBeTruthy();
     expect(await screen.findByText("concepto tx-1")).toBeTruthy();
+  });
+
+  // reports-monthly T7: the sidebar 'Reportes' entry routes to
+  // '#/reports' instead of scrolling to the movement list.
+  it("routes the 'Reportes' sidebar item to '#/reports'", async () => {
+    // Expanded rail (≥1180px) — the auto-mini band renders icon-only
+    // buttons with no accessible name for the nav items.
+    mockViewportWidth(1400);
+    vi.mocked(listTransactions).mockResolvedValue([]);
+
+    renderPage();
+
+    const reports = await screen.findByRole("button", { name: "Reportes" });
+    fireEvent.click(reports);
+
+    expect(window.location.hash).toBe("#/reports");
   });
 
   it("renders day cards, pill tabbar and FAB on mobile (<960px)", async () => {
