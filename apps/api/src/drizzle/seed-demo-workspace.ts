@@ -184,12 +184,22 @@ export async function bootstrapDemoWorkspace(
 
   // Workspace-owned copies of the global catalog (T19 pattern in
   // seed.ts): only workspace rows carry workspaceId — the global
-  // catalog itself is seeded by `pnpm db:seed`.
+  // catalog itself is seeded by `pnpm db:seed`. On conflict the seed
+  // row is RESTORED (un-archived, label/nature reset): a demo visitor
+  // archiving a seed category must not break later refreshes
+  // (R3-001 — the wipe+re-seed would roll back forever otherwise).
   for (const category of GLOBAL_CATEGORIES) {
     await tx
       .insert(categories)
       .values({ id: randomUUID(), ...category, workspaceId: workspace.id })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: [categories.key, categories.workspaceId],
+        set: {
+          label: category.label,
+          nature: category.nature,
+          archivedAt: null,
+        },
+      });
   }
 
   return {

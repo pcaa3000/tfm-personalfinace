@@ -277,6 +277,46 @@ describe("refreshDemoWorkspace (integration, real Postgres — T2)", () => {
       .where(eq(outboxEvents.workspaceId, WORKSPACE_ID));
   });
 
+  it("restores an archived seed category instead of failing every later refresh (R3-001)", async () => {
+    await refresh(db);
+    const [food] = await db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(
+        and(
+          eq(categories.workspaceId, WORKSPACE_ID),
+          eq(categories.key, "food"),
+        ),
+      )
+      .limit(1);
+    // A demo visitor archives a seed category…
+    await db
+      .update(categories)
+      .set({ archivedAt: new Date("2026-03-10T00:00:00Z") })
+      .where(eq(categories.id, food!.id));
+
+    const result = await refresh(db);
+
+    expect(result.generatedMonths).toEqual(EXPECTED_MONTHS);
+    const [restored] = await db
+      .select()
+      .from(categories)
+      .where(eq(categories.id, food!.id));
+    expect(restored!.archivedAt).toBeNull();
+    expect(restored!.label).toBe("Comida");
+    // And the re-seeded food transactions actually resolve their category.
+    const rows = await db
+      .select({ categoryId: ledgerTransactions.categoryId })
+      .from(ledgerTransactions)
+      .where(
+        and(
+          eq(ledgerTransactions.workspaceId, WORKSPACE_ID),
+          eq(ledgerTransactions.categoryId, food!.id),
+        ),
+      );
+    expect(rows.length).toBeGreaterThan(0);
+  });
+
   it("is idempotent — every run reseeds the same deterministic window dataset (S6)", async () => {
     const first = await refresh(db);
     const firstKeys = (await transactionRows(db, WORKSPACE_ID)).map(
