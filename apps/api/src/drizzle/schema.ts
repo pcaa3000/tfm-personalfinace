@@ -116,6 +116,9 @@ export const ledgerTransactions = pgTable(
     businessDate: date("businessDate", { mode: "date" }).notNull(),
     timezone: text("timezone").notNull(),
     concept: text("concept").notNull(),
+    // reports-monthly S6: normalized merchant, null on transfers and
+    // when the concept yields no letters beyond company suffixes.
+    merchant: text("merchant"),
     accountId: text("accountId"),
     destinationAccountId: text("destinationAccountId"),
     categoryId: text("categoryId"),

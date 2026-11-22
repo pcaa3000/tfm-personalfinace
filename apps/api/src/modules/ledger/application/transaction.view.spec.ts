@@ -59,3 +59,11 @@ describe("toTransactionView (receipt-review-link T2, S2)", () => {
     expect(view.originReference).toBeNull();
   });
 });
+
+describe("toTransactionView — merchant (reports-monthly T1, S6)", () => {
+  it("exposes the normalized merchant derived from the concept", () => {
+    const view = toTransactionView(makeTransaction());
+
+    expect(view.merchant).toBe("grocery run");
+  });
+});

@@ -511,3 +511,35 @@ describe("ConfirmReceiptDraftUseCase — draft approval (T6, S2+S4+S7+S10)", () 
     }
   });
 });
+
+describe("ConfirmReceiptDraftUseCase — merchant (reports-monthly T1, S6)", () => {
+  it("forwards the draft merchant so the transaction prefers it over the concept", async () => {
+    const { useCase, deps } = buildDeps();
+
+    const result = await useCase.execute(command());
+
+    expect(result.ok).toBe(true);
+    const sent = vi.mocked(deps.recordManual.execute).mock.calls[0]![0];
+    expect(sent.merchant).toBe("Bodega Central");
+  });
+
+  it("sends a null merchant when the draft has none so the record derives it from the concept", async () => {
+    const scan = draftReadyScan();
+    scan.markDraftReady(
+      { raw: true },
+      { ...DRAFT, merchant: null },
+      new Date("2026-11-10T12:06:00.000Z"),
+    );
+    const scans: ReceiptScanRepositoryPort = {
+      save: vi.fn(async () => undefined),
+      findById: vi.fn(async () => scan),
+    };
+    const { useCase, deps } = buildDeps({ scans });
+
+    const result = await useCase.execute(command());
+
+    expect(result.ok).toBe(true);
+    const sent = vi.mocked(deps.recordManual.execute).mock.calls[0]![0];
+    expect(sent.merchant).toBeNull();
+  });
+});

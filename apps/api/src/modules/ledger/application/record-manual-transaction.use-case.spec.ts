@@ -435,3 +435,56 @@ describe("RecordManualTransactionUseCase", () => {
     expect(repo.saved[0]?.originReference).toBe("scan-1");
   });
 });
+
+describe("RecordManualTransactionUseCase — merchant (reports-monthly T1, S6)", () => {
+  it("derives the normalized merchant from the concept", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      concept: "STARBUCKS AVIACION 123",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.merchant).toBe("starbucks aviacion");
+    }
+    expect(repo.saved[0]?.merchant).toBe("starbucks aviacion");
+  });
+
+  it("prefers an explicit merchant, normalized, over the concept-derived value", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      concept: "Receipt scan",
+      merchant: "Bodega Central S.A.C.",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.merchant).toBe("bodega central");
+    }
+  });
+
+  it("keeps merchant null on transfers", async () => {
+    const repo = new InMemoryTransactions();
+    const useCase = new RecordManualTransactionUseCase(repo, accounts, categories, clock, ids);
+
+    const result = await useCase.execute({
+      ...command,
+      type: "transfer",
+      accountId: "acc-1",
+      destinationAccountId: "acc-2",
+      categoryId: null,
+      concept: "Transfer to savings",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.merchant).toBeNull();
+    }
+  });
+});

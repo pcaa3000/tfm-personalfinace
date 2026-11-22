@@ -13,6 +13,7 @@ export {
   type TransactionStatus,
   type TransactionType,
 } from "./domain/transaction.js";
+export { normalizeMerchant } from "./domain/merchant.js";
 export {
   TransactionRevision,
   type FieldChange,

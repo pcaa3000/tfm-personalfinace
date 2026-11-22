@@ -94,6 +94,7 @@ describe("ListTransactionsUseCase", () => {
         businessDate: "2026-10-27",
         timezone: "UTC",
         concept: "Grocery run",
+        merchant: "grocery run",
         accountId: "acc-1",
         destinationAccountId: null,
         categoryId: "cat-food",

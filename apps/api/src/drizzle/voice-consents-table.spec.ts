@@ -21,12 +21,13 @@ const migrationFile = readdirSync(dir).find((f) => /^0009_.*\.sql$/.test(f));
 const migrationSql = migrationFile ? read(migrationFile).trim() : null;
 
 describe("voices_voice_consents migration (voice-drafts T5, S6)", () => {
-  it("journal registers a 0009_* migration as the head", () => {
+  it("journal registers a 0009_* migration", () => {
     const { entries } = JSON.parse(read("meta/_journal.json")) as {
       entries: { idx: number; tag: string; when: number }[];
     };
-    expect(entries.at(-1)?.idx).toBe(9);
-    expect(entries.at(-1)?.tag).toMatch(/^0009_/);
+    const entry = entries.find((e) => e.idx === 9);
+    expect(entry).toBeDefined();
+    expect(entry?.tag).toMatch(/^0009_/);
     expect(entries.map((e) => e.idx)).toEqual(entries.map((_, i) => i));
   });
 

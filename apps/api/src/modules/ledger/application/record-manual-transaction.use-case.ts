@@ -42,6 +42,12 @@ export interface RecordManualTransactionCommand {
   /** null = explicit uncategorized choice. */
   readonly categoryId: string | null;
   /**
+   * Optional explicit merchant (S6 — the receipt confirm forwards
+   * `draftPayload.merchant`). Normalized by the aggregate; null or absent
+   * falls back to the concept-derived value.
+   */
+  readonly merchant?: string | null;
+  /**
    * Optional category-level breakdown; amounts are integer minor units of
    * the transaction currency. When non-empty it must satisfy
    * INV-TRX-SPLIT-01 (sum equals the transaction amount); forbidden on
@@ -198,6 +204,9 @@ export class RecordManualTransactionUseCase {
         command.type === "transfer" || command.categoryId === null
           ? UNCATEGORIZED
           : categorized(command.categoryId),
+      ...(command.merchant !== undefined
+        ? { merchant: command.merchant }
+        : {}),
       splits,
       ...(command.origin !== undefined ? { origin: command.origin } : {}),
       ...(command.originReference !== undefined

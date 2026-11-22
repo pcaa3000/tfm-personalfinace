@@ -203,6 +203,9 @@ export class ConfirmReceiptDraftUseCase {
       businessDate,
       timezone: command.timezone,
       concept,
+      // S6: the extracted merchant wins over the concept-derived value;
+      // null delegates to the concept fallback inside the aggregate.
+      merchant: draft.merchant,
       accountId: command.accountId,
       categoryId: headerCategoryId,
       splits,

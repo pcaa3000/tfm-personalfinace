@@ -7,6 +7,7 @@ import {
   ok,
   type Result,
 } from "../../shared-kernel/index.js";
+import { normalizeMerchant } from "./merchant.js";
 import { TransactionRevision, type FieldChange } from "./transaction-revision.js";
 import { TransactionSplit } from "./transaction-split.js";
 
@@ -104,6 +105,13 @@ export interface RecordManualInput {
   readonly category?: CategoryAssignment;
   /** Optional category-level breakdown; when non-empty it must satisfy INV-TRX-SPLIT-01. */
   readonly splits?: readonly TransactionSplit[];
+  /**
+   * Optional explicit merchant override (reports-monthly S6): the receipt
+   * confirm passes `draftPayload.merchant` here. Normalized with the same
+   * rule as the concept-derived value; null/undefined falls back to
+   * `normalizeMerchant(concept)`. Ignored on transfers (always null).
+   */
+  readonly merchant?: string | null;
   /** Entry channel; defaults to "manual" (receipt confirm passes "ticket", T6). */
   readonly origin?: TransactionOrigin;
   readonly originReference?: string;
@@ -131,6 +139,8 @@ export interface TransactionState {
   readonly confirmedAt: Date;
   readonly confirmedBy: string;
   readonly revisions: TransactionRevision[];
+  /** Persisted normalized merchant; absent only for rows predating the column. */
+  readonly merchant?: string | null;
   /** Persisted split collection; absent only for rows predating splits. */
   readonly splits?: readonly TransactionSplit[];
 }
@@ -201,6 +211,7 @@ export class Transaction {
     private _amount: Money,
     private _businessDate: BusinessDate,
     private _concept: string,
+    private _merchant: string | null,
     private _accountId: string | null,
     private _destinationAccountId: string | null,
     private _category: CategoryAssignment,
@@ -248,6 +259,14 @@ export class Transaction {
         ? UNCATEGORIZED
         : (input.category ?? UNCATEGORIZED);
 
+    // S6: transfers never carry a merchant; otherwise an explicit
+    // override (e.g. the receipt draft merchant) wins over the
+    // concept-derived value — both go through the same normalization.
+    const merchant =
+      input.type === "transfer"
+        ? null
+        : normalizeMerchant(input.merchant ?? concept);
+
     const splits = input.splits ?? [];
     if (input.type === "transfer" && splits.length > 0) {
       return err(
@@ -273,6 +292,7 @@ export class Transaction {
         input.amount,
         input.businessDate,
         concept,
+        merchant,
         input.accountId,
         destinationAccountId,
         category,
@@ -297,6 +317,7 @@ export class Transaction {
       state.amount,
       state.businessDate,
       state.concept,
+      state.merchant ?? null,
       state.accountId,
       state.destinationAccountId ?? null,
       state.category,
@@ -321,6 +342,10 @@ export class Transaction {
   }
   get concept(): string {
     return this._concept;
+  }
+  /** Normalized merchant for reporting (S6); null on transfers. */
+  get merchant(): string | null {
+    return this._merchant;
   }
   get accountId(): string | null {
     return this._accountId;
@@ -495,6 +520,12 @@ export class Transaction {
     }
     if (nextCategory !== undefined) this._category = nextCategory;
     if (nextSplits !== undefined) this._splits = [...nextSplits];
+    // Merchant is a derived reporting cache, not an audited user edit:
+    // it is recomputed from the effective post-revision state so it
+    // follows a concept change (and is dropped when the transaction
+    // becomes a transfer) without adding noise to the revision changes.
+    this._merchant =
+      effectiveType === "transfer" ? null : normalizeMerchant(this._concept);
 
     return ok(revision);
   }

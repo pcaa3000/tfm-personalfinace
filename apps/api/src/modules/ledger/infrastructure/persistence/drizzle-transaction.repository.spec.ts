@@ -596,3 +596,56 @@ describe("transactional outbox emission (worker-pgboss T2)", () => {
     ]);
   });
 });
+
+describe("DrizzleTransactionRepository — merchant (reports-monthly T1, S6)", () => {
+  const { db, pool } = createDrizzleDb(DATABASE_URL);
+  const repository = new DrizzleTransactionRepository(db);
+
+  beforeAll(async () => {
+    await cleanupAll(db);
+    await seedAccounts(db);
+  });
+
+  afterAll(async () => {
+    await cleanupAll(db);
+    await pool.end();
+  });
+
+  it("persists the normalized merchant and refreshes it when the concept is revised", async () => {
+    const trx = makeTransaction({
+      id: "tx-merchant",
+      idempotencyKey: "idem-merchant",
+      concept: "STARBUCKS AVIACION 123",
+    });
+    await repository.save(trx);
+
+    const found = await repository.findById(trx.workspaceId, trx.id);
+    expect(found).not.toBeNull();
+    expect(found!.merchant).toBe("starbucks aviacion");
+
+    unwrap(
+      trx.revise({
+        concept: "Bodega S.A.C.",
+        revisedAt: new Date("2026-11-02T09:00:00Z"),
+        revisedBy: "spec-user",
+      }),
+    );
+    await repository.save(trx);
+
+    const revised = await repository.findById(trx.workspaceId, trx.id);
+    expect(revised!.merchant).toBe("bodega");
+  });
+
+  it("persists null merchant on transfers", async () => {
+    const trx = makeTransaction({
+      id: "tx-merchant-transfer",
+      type: "transfer",
+      accountId: ACCOUNTS[WS_A]!.source,
+      destinationAccountId: ACCOUNTS[WS_A]!.dest,
+    });
+    await repository.save(trx);
+
+    const found = await repository.findById(trx.workspaceId, trx.id);
+    expect(found!.merchant).toBeNull();
+  });
+});

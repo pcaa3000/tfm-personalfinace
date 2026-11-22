@@ -69,6 +69,7 @@ function toDomain(
       BusinessDate.create(row.businessDate.toISOString().slice(0, 10), row.timezone),
     ),
     concept: row.concept,
+    merchant: row.merchant,
     accountId: row.accountId,
     destinationAccountId: row.destinationAccountId,
     category: row.categoryId ? categorized(row.categoryId) : UNCATEGORIZED,
@@ -202,6 +203,7 @@ export class DrizzleTransactionRepository implements TransactionRepositoryPort {
           businessDate: new Date(`${transaction.businessDate.isoDate}T00:00:00Z`),
           timezone: transaction.businessDate.timezone,
           concept: transaction.concept,
+          merchant: transaction.merchant,
           accountId: transaction.accountId,
           destinationAccountId: transaction.destinationAccountId,
           categoryId:
@@ -223,6 +225,7 @@ export class DrizzleTransactionRepository implements TransactionRepositoryPort {
             businessDate: new Date(`${transaction.businessDate.isoDate}T00:00:00Z`),
             timezone: transaction.businessDate.timezone,
             concept: transaction.concept,
+            merchant: transaction.merchant,
             accountId: transaction.accountId,
             destinationAccountId: transaction.destinationAccountId,
             categoryId:

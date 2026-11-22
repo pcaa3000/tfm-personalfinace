@@ -574,3 +574,23 @@ describe("ReviseTransactionUseCase", () => {
     expect(repo.saved).toHaveLength(0);
   });
 });
+
+describe("ReviseTransactionUseCase — merchant (reports-monthly T1, S6)", () => {
+  it("recomputes the normalized merchant when the revision changes the concept", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      concept: "Bodega S.A.C.",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.merchant).toBe("bodega");
+    }
+  });
+});

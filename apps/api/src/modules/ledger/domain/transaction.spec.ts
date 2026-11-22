@@ -757,3 +757,120 @@ describe("Transaction.void", () => {
     }
   });
 });
+
+describe("Transaction merchant (reports-monthly T1, S6)", () => {
+  it("derives a normalized merchant from the concept on manual entry", () => {
+    const result = Transaction.recordManual({
+      ...baseInput,
+      concept: "STARBUCKS AVIACION 123",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.merchant).toBe("starbucks aviacion");
+    }
+  });
+
+  it("stores null merchant when the concept yields no letters beyond suffixes", () => {
+    const result = Transaction.recordManual({ ...baseInput, concept: "S.A." });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.merchant).toBeNull();
+    }
+  });
+
+  it("keeps merchant null on transfers", () => {
+    const result = Transaction.recordManual({
+      ...baseInput,
+      type: "transfer",
+      accountId: "acc-1",
+      destinationAccountId: "acc-2",
+      concept: "Transfer to savings",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.merchant).toBeNull();
+    }
+  });
+
+  it("prefers an explicit merchant, normalized, over the concept-derived value", () => {
+    const result = Transaction.recordManual({
+      ...baseInput,
+      concept: "Receipt scan",
+      merchant: "Bodega Central S.A.C.",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.merchant).toBe("bodega central");
+    }
+  });
+
+  it("recomputes merchant when a revision changes the concept", () => {
+    const created = Transaction.recordManual({
+      ...baseInput,
+      concept: "STARBUCKS AVIACION 123",
+    });
+    if (!created.ok) throw new Error("setup failed");
+    const trx = created.value;
+
+    const result = trx.revise({
+      concept: "Bodega S.A.C.",
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(trx.merchant).toBe("bodega");
+  });
+
+  it("keeps the stored merchant when a revision leaves the concept unchanged", () => {
+    const created = Transaction.recordManual({
+      ...baseInput,
+      concept: "STARBUCKS AVIACION 123",
+    });
+    if (!created.ok) throw new Error("setup failed");
+    const trx = created.value;
+
+    const result = trx.revise({
+      amount: eur("30.00"),
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(trx.merchant).toBe("starbucks aviacion");
+  });
+
+  it("drops merchant when a revision turns the transaction into a transfer", () => {
+    const created = Transaction.recordManual(baseInput);
+    if (!created.ok) throw new Error("setup failed");
+    const trx = created.value;
+
+    const result = trx.revise({
+      type: "transfer",
+      destinationAccountId: "acc-2",
+      revisedAt: new Date("2026-10-28T09:00:00Z"),
+      revisedBy: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(trx.merchant).toBeNull();
+  });
+
+  it("reconstitutes the persisted merchant without re-deriving it", () => {
+    const trx = Transaction.reconstitute({
+      ...baseInput,
+      merchant: "custom merchant",
+      accountId: null,
+      status: "confirmed",
+      origin: "manual",
+      originReference: null,
+      revisions: [],
+    });
+
+    expect(trx.merchant).toBe("custom merchant");
+  });
+});

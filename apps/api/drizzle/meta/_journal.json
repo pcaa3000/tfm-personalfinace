@@ -71,6 +71,13 @@
       "when": 1795212008288,
       "tag": "0009_clumsy_landau",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795386403646,
+      "tag": "0010_minor_big_bertha",
+      "breakpoints": true
     }
   ]
 }

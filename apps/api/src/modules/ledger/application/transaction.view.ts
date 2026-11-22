@@ -17,6 +17,12 @@ export interface TransactionView {
   readonly businessDate: string; // YYYY-MM-DD
   readonly timezone: string;
   readonly concept: string;
+  /**
+   * Normalized merchant for reporting (S6): null on transfers and when
+   * the concept yields no merchant; optional so hand-built fixtures stay
+   * valid — the mapper always populates it.
+   */
+  readonly merchant?: string | null;
   readonly accountId: string | null; // null = legacy pre-accounts row
   readonly destinationAccountId: string | null; // non-null only for transfers
   readonly categoryId: string | null; // null = uncategorized
@@ -40,6 +46,7 @@ export function toTransactionView(trx: Transaction): TransactionView {
     businessDate: trx.businessDate.isoDate,
     timezone: trx.businessDate.timezone,
     concept: trx.concept,
+    merchant: trx.merchant,
     accountId: trx.accountId,
     destinationAccountId: trx.destinationAccountId,
     categoryId:
