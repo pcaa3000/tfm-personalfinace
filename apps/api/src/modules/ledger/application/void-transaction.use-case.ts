@@ -6,6 +6,7 @@ import {
   type Result,
 } from "../../shared-kernel/index.js";
 import type { Clock } from "./ports/clock.port.js";
+import type { PeriodCloseInvalidationPort } from "./ports/period-close-invalidation.port.js";
 import type { TransactionRepositoryPort } from "./ports/transaction-repository.port.js";
 import { toTransactionView, type TransactionView } from "./transaction.view.js";
 
@@ -19,6 +20,12 @@ export class VoidTransactionUseCase {
   constructor(
     private readonly transactions: TransactionRepositoryPort,
     private readonly clock: Clock,
+    /**
+     * reports-monthly T2 (S5): marks monthly closes stale when the void
+     * touches their period. Optional so the use case keeps working when
+     * the reports feature is unwired.
+     */
+    private readonly periodCloses?: PeriodCloseInvalidationPort,
   ) {}
 
   async execute(
@@ -52,6 +59,16 @@ export class VoidTransactionUseCase {
     }
 
     await this.transactions.save(transaction);
+
+    if (this.periodCloses !== undefined) {
+      await this.periodCloses.invalidateCovering(
+        transaction.workspaceId,
+        transaction.amount.currency.code,
+        transaction.businessDate.isoDate,
+        this.clock.now(),
+      );
+    }
+
     return ok(toTransactionView(transaction));
   }
 }

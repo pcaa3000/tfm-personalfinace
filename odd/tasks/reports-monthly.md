@@ -18,7 +18,7 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 | ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
 |----|-------|----|------|--------|--------------------|
 | T1 | Columna `merchant` + migración/backfill + poblar en alta manual y confirm de receipts | S6 | api | done | RED→GREEN 163 specs; suite 1233; migración 0010 aplicada |
-| T2 | Cierre mensual mínimo: tabla + endpoints + invalidación por revisión/void + provisional 30d | S5 | api | pending | |
+| T2 | Cierre mensual mínimo: tabla + endpoints + invalidación por revisión/void + provisional 30d | S5 | api | done | RED→GREEN 56 specs foc.; suite 1261; migración 0011 |
 | T3 | Endpoint flujo de caja por cuenta+moneda+período | S1, S8 | api | pending | |
 | T4 | Endpoint gastos por categoría (splits-aware, naturalezas) | S2, S8 | api | pending | |
 | T5 | Endpoint gastos hormiga (política ≥3/30d, medias, provisional o cerrado) | S3, S8 | api | pending | |
@@ -32,5 +32,6 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 - **L2** (decisión): alcance = API + página web.
 - **L3** (decisión): comercio para gastos hormiga = **Opción B**, columna `merchant` normalizada en `ledger_transactions` (descartadas heurística sobre `concept` y solo-categoría).
 - **L4** (decisión): implementar cierre mínimo por moneda; mes en curso = provisional sobre últimos 30 días.
+- **L7** (proceso): T2 delegada; módulo `reports` creado (`reports_period_closes`, índice único parcial activo); invalidación por revise/void vía `PeriodCloseInvalidationPort` opcional en ledger; provisional queda computado (no persistido) para T3-T6. ASSESS medium → sin verifier.
 - **L6** (proceso): T1 delegada a worker; ASSESS medium → self-verification, sin verifier; spec journal-head de voice-consents ajustada a "contiene 0009" (fix inline del padre).
 - **L5** (exploración): no existe nada de reports/insights/snapshots en código; `ledger_transaction_splits` existe y gobierna el reporte por categoría; "Sin categorizar" usa `nature="uncategorized"` fuera de CategoryNature; `GET /api/v1/transactions` ya filtra by from/to/type/currency/category.

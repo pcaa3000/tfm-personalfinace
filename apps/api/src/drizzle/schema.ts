@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   date,
   foreignKey,
   index,
@@ -374,6 +375,41 @@ export const outboxEvents = pgTable(
   (table) => [
     index("jobs_outbox_events_workspaceId_idx").on(table.workspaceId),
     index("jobs_outbox_events_pending_idx").on(table.processedAt),
+  ],
+);
+
+/**
+ * Minimal monthly closes per workspace + currency + period
+ * (reports-monthly T2, S5 — docs/04 "Cierre mensual"). Rows are never
+ * rewritten: a post-close ledger change sets `invalidatedAt` (stale) and
+ * re-closing the period sets `supersededAt` on the stale row while
+ * inserting a fresh one. The partial unique index keeps ONE active
+ * (non-superseded) close per workspace+currency+periodStart; stale rows
+ * still hold it, which is what forces the supersede-then-insert flow.
+ */
+export const periodCloses = pgTable(
+  "reports_period_closes",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspaceId").notNull(),
+    currency: text("currency").notNull(),
+    periodStart: date("periodStart", { mode: "date" }).notNull(),
+    periodEnd: date("periodEnd", { mode: "date" }).notNull(),
+    timezone: text("timezone").notNull(),
+    integrityDeclared: boolean("integrityDeclared").notNull(),
+    closedAt: timestamp("closedAt", { mode: "date", precision: 3 })
+      .notNull(),
+    invalidatedAt: timestamp("invalidatedAt", { mode: "date", precision: 3 }),
+    supersededAt: timestamp("supersededAt", { mode: "date", precision: 3 }),
+    createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("reports_period_closes_workspaceId_idx").on(table.workspaceId),
+    uniqueIndex("reports_period_closes_active_key")
+      .on(table.workspaceId, table.currency, table.periodStart)
+      .where(sql`"supersededAt" IS NULL`),
   ],
 );
 

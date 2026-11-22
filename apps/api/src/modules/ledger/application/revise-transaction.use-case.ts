@@ -17,6 +17,7 @@ import type { TransactionSplit } from "../domain/transaction-split.js";
 import type { AccountValidationPort } from "./ports/account-validation.port.js";
 import type { CategoryValidationPort } from "./ports/category-validation.port.js";
 import type { Clock } from "./ports/clock.port.js";
+import type { PeriodCloseInvalidationPort } from "./ports/period-close-invalidation.port.js";
 import type { TransactionRepositoryPort } from "./ports/transaction-repository.port.js";
 import {
   buildTransactionSplits,
@@ -57,6 +58,12 @@ export class ReviseTransactionUseCase {
     private readonly accounts: AccountValidationPort,
     private readonly categories: CategoryValidationPort,
     private readonly clock: Clock,
+    /**
+     * reports-monthly T2 (S5): marks monthly closes stale when the
+     * revision touches their period. Optional so the use case keeps
+     * working when the reports feature is unwired.
+     */
+    private readonly periodCloses?: PeriodCloseInvalidationPort,
   ) {}
 
   async execute(
@@ -238,6 +245,13 @@ export class ReviseTransactionUseCase {
       splits = built.value;
     }
 
+    // Snapshot the pre-revision coordinates: when the business date or
+    // currency moves across periods, the closes of BOTH periods went
+    // stale (the outgoing period lost a movement, the incoming one
+    // gained it).
+    const previousBusinessDate = transaction.businessDate.isoDate;
+    const previousCurrency = transaction.amount.currency.code;
+
     const revision = transaction.revise({
       ...(command.type !== undefined ? { type: command.type } : {}),
       ...(amount !== undefined ? { amount } : {}),
@@ -257,6 +271,30 @@ export class ReviseTransactionUseCase {
     }
 
     await this.transactions.save(transaction);
+
+    if (this.periodCloses !== undefined) {
+      const at = this.clock.now();
+      const effectiveCurrency = transaction.amount.currency.code;
+      const effectiveBusinessDate = transaction.businessDate.isoDate;
+      await this.periodCloses.invalidateCovering(
+        transaction.workspaceId,
+        effectiveCurrency,
+        effectiveBusinessDate,
+        at,
+      );
+      if (
+        previousBusinessDate !== effectiveBusinessDate ||
+        previousCurrency !== effectiveCurrency
+      ) {
+        await this.periodCloses.invalidateCovering(
+          transaction.workspaceId,
+          previousCurrency,
+          previousBusinessDate,
+          at,
+        );
+      }
+    }
+
     return ok(toTransactionView(transaction));
   }
 }

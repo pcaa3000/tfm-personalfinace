@@ -6,6 +6,7 @@ import { TransactionSplit } from "../domain/transaction-split.js";
 import type { AccountValidationPort } from "./ports/account-validation.port.js";
 import type { CategoryValidationPort } from "./ports/category-validation.port.js";
 import type { Clock } from "./ports/clock.port.js";
+import type { PeriodCloseInvalidationPort } from "./ports/period-close-invalidation.port.js";
 import type {
   TransactionFilter,
   TransactionRepositoryPort,
@@ -572,6 +573,118 @@ describe("ReviseTransactionUseCase", () => {
       expect(result.error.code).toBe("TRANSFER_SPLITS_FORBIDDEN");
     }
     expect(repo.saved).toHaveLength(0);
+  });
+});
+
+describe("ReviseTransactionUseCase — period-close staleness (reports-monthly T2, S5)", () => {
+  class SpyPeriodCloses implements PeriodCloseInvalidationPort {
+    calls: { workspaceId: string; currency: string; businessDate: string }[] =
+      [];
+
+    async invalidateCovering(
+      workspaceId: WorkspaceId,
+      currency: string,
+      businessDate: string,
+    ) {
+      this.calls.push({
+        workspaceId: workspaceId.value,
+        currency,
+        businessDate,
+      });
+      return 0;
+    }
+  }
+
+  it("invalidates closes covering the transaction business date", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const periodCloses = new SpyPeriodCloses();
+    const useCase = new ReviseTransactionUseCase(
+      repo,
+      accounts,
+      categories,
+      clock,
+      periodCloses,
+    );
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      concept: "Corrected",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(periodCloses.calls).toEqual([
+      { workspaceId: "ws-1", currency: "EUR", businessDate: "2026-10-27" },
+    ]);
+  });
+
+  it("invalidates both periods when the revision moves the business date across months", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const periodCloses = new SpyPeriodCloses();
+    const useCase = new ReviseTransactionUseCase(
+      repo,
+      accounts,
+      categories,
+      clock,
+      periodCloses,
+    );
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      businessDate: "2026-11-02",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(periodCloses.calls).toEqual(
+      expect.arrayContaining([
+        { workspaceId: "ws-1", currency: "EUR", businessDate: "2026-11-02" },
+        { workspaceId: "ws-1", currency: "EUR", businessDate: "2026-10-27" },
+      ]),
+    );
+    expect(periodCloses.calls).toHaveLength(2);
+  });
+
+  it("does not invalidate when the revision is rejected", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const periodCloses = new SpyPeriodCloses();
+    const useCase = new ReviseTransactionUseCase(
+      repo,
+      accounts,
+      categories,
+      clock,
+      periodCloses,
+    );
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      concept: "Grocery run",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(periodCloses.calls).toHaveLength(0);
+  });
+
+  it("keeps working without an invalidation port (unwired composition)", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const useCase = new ReviseTransactionUseCase(repo, accounts, categories, clock);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      concept: "Corrected",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
   });
 });
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { BusinessDate, Money, WorkspaceId } from "../../shared-kernel/index.js";
 import { Transaction, UNCATEGORIZED } from "../domain/transaction.js";
 import type { Clock } from "./ports/clock.port.js";
+import type { PeriodCloseInvalidationPort } from "./ports/period-close-invalidation.port.js";
 import type {
   TransactionFilter,
   TransactionRepositoryPort,
@@ -117,6 +118,65 @@ describe("VoidTransactionUseCase", () => {
     if (!result.ok) {
       expect(result.error.code).toBe("TRANSACTION_NOT_FOUND");
     }
+  });
+});
+
+describe("VoidTransactionUseCase — period-close staleness (reports-monthly T2, S5)", () => {
+  class SpyPeriodCloses implements PeriodCloseInvalidationPort {
+    calls: { workspaceId: string; currency: string; businessDate: string }[] =
+      [];
+
+    async invalidateCovering(
+      workspaceId: WorkspaceId,
+      currency: string,
+      businessDate: string,
+    ) {
+      this.calls.push({
+        workspaceId: workspaceId.value,
+        currency,
+        businessDate,
+      });
+      return 0;
+    }
+  }
+
+  it("invalidates closes covering the transaction business date on void", async () => {
+    const trx = makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const periodCloses = new SpyPeriodCloses();
+    const useCase = new VoidTransactionUseCase(repo, clock, periodCloses);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(periodCloses.calls).toEqual([
+      { workspaceId: "ws-1", currency: "EUR", businessDate: "2026-10-27" },
+    ]);
+  });
+
+  it("does not invalidate on the idempotent re-void path", async () => {
+    const trx = makeTransaction();
+    const voided = trx.void({
+      voidedAt: new Date("2026-10-28T11:00:00Z"),
+      voidedBy: "subject-1",
+    });
+    if (!voided.ok) throw new Error("setup failed");
+    const repo = new InMemoryTransactions([trx]);
+    const periodCloses = new SpyPeriodCloses();
+    const useCase = new VoidTransactionUseCase(repo, clock, periodCloses);
+
+    const result = await useCase.execute({
+      workspaceId: ws,
+      transactionId: "trx-1",
+      actor: "subject-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(periodCloses.calls).toHaveLength(0);
   });
 });
 

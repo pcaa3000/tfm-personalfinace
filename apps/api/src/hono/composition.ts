@@ -51,6 +51,9 @@ import { DrizzleBalanceAdapter } from "../modules/ledger/infrastructure/drizzle-
 import { GetWorkspaceBalanceUseCase } from "../modules/ledger/application/get-workspace-balance.use-case.js";
 import { DrizzleNotificationRepository } from "../modules/notifications/infrastructure/drizzle-notification.repository.js";
 import { ListNotificationsUseCase } from "../modules/notifications/application/list-notifications.use-case.js";
+import { DrizzlePeriodCloseRepository } from "../modules/reports/infrastructure/drizzle-period-close.repository.js";
+import { ClosePeriodUseCase } from "../modules/reports/application/close-period.use-case.js";
+import { ListPeriodClosesUseCase } from "../modules/reports/application/list-period-closes.use-case.js";
 import { DrizzleReceiptScanRepository } from "../modules/receipts/infrastructure/drizzle-receipt-scan.repository.js";
 import { DrizzleTransactionDuplicatesAdapter } from "../modules/receipts/infrastructure/drizzle-transaction-duplicates.adapter.js";
 import { CryptoFileHasher } from "../modules/receipts/infrastructure/crypto-file-hasher.adapter.js";
@@ -238,6 +241,11 @@ export function buildApp(env: AppEnv): BuiltApp {
   const ids = new CryptoIdGenerator();
   const fileHasher = new CryptoFileHasher();
 
+  // reports-monthly T2 (S5): one repository serves both the reports use
+  // cases and the ledger staleness hook — revise/void mark closes whose
+  // period contains the transaction business date as invalidated.
+  const periodCloses = new DrizzlePeriodCloseRepository(db);
+
   // receipt-scan-drafts D2: storage driver selected via STORAGE_DRIVER.
   const receiptStorage = createReceiptStorage(env.receipts.storage);
   const receiptScans = new DrizzleReceiptScanRepository(db);
@@ -322,8 +330,13 @@ export function buildApp(env: AppEnv): BuiltApp {
       accounts,
       categoryValidation,
       clock,
+      periodCloses,
     ),
-    voidTransaction: new VoidTransactionUseCase(transactions, clock),
+    voidTransaction: new VoidTransactionUseCase(
+      transactions,
+      clock,
+      periodCloses,
+    ),
     listRevisions: new ListTransactionRevisionsUseCase(transactions),
     // balance aggregate (GET /api/v1/balance)
     getBalance: new GetWorkspaceBalanceUseCase(new DrizzleBalanceAdapter(db)),
@@ -349,6 +362,10 @@ export function buildApp(env: AppEnv): BuiltApp {
     listNotifications: new ListNotificationsUseCase(
       new DrizzleNotificationRepository(db),
     ),
+    // reports-monthly T2 (S5): minimal monthly close per
+    // workspace+currency+period.
+    closePeriod: new ClosePeriodUseCase(periodCloses, clock, ids),
+    listPeriodCloses: new ListPeriodClosesUseCase(periodCloses),
     // receipts (receipt-scan-drafts T3: upload + quarantine + polling)
     uploadReceipt: new UploadReceiptUseCase(
       receiptStorage,
