@@ -42,6 +42,7 @@ El botón "Probar con datos de María" pide solo el password (email fijo desde `
 
 | ID | Corte | S# | Estado |
 |----|-------|----|--------|
-| T6 | API: POST /demo/session → sid + workspace kind='demo' sembrado async (bootstrap + meses 0,-1,-2 en orden); resolver x-demo-session fail-closed; DELETE /demo/session borra sid actual + huérfanos>24h; sweep>24h también en create | S2,S3,S4,S5,S8 | pending |
-| T7 | API: `cleanupDemoWorkspaces(db)` compartida + script `pnpm db:demo:cleanup` | L10 | pending |
-| T8 | Web: restaurar sid flow (sessionStorage + x-demo-session), DELETE en logout | S1,S3 | pending |
+| T6 | API: POST /demo/session → sid + workspace kind='demo' sembrado async (bootstrap + meses 0,-1,-2 en orden); resolver x-demo-session fail-closed; DELETE /demo/session borra sid actual + huérfanos>24h; sweep>24h también en create | S2,S3,S4,S5,S8 | done — 45/45 enfocados, suite 884/884 |
+| T7 | API: `cleanupDemoWorkspaces(db)` compartida + script `pnpm db:demo:cleanup` | L10 | done — live: "removed 0 orphan workspaces" |
+| T8 | Web: restaurar sid flow (sessionStorage + x-demo-session), DELETE en logout | S1,S3 | done — 88/88 enfocados, suite 391/391 |
+- L12 (implementación v2): T6-T8 entregados. POST /demo/session→201 {sessionId,workspaceId} + seed async por meses en orden (cada mes su tx, guard ante mid-seed delete); DELETE /demo/session→204 borra sid + sweep >24h; sweep también al final del seed job; script db:demo:cleanup. Suites: api 884/884, web 391/391.

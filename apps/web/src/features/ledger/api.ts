@@ -1,3 +1,4 @@
+import { getDemoSessionId } from "../auth/demo-session";
 import { isAuthBypassed } from "../auth/supabase";
 import type {
   ReceiptConfirmInput,
@@ -110,6 +111,13 @@ async function authHeaders(): Promise<Record<string, string>> {
     // dev builds.
     headers["x-dev-user"] = "dev-user";
   }
+  // Demo session (demo-maria-session T8, S2+S3; L10): the per-tab sid
+  // rides alongside the real bearer — the demo is an ordinary
+  // Supabase identity, and the API resolves `x-demo-session` to the
+  // ephemeral workspace of that session. No sid → no header (the
+  // demo subject then fails closed server-side).
+  const sid = getDemoSessionId();
+  if (sid) headers["x-demo-session"] = sid;
   return headers;
 }
 
@@ -143,14 +151,33 @@ async function requestMultipart<T>(
 }
 
 /**
- * `POST /demo/refresh` — asks the API to refresh the demo workspace
- * (demo-maria-session T4, S5): it goes through `request()` so the
- * call carries the real bearer of the just-completed demo sign-in.
- * Fired fire-and-forget after each demo login; the endpoint answers
- * immediately and does the seed maintenance async server-side.
+ * `POST /demo/session` — mints a fresh ephemeral workspace for the
+ * signed-in demo subject and returns its per-tab session id
+ * (demo-maria-session T8, S2+S3; L10). It goes through `request()` so
+ * the call carries the real bearer of the just-completed demo
+ * sign-in; the API answers 201 `{sessionId, workspaceId}`
+ * immediately and seeds the workspace async server-side.
  */
-export async function refreshDemoWorkspace(): Promise<void> {
-  return request<void>("/demo/refresh", { method: "POST" });
+export async function createDemoSession(): Promise<{
+  sessionId: string;
+  workspaceId: string;
+}> {
+  return request<{ sessionId: string; workspaceId: string }>(
+    "/demo/session",
+    { method: "POST" },
+  );
+}
+
+/**
+ * `DELETE /demo/session` — tears down the ephemeral workspace of the
+ * sid carried in `x-demo-session` and sweeps orphaned demo workspaces
+ * (demo-maria-session T8; L10). The API answers 204 even for an
+ * unknown sid, so callers may treat it as best-effort — the auth
+ * layer fires it before demo sign-out and never blocks logout on its
+ * failure.
+ */
+export async function deleteDemoSession(): Promise<void> {
+  return request<void>("/demo/session", { method: "DELETE" });
 }
 
 /** `GET /api/v1/balance` — per-currency aggregates for the strip (T24). */

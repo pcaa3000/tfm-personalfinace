@@ -1,11 +1,16 @@
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 
 import type { DemoSeedCounts } from "../../drizzle/seed-demo-workspace.js";
+import type { DemoSessionPort } from "../../modules/demo/index.js";
 import type {
   CallerIdentity,
   CallerResolverPort,
 } from "../../modules/identity-workspace/index.js";
-import type { HonoEnv } from "../middleware/auth.js";
+import {
+  DEMO_SESSION_HEADER,
+  MAX_DEMO_SESSION_LENGTH,
+  type HonoEnv,
+} from "../middleware/auth.js";
 
 /** Port the composition root fills with `seedDemoWorkspace` in dev mode. */
 export interface DemoResetPort {
@@ -38,8 +43,14 @@ export interface DemoRouteDeps {
    */
   readonly demoRefresh?: DemoRefreshPort;
   /**
-   * DEMO_SUBJECT (S4): the only subject the refresh endpoint serves.
-   * Unset fails closed — the mounted route still refuses everyone.
+   * demo-maria-session T6 (S2–S5, S8; L10 final model): ephemeral
+   * per-session demo workspace service — injected in EVERY auth mode
+   * so `POST`/`DELETE /demo/session` exist in qa/prod too.
+   */
+  readonly demoSession?: DemoSessionPort;
+  /**
+   * DEMO_SUBJECT (S4): the only subject the demo endpoints serve.
+   * Unset fails closed — the mounted routes still refuse everyone.
    */
   readonly demoSubject?: string;
   /** Normal caller resolution (JWT under oidc, x-dev-user under dev). */
@@ -67,6 +78,20 @@ export interface DemoRouteDeps {
  *   immediately and the restore runs in the background — S6: the
  *   routine wipes the workspace's session changes and re-seeds the
  *   rolling 3-month dataset.
+ *
+ * - `POST /api/v1/demo/session` (demo-maria-session T6, S4/S8; L10):
+ *   mounted in ALL auth modes. Same caller resolution + DEMO_SUBJECT
+ *   gate as /demo/refresh, no workspace resolution — the demo subject
+ *   has none until the session is minted. Answers 201
+ *   `{sessionId, workspaceId}` immediately: the kind='demo' workspace
+ *   row already exists so the fail-closed resolver accepts the sid
+ *   while the dataset (months current/-1/-2) seeds fire-and-forget in
+ *   the background and the >24h orphan sweep runs after it.
+ *
+ * - `DELETE /api/v1/demo/session` (demo-maria-session T6; L10): same
+ *   subject gate; reads the `x-demo-session` header, deletes THAT
+ *   session's workspace with its data and runs the >24h orphan sweep.
+ *   Always 204 — an unknown or missing sid is a no-op logout.
  */
 export function registerDemoRoutes(
   app: Hono<HonoEnv>,
@@ -110,6 +135,80 @@ export function registerDemoRoutes(
       }
       demoRefresh.trigger(caller);
       return c.json({ refresh: "started" }, 202);
+    });
+  }
+
+  if (deps.demoSession) {
+    const demoSession = deps.demoSession;
+    /**
+     * Shared gate for POST + DELETE /demo/session (S4): resolve the
+     * caller through the normal auth pipeline and serve only
+     * DEMO_SUBJECT — the 403 never reveals whether the endpoint is
+     * wired, and an unset demoSubject fails closed.
+     */
+    const gate = async (
+      c: Context<HonoEnv>,
+    ): Promise<
+      | { readonly ok: true; readonly caller: CallerIdentity }
+      | { readonly ok: false; readonly response: Response }
+    > => {
+      const headers: Record<string, string | undefined> = {};
+      c.req.raw.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      const caller = deps.callerResolver
+        ? await deps.callerResolver.resolve(headers)
+        : null;
+      if (!caller) {
+        return {
+          ok: false,
+          response: c.json(
+            { code: "UNAUTHENTICATED", message: "Authentication required" },
+            401,
+          ),
+        };
+      }
+      if (
+        deps.demoSubject === undefined ||
+        caller.subject !== deps.demoSubject
+      ) {
+        return {
+          ok: false,
+          response: c.json(
+            {
+              code: "DEMO_FORBIDDEN",
+              message: "Demo session endpoint is restricted",
+            },
+            403,
+          ),
+        };
+      }
+      return { ok: true, caller };
+    };
+
+    app.post("/api/v1/demo/session", async (c) => {
+      const gated = await gate(c);
+      if (!gated.ok) return gated.response;
+      const session = await demoSession.createSession(gated.caller);
+      return c.json(
+        {
+          sessionId: session.sessionId,
+          workspaceId: session.workspaceId,
+        },
+        201,
+      );
+    });
+
+    app.delete("/api/v1/demo/session", async (c) => {
+      const gated = await gate(c);
+      if (!gated.ok) return gated.response;
+      const sessionId =
+        c.req
+          .header(DEMO_SESSION_HEADER)
+          ?.trim()
+          .slice(0, MAX_DEMO_SESSION_LENGTH) ?? "";
+      await demoSession.endSession(gated.caller, sessionId);
+      return c.body(null, 204);
     });
   }
 }

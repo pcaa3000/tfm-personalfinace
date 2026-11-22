@@ -25,7 +25,8 @@ import {
   reviseCategory,
   reviseCurrency,
   reviseTransaction,
-  refreshDemoWorkspace,
+  createDemoSession,
+  deleteDemoSession,
   retryReceiptScan,
   unarchiveAccount,
   updateWorkspace,
@@ -80,47 +81,66 @@ describe("dev auth bypass", () => {
   });
 });
 
-describe("demo workspace refresh (demo-maria-session T4, S5)", () => {
+/**
+ * In-memory sessionStorage stub — api.spec runs in the node
+ * environment where no sessionStorage exists, so the per-tab demo
+ * session id is faked through a direct global assignment
+ * (demo-maria-session T8, S2+S3; L10 restored per-sid model).
+ */
+function stubDemoSid(value: string | null) {
+  const store = new Map<string, string>();
+  if (value !== null) store.set("demo-sid", value);
+  // Direct assignment (not vi.stubGlobal) so unstubAllGlobals can stay
+  // out of the cleanup path — it would also remove the module-level
+  // fetch stub and break every test that follows.
+  (globalThis as { sessionStorage?: unknown }).sessionStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, next: string) => void store.set(key, next),
+    removeItem: (key: string) => void store.delete(key),
+    clear: () => store.clear(),
+    key: () => null,
+    get length() {
+      return store.size;
+    },
+  };
+}
+
+function clearDemoSidStub() {
+  delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+}
+
+describe("demo session (demo-maria-session T8, S2+S3; L10 per-sid model)", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    clearDemoSidStub();
     setAccessTokenProvider(null);
   });
 
-  it("refreshDemoWorkspace posts to /demo/refresh carrying the signed-in bearer", async () => {
+  it("sends x-demo-session alongside the bearer when a sid is stored", async () => {
+    stubDemoSid("sid-123");
     setAccessTokenProvider(async () => "token-abc");
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 202 }));
 
-    await refreshDemoWorkspace();
+    await listAccounts();
 
-    const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(String(url)).toBe("/api/v1/demo/refresh");
-    expect(init?.method).toBe("POST");
-    const headers = (init?.headers ?? {}) as Record<string, string>;
+    const headers = calledHeaders();
+    expect(headers["x-demo-session"]).toBe("sid-123");
     expect(headers["authorization"]).toBe("Bearer token-abc");
+    expect(headers["x-dev-user"]).toBeUndefined();
+  });
+
+  it("omits x-demo-session when no sid is stored", async () => {
+    stubDemoSid(null);
+    setAccessTokenProvider(async () => "token-abc");
+
+    await listAccounts();
+
+    const headers = calledHeaders();
     expect(headers["x-demo-session"]).toBeUndefined();
+    expect(headers["authorization"]).toBe("Bearer token-abc");
   });
 
-  it("never sends an x-demo-session header, even when sessionStorage holds a stale demo-sid", async () => {
-    // Simplified model (T4): the per-sid machinery is gone — a stale
-    // `demo-sid` left in sessionStorage by an older build must not
-    // leak into request headers.
-    (globalThis as { sessionStorage?: unknown }).sessionStorage = {
-      getItem: (key: string) => (key === "demo-sid" ? "sid-stale" : null),
-    };
-    try {
-      setAccessTokenProvider(async () => "token-abc");
-
-      await listAccounts();
-
-      const headers = calledHeaders();
-      expect(headers["x-demo-session"]).toBeUndefined();
-      expect(headers["authorization"]).toBe("Bearer token-abc");
-    } finally {
-      delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
-    }
-  });
-
-  it("keeps the dev-user identity when the dev bypass is on", async () => {
+  it("keeps the dev-user identity when the dev bypass is on and no sid is stored", async () => {
+    stubDemoSid(null);
     vi.stubEnv("DEV", true);
     vi.stubEnv("VITE_AUTH_BYPASS", "true");
 
@@ -128,6 +148,71 @@ describe("demo workspace refresh (demo-maria-session T4, S5)", () => {
 
     expect(calledHeaders()["x-dev-user"]).toBe("dev-user");
     expect(calledHeaders()["x-demo-session"]).toBeUndefined();
+  });
+
+  it("createDemoSession posts to /demo/session with the bearer and returns the session ids", async () => {
+    setAccessTokenProvider(async () => "token-abc");
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ sessionId: "sid-9", workspaceId: "ws-9" }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const result = await createDemoSession();
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/demo/session");
+    expect(init?.method).toBe("POST");
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect(headers["authorization"]).toBe("Bearer token-abc");
+    expect(result).toEqual({ sessionId: "sid-9", workspaceId: "ws-9" });
+  });
+
+  it("createDemoSession propagates API errors so no sid is stored on failure", async () => {
+    setAccessTokenProvider(async () => "token-abc");
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: "GENERIC" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const error = await createDemoSession().catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ code: "GENERIC", status: 500 });
+  });
+
+  it("deleteDemoSession sends DELETE /demo/session carrying the bearer and the sid header", async () => {
+    stubDemoSid("sid-7");
+    setAccessTokenProvider(async () => "token-abc");
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await deleteDemoSession();
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/demo/session");
+    expect(init?.method).toBe("DELETE");
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect(headers["authorization"]).toBe("Bearer token-abc");
+    expect(headers["x-demo-session"]).toBe("sid-7");
+  });
+
+  it("deleteDemoSession propagates API errors so sign-out can treat it as best-effort", async () => {
+    stubDemoSid("sid-7");
+    setAccessTokenProvider(async () => "token-abc");
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: "GENERIC" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const error = await deleteDemoSession().catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ code: "GENERIC", status: 500 });
   });
 });
 

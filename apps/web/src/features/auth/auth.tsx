@@ -9,9 +9,18 @@ import {
 } from "react";
 import type { Session } from "@supabase/supabase-js";
 
-import { refreshDemoWorkspace, setAccessTokenProvider } from "../ledger/api";
+import {
+  createDemoSession,
+  deleteDemoSession,
+  setAccessTokenProvider,
+} from "../ledger/api";
 import { clearClientCaches } from "./client-caches";
-import { demoEmail } from "./demo-session";
+import {
+  clearDemoSessionId,
+  demoEmail,
+  getDemoSessionId,
+  setDemoSessionId,
+} from "./demo-session";
 import { getSupabaseClient, isAuthBypassed, isAuthConfigured } from "./supabase";
 import { useInactivityLogout } from "./use-inactivity-logout";
 
@@ -27,12 +36,12 @@ export interface AuthContextValue {
   session: Session | null;
   signIn: (email: string, password: string) => Promise<void>;
   /**
-   * Enters the "María" demo (demo-maria-session T4, S1+S5): a real
-   * Supabase password sign-in with the fixed env-provided demo email,
-   * followed by `POST /demo/refresh` with the fresh bearer — fired
-   * fire-and-forget, so entry never blocks on it. The demo is an
-   * ordinary signed-in session; only the password is needed from the
-   * visitor.
+   * Enters the "María" demo (demo-maria-session T8, S1–S3; L10): a
+   * real Supabase password sign-in with the env-provided demo email,
+   * followed by `POST /demo/session` with the fresh bearer — the
+   * returned sid is stored per-tab and rides as `x-demo-session` on
+   * every API call. The demo is therefore an ordinary signed-in
+   * session; only the password is needed from the visitor.
    */
   signInDemo: (password: string) => Promise<void>;
   /**
@@ -84,8 +93,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     null,
   );
   const [loading, setLoading] = useState(configured);
-  // demo-maria-session T4: the demo is a real Supabase session — no
-  // pseudo-session, sid or demo flag exists on the client.
+  // demo-maria-session T8: the demo is a real Supabase session — no
+  // pseudo-session or demo flag exists; the per-tab sid lives in
+  // sessionStorage and only affects request headers.
   const session = supabaseSession;
 
   useEffect(() => {
@@ -128,21 +138,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSupabaseSession(data.session);
   }, []);
 
-  // demo-maria-session T4 (S1+S5): real sign-in with the env-provided
-  // demo email, then `POST /demo/refresh` asks the API to refresh the
-  // seeded workspace. The refresh is fire-and-forget: entry must not
-  // block on it and a failed refresh is never the visitor's problem,
-  // so it is logged and swallowed.
+  // demo-maria-session T8 (S1–S3; L10): real sign-in with the
+  // env-provided demo email, then `POST /demo/session` materializes
+  // the ephemeral workspace and the sid is stored per-tab. If the
+  // session POST fails the Supabase sign-in is rolled back — a demo
+  // session without sid can only produce fail-closed 403s on the API,
+  // so it is never left half-open.
   const signInDemo = useCallback(async (password: string) => {
-    const { data, error } = await getSupabaseClient().auth.signInWithPassword({
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: demoEmail() ?? "",
       password,
     });
     if (error) throw error;
     setSupabaseSession(data.session);
-    void refreshDemoWorkspace().catch((refreshError: unknown) => {
-      console.warn("demo workspace refresh failed", refreshError);
-    });
+    try {
+      const { sessionId } = await createDemoSession();
+      setDemoSessionId(sessionId);
+    } catch (sessionError) {
+      await supabase.auth.signOut().catch(() => {});
+      setSupabaseSession(null);
+      throw sessionError;
+    }
   }, []);
 
   // T30 (S13): the PKCE redirect flow navigates the browser away to
@@ -171,10 +188,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // a shared browser. Skipped when the auth call itself fails — the
   // session is still valid and the user's data must not be destroyed.
   const signOut = useCallback(async () => {
+    // demo-maria-session T8 (L10): a stored sid marks the session as
+    // demo — ask the API to tear down the ephemeral workspace (and
+    // sweep orphans) BEFORE ending the Supabase session. Best-effort:
+    // a failed DELETE must never block or break the sign-out.
+    if (getDemoSessionId()) {
+      await deleteDemoSession().catch(() => {});
+    }
     // supabase-js resolves {error} on server 5xx without throwing;
     // in that path the session is still valid, so the wipe must not run.
     const { error } = await getSupabaseClient().auth.signOut();
     if (error) throw error;
+    // The per-tab sid is dropped together with the caches (no-op for
+    // non-demo sessions).
+    clearDemoSessionId();
     await clearClientCaches();
   }, []);
 

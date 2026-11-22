@@ -22,7 +22,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-// demo-maria-session T4 (S1): the demo entry exists only when the
+// demo-maria-session T8 (S1): the demo entry exists only when the
 // deployment configures a demo account via VITE_DEMO_EMAIL.
 function stubDemoEmail(value = "mariademo@example.com") {
   vi.stubEnv("VITE_DEMO_EMAIL", value);
@@ -108,7 +108,7 @@ describe("LoginPage", () => {
     );
   });
 
-  // demo-maria-session T4 (S1): the demo entry asks ONLY for the demo
+  // demo-maria-session T8 (S1): the demo entry asks ONLY for the demo
   // password in a small prompt — the email is fixed by the
   // VITE_DEMO_EMAIL env — and delegates the password to signInDemo.
   it("hides the demo button when VITE_DEMO_EMAIL is unset or empty", () => {

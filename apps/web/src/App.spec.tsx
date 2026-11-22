@@ -91,7 +91,7 @@ describe("App auth gate (T6-web)", () => {
     expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
   });
 
-  // demo-maria-session T4: a demo sign-in is a real Supabase
+  // demo-maria-session T8: a demo sign-in is a real Supabase
   // session — the gate needs no demo-specific branch.
   it("renders LedgerPage for a demo sign-in, which is a normal Supabase session", async () => {
     isAuthConfigured.mockReturnValue(true);

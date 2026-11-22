@@ -51,8 +51,9 @@ function AuthGate() {
       </Box>
     );
   }
-  // demo-maria-session T4: a demo sign-in is a real Supabase
-  // session, so the gate needs no demo-specific branch.
+  // demo-maria-session T8: a demo sign-in is a real Supabase
+  // session (the per-tab sid only rides in request headers), so the
+  // gate needs no demo-specific branch.
   if (!configured || session) {
     return <LedgerPage />;
   }
