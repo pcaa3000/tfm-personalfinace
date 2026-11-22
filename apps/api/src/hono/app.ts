@@ -22,6 +22,8 @@ import type { PeriodClosesRouteDeps } from "./routes/period-closes.js";
 import { registerPeriodClosesRoutes } from "./routes/period-closes.js";
 import type { ReceiptRouteDeps } from "./routes/receipts.js";
 import { registerReceiptRoutes } from "./routes/receipts.js";
+import type { ReportsRouteDeps } from "./routes/reports.js";
+import { registerReportsRoutes } from "./routes/reports.js";
 import type { TransactionRouteDeps } from "./routes/transactions.js";
 import { registerTransactionRoutes } from "./routes/transactions.js";
 import type { VoiceRouteDeps } from "./routes/voices.js";
@@ -40,6 +42,7 @@ export type HonoDeps = TransactionRouteDeps &
   WorkspaceRouteDeps &
   NotificationRouteDeps &
   PeriodClosesRouteDeps &
+  ReportsRouteDeps &
   ReceiptRouteDeps &
   VoiceRouteDeps &
   DemoRouteDeps;
@@ -192,6 +195,7 @@ export function createApp(
   registerWorkspaceRoutes(app, deps);
   registerNotificationRoutes(app, deps);
   registerPeriodClosesRoutes(app, deps);
+  registerReportsRoutes(app, deps);
   registerReceiptRoutes(app, deps);
   registerVoiceRoutes(app, deps);
   // demo-maria-login T1 (S4): /demo/reset stays dev-only — the

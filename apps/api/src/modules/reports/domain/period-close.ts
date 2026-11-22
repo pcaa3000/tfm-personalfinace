@@ -180,23 +180,40 @@ export function calendarMonthPeriod(
   });
 }
 
-/** The YYYY-MM-DD calendar day an instant falls on inside a timezone. */
-function localDateInTimezone(
+/**
+ * The YYYY-MM-DD calendar day an instant falls on inside a timezone.
+ * Used by the provisional 30-day window (T3–T6) to anchor "today" to the
+ * workspace-local date, not to UTC.
+ */
+export function localCalendarDateInTimezone(
   instant: Date,
   timezone: string,
-): { year: number; month: number } {
+): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     year: "numeric",
     month: "2-digit",
+    day: "2-digit",
   }).formatToParts(instant);
-  let year = 0;
-  let month = 0;
+  let year = "";
+  let month = "";
+  let day = "";
   for (const part of parts) {
-    if (part.type === "year") year = Number(part.value);
-    if (part.type === "month") month = Number(part.value);
+    if (part.type === "year") year = part.value;
+    if (part.type === "month") month = part.value;
+    if (part.type === "day") day = part.value;
   }
-  return { year, month };
+  return `${year}-${month}-${day}`;
+}
+
+function localDateInTimezone(
+  instant: Date,
+  timezone: string,
+): { year: number; month: number } {
+  const [year, month] = localCalendarDateInTimezone(instant, timezone)
+    .split("-")
+    .map(Number);
+  return { year: year ?? 0, month: month ?? 0 };
 }
 
 /**

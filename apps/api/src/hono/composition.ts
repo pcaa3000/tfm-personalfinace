@@ -52,8 +52,12 @@ import { GetWorkspaceBalanceUseCase } from "../modules/ledger/application/get-wo
 import { DrizzleNotificationRepository } from "../modules/notifications/infrastructure/drizzle-notification.repository.js";
 import { ListNotificationsUseCase } from "../modules/notifications/application/list-notifications.use-case.js";
 import { DrizzlePeriodCloseRepository } from "../modules/reports/infrastructure/drizzle-period-close.repository.js";
+import { DrizzleCashFlowReportAdapter } from "../modules/reports/infrastructure/drizzle-cash-flow-report.adapter.js";
+import { DrizzleExpensesByCategoryReportAdapter } from "../modules/reports/infrastructure/drizzle-expenses-by-category-report.adapter.js";
 import { ClosePeriodUseCase } from "../modules/reports/application/close-period.use-case.js";
 import { ListPeriodClosesUseCase } from "../modules/reports/application/list-period-closes.use-case.js";
+import { GetCashFlowReportUseCase } from "../modules/reports/application/get-cash-flow-report.use-case.js";
+import { GetExpensesByCategoryUseCase } from "../modules/reports/application/get-expenses-by-category.use-case.js";
 import { DrizzleReceiptScanRepository } from "../modules/receipts/infrastructure/drizzle-receipt-scan.repository.js";
 import { DrizzleTransactionDuplicatesAdapter } from "../modules/receipts/infrastructure/drizzle-transaction-duplicates.adapter.js";
 import { CryptoFileHasher } from "../modules/receipts/infrastructure/crypto-file-hasher.adapter.js";
@@ -366,6 +370,19 @@ export function buildApp(env: AppEnv): BuiltApp {
     // workspace+currency+period.
     closePeriod: new ClosePeriodUseCase(periodCloses, clock, ids),
     listPeriodCloses: new ListPeriodClosesUseCase(periodCloses),
+    // reports-monthly T3+T4 (S1/S2): monthly reports share the period
+    // resolution (closed vs provisional 30-day window) over the same
+    // closes repository.
+    cashFlowReport: new GetCashFlowReportUseCase(
+      periodCloses,
+      new DrizzleCashFlowReportAdapter(db),
+      clock,
+    ),
+    expensesByCategory: new GetExpensesByCategoryUseCase(
+      periodCloses,
+      new DrizzleExpensesByCategoryReportAdapter(db),
+      clock,
+    ),
     // receipts (receipt-scan-drafts T3: upload + quarantine + polling)
     uploadReceipt: new UploadReceiptUseCase(
       receiptStorage,
