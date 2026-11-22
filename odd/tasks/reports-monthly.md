@@ -21,8 +21,8 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 | T2 | Cierre mensual mínimo: tabla + endpoints + invalidación por revisión/void + provisional 30d | S5 | api | done | RED→GREEN 56 specs foc.; suite 1261; migración 0011 |
 | T3 | Endpoint flujo de caja por cuenta+moneda+período | S1, S8 | api | done | RED→GREEN; suite 1300; resolver de período compartido |
 | T4 | Endpoint gastos por categoría (splits-aware, naturalezas) | S2, S8 | api | done | RED→GREEN 39 specs nuevos; splits-aware |
-| T5 | Endpoint gastos hormiga (política ≥3/30d, medias, provisional o cerrado) | S3, S8 | api | pending | |
-| T6 | Endpoint ahorro del mes por moneda (observado, déficit 0%) | S4, S8 | api | pending | |
+| T5 | Endpoint gastos hormiga (política ≥3/30d, medias, provisional o cerrado) | S3, S8 | api | done | RED→GREEN; suite 1330 (2 flakes pre-existentes); hormiga evalúa head categoryId, no splits (desviación anotada) |
+| T6 | Endpoint ahorro del mes por moneda (observado, déficit 0%) | S4, S8 | api | done | RED→GREEN; CA-008 deficit+no_income cubiertos |
 | T7 | Página web de reportes (4 secciones, tablas, react-query, i18n) | S7 | web | pending | |
 | T8 | e2e + sync espejo Engram + cierre doc | todos | api+docs | pending | |
 
@@ -32,6 +32,7 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 - **L2** (decisión): alcance = API + página web.
 - **L3** (decisión): comercio para gastos hormiga = **Opción B**, columna `merchant` normalizada en `ledger_transactions` (descartadas heurística sobre `concept` y solo-categoría).
 - **L4** (decisión): implementar cierre mínimo por moneda; mes en curso = provisional sobre últimos 30 días.
+- **L9** (proceso): T5+T6 delegadas; hormiga por merchant (fallback categoría), cap absoluto PEN 30/USD·EUR 10 cuando income≤0 → confidence low; ahorro observedRate null en no_income, "0.00"+deficit en CA-008. Desviación aceptada: hormiga usa head categoryId (no splits) — candidata a follow-up. ASSESS medium.
 - **L8** (proceso): T3+T4 en un worker; `resolve-report-period` compartido (mes en curso → provisional últimos 30d; mes cerrado → closed; sin cierre → provisional mes completo). ASSESS medium.
 - **L7** (proceso): T2 delegada; módulo `reports` creado (`reports_period_closes`, índice único parcial activo); invalidación por revise/void vía `PeriodCloseInvalidationPort` opcional en ledger; provisional queda computado (no persistido) para T3-T6. ASSESS medium → sin verifier.
 - **L6** (proceso): T1 delegada a worker; ASSESS medium → self-verification, sin verifier; spec journal-head de voice-consents ajustada a "contiene 0009" (fix inline del padre).

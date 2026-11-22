@@ -29,6 +29,16 @@ export {
   type ExpensesByCategoryReportQueryPort,
 } from "./application/ports/expenses-by-category-report.port.js";
 export {
+  ANT_EXPENSES_REPORT_QUERY,
+  type AntExpenseLine,
+  type AntExpensesReportQueryPort,
+} from "./application/ports/ant-expenses-report.port.js";
+export {
+  MONTHLY_SAVINGS_REPORT_QUERY,
+  type MonthlySavingsReportQueryPort,
+  type MonthlySavingsTotals,
+} from "./application/ports/monthly-savings-report.port.js";
+export {
   ClosePeriodUseCase,
   type ClosePeriodCommand,
 } from "./application/close-period.use-case.js";
@@ -47,6 +57,14 @@ export {
   type GetExpensesByCategoryCommand,
 } from "./application/get-expenses-by-category.use-case.js";
 export {
+  GetAntExpensesUseCase,
+  type GetAntExpensesCommand,
+} from "./application/get-ant-expenses.use-case.js";
+export {
+  GetMonthlySavingsUseCase,
+  type GetMonthlySavingsCommand,
+} from "./application/get-monthly-savings.use-case.js";
+export {
   toPeriodCloseView,
   type PeriodCloseView,
 } from "./application/period-close.view.js";
@@ -60,3 +78,14 @@ export {
   type ExpenseCategoryView,
   type ExpensesByCategoryView,
 } from "./application/expenses-by-category.view.js";
+export {
+  ANT_EXPENSE_ABSOLUTE_CAP_MINOR,
+  ANT_EXPENSE_MIN_OPERATIONS,
+  toAntExpensesView,
+  type AntExpenseGroupView,
+  type AntExpensesView,
+} from "./application/ant-expenses.view.js";
+export {
+  toMonthlySavingsView,
+  type MonthlySavingsView,
+} from "./application/monthly-savings.view.js";

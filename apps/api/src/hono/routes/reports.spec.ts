@@ -5,8 +5,10 @@ import type {
   WorkspaceContext,
 } from "../../modules/identity-workspace/index.js";
 import type {
+  AntExpensesView,
   CashFlowReportView,
   ExpensesByCategoryView,
+  MonthlySavingsView,
   ReportPeriod,
 } from "../../modules/reports/index.js";
 import {
@@ -50,6 +52,34 @@ const CASH_FLOW_VIEW: CashFlowReportView = {
       netFlow: "21.50",
     },
   ],
+};
+
+const ANT_EXPENSES_VIEW: AntExpensesView = {
+  period: PERIOD,
+  totalDiscretionary: "15.00",
+  groups: [
+    {
+      groupKind: "merchant",
+      key: "cafe central",
+      label: "cafe central",
+      operationCount: 3,
+      total: "15.00",
+      average: "5.00",
+      percentOfDiscretionary: 100,
+      confidence: "high",
+      transactionIds: ["tx-1", "tx-2", "tx-3"],
+    },
+  ],
+};
+
+const MONTHLY_SAVINGS_VIEW: MonthlySavingsView = {
+  period: PERIOD,
+  income: "10000.00",
+  expense: "4000.00",
+  saved: "6000.00",
+  observedRate: "60.00",
+  note: null,
+  deficit: null,
 };
 
 const EXPENSES_VIEW: ExpensesByCategoryView = {
@@ -159,6 +189,18 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
       execute: vi.fn(
         async (): Promise<Result<ExpensesByCategoryView, DomainError>> =>
           ok(EXPENSES_VIEW),
+      ),
+    },
+    antExpenses: {
+      execute: vi.fn(
+        async (): Promise<Result<AntExpensesView, DomainError>> =>
+          ok(ANT_EXPENSES_VIEW),
+      ),
+    },
+    monthlySavings: {
+      execute: vi.fn(
+        async (): Promise<Result<MonthlySavingsView, DomainError>> =>
+          ok(MONTHLY_SAVINGS_VIEW),
       ),
     },
   };
@@ -288,10 +330,136 @@ describe("GET /api/v1/reports/expenses-by-category", () => {
   });
 });
 
+describe("GET /api/v1/reports/ant-expenses", () => {
+  it("returns 200 with the report payload", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+
+    const res = await app.request(
+      "/api/v1/reports/ant-expenses?currency=EUR&year=2026&month=9",
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(ANT_EXPENSES_VIEW);
+  });
+
+  it("passes the query period and the server-resolved workspace timezone to the use case", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+
+    await app.request(
+      "/api/v1/reports/ant-expenses?currency=PEN&year=2026&month=4",
+    );
+
+    expect(deps.antExpenses.execute).toHaveBeenCalledWith({
+      workspaceId: WS,
+      currency: "PEN",
+      year: 2026,
+      month: 4,
+      timezone: "UTC",
+    });
+  });
+
+  it("rejects an invalid query with 400 INVALID_QUERY", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+
+    const res = await app.request(
+      "/api/v1/reports/ant-expenses?currency=EUR&year=2026",
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("INVALID_QUERY");
+    expect(deps.antExpenses.execute).not.toHaveBeenCalled();
+  });
+
+  it("maps domain errors to the {code, message} envelope", async () => {
+    const deps = makeDeps();
+    deps.antExpenses.execute.mockResolvedValue(
+      err(new DomainError("TIMEZONE_INVALID", "bad tz")),
+    );
+    const app = createApp(deps);
+
+    const res = await app.request(
+      "/api/v1/reports/ant-expenses?currency=EUR&year=2026&month=9",
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      code: "TIMEZONE_INVALID",
+      message: "bad tz",
+    });
+  });
+});
+
+describe("GET /api/v1/reports/monthly-savings", () => {
+  it("returns 200 with the report payload", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+
+    const res = await app.request(
+      "/api/v1/reports/monthly-savings?currency=EUR&year=2026&month=9",
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(MONTHLY_SAVINGS_VIEW);
+  });
+
+  it("passes the query period and the server-resolved workspace timezone to the use case", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+
+    await app.request(
+      "/api/v1/reports/monthly-savings?currency=USD&year=2026&month=1",
+    );
+
+    expect(deps.monthlySavings.execute).toHaveBeenCalledWith({
+      workspaceId: WS,
+      currency: "USD",
+      year: 2026,
+      month: 1,
+      timezone: "UTC",
+    });
+  });
+
+  it("rejects requests without an authenticated caller", async () => {
+    const deps = makeDeps({ authenticated: false });
+    const app = createApp(deps);
+
+    const res = await app.request(
+      "/api/v1/reports/monthly-savings?currency=EUR&year=2026&month=9",
+    );
+
+    expect(res.status).toBe(401);
+    expect(deps.monthlySavings.execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid query with 400 INVALID_QUERY", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+
+    const res = await app.request(
+      "/api/v1/reports/monthly-savings?currency=EUR&year=2026&month=0",
+    );
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("INVALID_QUERY");
+    expect(deps.monthlySavings.execute).not.toHaveBeenCalled();
+  });
+});
+
 describe("reports routes when deps are absent", () => {
   it("does not mount the endpoints (fail-closed 404)", async () => {
     const deps = makeDeps();
-    const { cashFlowReport: _cf, expensesByCategory: _ec, ...rest } = deps;
+    const {
+      cashFlowReport: _cf,
+      expensesByCategory: _ec,
+      antExpenses: _ae,
+      monthlySavings: _ms,
+      ...rest
+    } = deps;
     const app = createApp(rest);
 
     const cash = await app.request(
@@ -300,8 +468,16 @@ describe("reports routes when deps are absent", () => {
     const cat = await app.request(
       "/api/v1/reports/expenses-by-category?currency=EUR&year=2026&month=9",
     );
+    const ant = await app.request(
+      "/api/v1/reports/ant-expenses?currency=EUR&year=2026&month=9",
+    );
+    const savings = await app.request(
+      "/api/v1/reports/monthly-savings?currency=EUR&year=2026&month=9",
+    );
 
     expect(cash.status).toBe(404);
     expect(cat.status).toBe(404);
+    expect(ant.status).toBe(404);
+    expect(savings.status).toBe(404);
   });
 });

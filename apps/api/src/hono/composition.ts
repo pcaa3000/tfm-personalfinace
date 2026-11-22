@@ -54,10 +54,14 @@ import { ListNotificationsUseCase } from "../modules/notifications/application/l
 import { DrizzlePeriodCloseRepository } from "../modules/reports/infrastructure/drizzle-period-close.repository.js";
 import { DrizzleCashFlowReportAdapter } from "../modules/reports/infrastructure/drizzle-cash-flow-report.adapter.js";
 import { DrizzleExpensesByCategoryReportAdapter } from "../modules/reports/infrastructure/drizzle-expenses-by-category-report.adapter.js";
+import { DrizzleAntExpensesReportAdapter } from "../modules/reports/infrastructure/drizzle-ant-expenses-report.adapter.js";
+import { DrizzleMonthlySavingsReportAdapter } from "../modules/reports/infrastructure/drizzle-monthly-savings-report.adapter.js";
 import { ClosePeriodUseCase } from "../modules/reports/application/close-period.use-case.js";
 import { ListPeriodClosesUseCase } from "../modules/reports/application/list-period-closes.use-case.js";
 import { GetCashFlowReportUseCase } from "../modules/reports/application/get-cash-flow-report.use-case.js";
 import { GetExpensesByCategoryUseCase } from "../modules/reports/application/get-expenses-by-category.use-case.js";
+import { GetAntExpensesUseCase } from "../modules/reports/application/get-ant-expenses.use-case.js";
+import { GetMonthlySavingsUseCase } from "../modules/reports/application/get-monthly-savings.use-case.js";
 import { DrizzleReceiptScanRepository } from "../modules/receipts/infrastructure/drizzle-receipt-scan.repository.js";
 import { DrizzleTransactionDuplicatesAdapter } from "../modules/receipts/infrastructure/drizzle-transaction-duplicates.adapter.js";
 import { CryptoFileHasher } from "../modules/receipts/infrastructure/crypto-file-hasher.adapter.js";
@@ -381,6 +385,18 @@ export function buildApp(env: AppEnv): BuiltApp {
     expensesByCategory: new GetExpensesByCategoryUseCase(
       periodCloses,
       new DrizzleExpensesByCategoryReportAdapter(db),
+      clock,
+    ),
+    // reports-monthly T5+T6 (S3/S4): ant-expenses detection and the
+    // monthly savings report over the same shared period resolution.
+    antExpenses: new GetAntExpensesUseCase(
+      periodCloses,
+      new DrizzleAntExpensesReportAdapter(db),
+      clock,
+    ),
+    monthlySavings: new GetMonthlySavingsUseCase(
+      periodCloses,
+      new DrizzleMonthlySavingsReportAdapter(db),
       clock,
     ),
     // receipts (receipt-scan-drafts T3: upload + quarantine + polling)

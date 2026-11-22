@@ -2,8 +2,10 @@ import type { Hono } from "hono";
 import { z } from "zod";
 
 import type {
+  GetAntExpensesUseCase,
   GetCashFlowReportUseCase,
   GetExpensesByCategoryUseCase,
+  GetMonthlySavingsUseCase,
 } from "../../modules/reports/index.js";
 import { DomainError } from "../../modules/shared-kernel/index.js";
 import {
@@ -39,6 +41,8 @@ export interface ReportsRouteDeps extends AuthDeps {
     GetExpensesByCategoryUseCase,
     "execute"
   >;
+  readonly antExpenses?: Pick<GetAntExpensesUseCase, "execute">;
+  readonly monthlySavings?: Pick<GetMonthlySavingsUseCase, "execute">;
 }
 
 function parsePeriodQuery(c: {
@@ -56,10 +60,11 @@ function parsePeriodQuery(c: {
 }
 
 /**
- * Registers the `/api/v1/reports/*` surface (reports-monthly T3+T4):
- * GET /cash-flow (S1) and GET /expenses-by-category (S2). Both share the
- * same query — `?currency=X&year=Y&month=M` — and the workspace timezone
- * comes from the auth context, never from the client.
+ * Registers the `/api/v1/reports/*` surface (reports-monthly T3–T6):
+ * GET /cash-flow (S1), GET /expenses-by-category (S2),
+ * GET /ant-expenses (S3) and GET /monthly-savings (S4). All share the
+ * same query — `?currency=X&year=Y&month=M` — and the workspace
+ * timezone comes from the auth context, never from the client.
  *
  * The deps are optional — like the period-closes/demo routes — so
  * shells built without the reports wiring never mount the endpoints
@@ -71,7 +76,14 @@ export function registerReportsRoutes(
 ): void {
   const cashFlowReport = deps.cashFlowReport;
   const expensesByCategory = deps.expensesByCategory;
-  if (!cashFlowReport || !expensesByCategory) {
+  const antExpenses = deps.antExpenses;
+  const monthlySavings = deps.monthlySavings;
+  if (
+    !cashFlowReport ||
+    !expensesByCategory ||
+    !antExpenses ||
+    !monthlySavings
+  ) {
     return;
   }
   const auth = authMiddleware(deps);
@@ -96,6 +108,38 @@ export function registerReportsRoutes(
     const query = parsePeriodQuery(c);
     const { workspace } = authContext(c);
     const result = await expensesByCategory.execute({
+      workspaceId: workspace.workspaceId,
+      currency: query.currency,
+      year: query.year,
+      month: query.month,
+      timezone: workspace.timezone,
+    });
+    if (!result.ok) {
+      throw toHttpError(result.error);
+    }
+    return c.json(result.value);
+  });
+
+  app.get("/api/v1/reports/ant-expenses", auth, async (c) => {
+    const query = parsePeriodQuery(c);
+    const { workspace } = authContext(c);
+    const result = await antExpenses.execute({
+      workspaceId: workspace.workspaceId,
+      currency: query.currency,
+      year: query.year,
+      month: query.month,
+      timezone: workspace.timezone,
+    });
+    if (!result.ok) {
+      throw toHttpError(result.error);
+    }
+    return c.json(result.value);
+  });
+
+  app.get("/api/v1/reports/monthly-savings", auth, async (c) => {
+    const query = parsePeriodQuery(c);
+    const { workspace } = authContext(c);
+    const result = await monthlySavings.execute({
       workspaceId: workspace.workspaceId,
       currency: query.currency,
       year: query.year,
