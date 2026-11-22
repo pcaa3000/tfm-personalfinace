@@ -241,6 +241,25 @@ describe("DrizzleDemoSessionService (integration, real Postgres — T6)", () => 
     );
   });
 
+  it("sessionStatus reports ready=false for an unknown sid and ready=true once the async seed landed rows (S10)", async () => {
+    const session = await service.createSession(caller(SUBJECT_B));
+    // An unknown sid has no workspace row → deterministically not ready.
+    expect(
+      await service.sessionStatus(caller(SUBJECT_B), "sid-unknown"),
+    ).toEqual({ ready: false });
+
+    await settle();
+
+    expect(
+      await service.sessionStatus(caller(SUBJECT_B), session.sessionId),
+    ).toEqual({ ready: true });
+    // A sid is scoped to its owner: same sid under another subject is
+    // not ready even though the workspace exists.
+    expect(
+      await service.sessionStatus(caller(SUBJECT_A), session.sessionId),
+    ).toEqual({ ready: false });
+  });
+
   it("a fresh demo workspace and an old non-demo workspace survive every sweep (scoping)", async () => {
     const pinnedKey = `${ISSUER}|${SUBJECT_A}|pinned`;
     const [pinned] = await db

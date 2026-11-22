@@ -12,6 +12,7 @@ import type { Session } from "@supabase/supabase-js";
 import {
   createDemoSession,
   deleteDemoSession,
+  getDemoSessionStatus,
   setAccessTokenProvider,
 } from "../ledger/api";
 import { clearClientCaches } from "./client-caches";
@@ -33,6 +34,13 @@ export interface AuthContextValue {
   misconfigured: boolean;
   /** True while the initial getSession() call is in flight. */
   loading: boolean;
+  /**
+   * demo-maria-session T9 (S10): the session is the demo account but
+   * its sid/seed is not ready yet — the gate must hold a "preparing"
+   * state instead of landing the visitor on an empty ledger while
+   * the async seed is still generating data.
+   */
+  demoPending: boolean;
   session: Session | null;
   signIn: (email: string, password: string) => Promise<void>;
   /**
@@ -61,6 +69,7 @@ const defaultValue: AuthContextValue = {
   configured: false,
   misconfigured: false,
   loading: false,
+  demoPending: false,
   session: null,
   signIn: async () => {
     throw new Error("Auth is not configured");
@@ -95,6 +104,33 @@ const AuthContext = createContext<AuthContextValue>(defaultValue);
  */
 let restoredDemoMint: Promise<void> | null = null;
 
+/**
+ * demo-maria-session T9 (S10): bounded poll of
+ * `GET /demo/session/status` — the async seed takes a few seconds
+ * (~bootstrap + 3 month batches), so the client holds the demo gate
+ * until the workspace already shows ledger rows instead of landing
+ * on an empty view. The timeout guarantees a stuck or failed seed
+ * never wedges the demo — the visitor lands on the (possibly empty)
+ * ledger rather than on an eternal spinner, and the API keeps
+ * failing closed if the sid itself never materialized.
+ */
+const DEMO_SEED_POLL_MS = 500;
+const DEMO_SEED_TIMEOUT_MS = 20000;
+
+async function waitForDemoSeed(): Promise<void> {
+  const deadline = Date.now() + DEMO_SEED_TIMEOUT_MS;
+  for (;;) {
+    try {
+      const { ready } = await getDemoSessionStatus();
+      if (ready) return;
+    } catch {
+      // Best-effort — a transient error simply retries next tick.
+    }
+    if (Date.now() >= deadline) return;
+    await new Promise((resolve) => setTimeout(resolve, DEMO_SEED_POLL_MS));
+  }
+}
+
 function mintRestoredDemoSession(session: Session): void {
   if (getDemoSessionId() !== null || restoredDemoMint !== null) return;
   const email = demoEmail();
@@ -122,10 +158,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     null,
   );
   const [loading, setLoading] = useState(configured);
+  // demo-maria-session T9 (S10): the demo gate holds until the sid
+  // exists AND the async seed has produced ledger rows — the visitor
+  // must never land on an empty ledger mid-seed.
+  const [demoReady, setDemoReady] = useState(false);
   // demo-maria-session T8: the demo is a real Supabase session — no
   // pseudo-session or demo flag exists; the per-tab sid lives in
   // sessionStorage and only affects request headers.
   const session = supabaseSession;
+  const isDemoSession =
+    session !== null &&
+    demoEmail() !== null &&
+    session.user.email === demoEmail();
+
+  useEffect(() => {
+    if (!isDemoSession) {
+      setDemoReady(false);
+      return;
+    }
+    let active = true;
+    void (async () => {
+      // Restore path: a sid mint may still be in flight (R3-001) —
+      // wait for it, then for the seed. A failed mint leaves no sid;
+      // we unblock the gate anyway so the visitor sees the app
+      // (fail-closed API errors) instead of an eternal spinner.
+      if (restoredDemoMint !== null) {
+        await restoredDemoMint.catch(() => {});
+      }
+      if (getDemoSessionId() !== null) {
+        await waitForDemoSeed();
+      }
+      if (active) setDemoReady(true);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [isDemoSession]);
 
   useEffect(() => {
     if (!configured) return;
@@ -269,6 +337,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       configured,
       misconfigured,
       loading,
+      demoPending: isDemoSession && !demoReady,
       session,
       signIn,
       signInDemo,
@@ -282,6 +351,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       configured,
       misconfigured,
       loading,
+      isDemoSession,
+      demoReady,
       session,
       signIn,
       signInDemo,

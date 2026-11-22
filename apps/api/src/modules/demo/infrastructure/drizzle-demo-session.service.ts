@@ -4,7 +4,10 @@ import { and, eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import type { DrizzleSchema } from "../../../drizzle/db.js";
-import { workspaces } from "../../../drizzle/schema.js";
+import {
+  ledgerTransactions,
+  workspaces,
+} from "../../../drizzle/schema.js";
 import {
   cleanupDemoWorkspaces,
   cleanupDemoWorkspacesInTransaction,
@@ -23,6 +26,7 @@ import type { CallerIdentity } from "../../identity-workspace/index.js";
 import type {
   DemoSession,
   DemoSessionPort,
+  DemoSessionStatus,
 } from "../application/demo-session.port.js";
 
 /**
@@ -114,6 +118,33 @@ export class DrizzleDemoSessionService implements DemoSessionPort {
         olderThan: demoOrphanCutoff(),
       });
     });
+  }
+
+  async sessionStatus(
+    caller: CallerIdentity,
+    sessionId: string,
+  ): Promise<DemoSessionStatus> {
+    // T9 (S10): readiness is a DB fact, not job memory — the seed
+    // inserts months oldest-visible first, so "has transactions" is
+    // the exact moment the demo stops looking empty.
+    const identityKey = `${caller.issuer}|${caller.subject}|${sessionId}`;
+    const [workspace] = await this.db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(
+        and(
+          eq(workspaces.identityKey, identityKey),
+          eq(workspaces.kind, DEMO_WORKSPACE_KIND),
+        ),
+      )
+      .limit(1);
+    if (!workspace) return { ready: false };
+    const [row] = await this.db
+      .select({ id: ledgerTransactions.id })
+      .from(ledgerTransactions)
+      .where(eq(ledgerTransactions.workspaceId, workspace.id))
+      .limit(1);
+    return { ready: row !== undefined };
   }
 
   /**

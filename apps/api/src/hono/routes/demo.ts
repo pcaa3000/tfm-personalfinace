@@ -199,6 +199,18 @@ export function registerDemoRoutes(
       );
     });
 
+    app.get("/api/v1/demo/session/status", async (c) => {
+      const gated = await gate(c);
+      if (!gated.ok) return gated.response;
+      const sessionId =
+        c.req
+          .header(DEMO_SESSION_HEADER)
+          ?.trim()
+          .slice(0, MAX_DEMO_SESSION_LENGTH) ?? "";
+      const status = await demoSession.sessionStatus(gated.caller, sessionId);
+      return c.json({ ready: status.ready });
+    });
+
     app.delete("/api/v1/demo/session", async (c) => {
       const gated = await gate(c);
       if (!gated.ok) return gated.response;

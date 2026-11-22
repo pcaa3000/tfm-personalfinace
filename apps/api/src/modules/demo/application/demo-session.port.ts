@@ -19,6 +19,21 @@ export interface DemoSession {
 export interface DemoSessionPort {
   createSession(caller: CallerIdentity): Promise<DemoSession>;
   endSession(caller: CallerIdentity, sessionId: string): Promise<void>;
+  /**
+   * demo-maria-session T9 (S10; L15): reports whether the async seed
+   * already produced ledger rows for this sid's workspace — the web
+   * polls it before rendering the ledger so the demo never lands on
+   * an empty view while data is still being generated.
+   */
+  sessionStatus(
+    caller: CallerIdentity,
+    sessionId: string,
+  ): Promise<DemoSessionStatus>;
+}
+
+/** Readiness of a demo session's asynchronous seed. */
+export interface DemoSessionStatus {
+  readonly ready: boolean;
 }
 
 export const DEMO_SESSION = Symbol("DEMO_SESSION");

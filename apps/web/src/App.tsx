@@ -28,7 +28,8 @@ function ThemedApp() {
  */
 function AuthGate() {
   const { t } = useTranslation();
-  const { configured, misconfigured, loading, session } = useAuth();
+  const { configured, misconfigured, loading, session, demoPending } =
+    useAuth();
 
   if (misconfigured) {
     return (
@@ -54,7 +55,28 @@ function AuthGate() {
   // demo-maria-session T8: a demo sign-in is a real Supabase
   // session (the per-tab sid only rides in request headers), so the
   // gate needs no demo-specific branch.
-  if (!configured || session) {
+  if (!configured) {
+    return <LedgerPage />;
+  }
+  // demo-maria-session T9 (S10): while the sid mints and the async
+  // seed runs, hold a preparing state — landing on an empty ledger
+  // mid-seed reads as "no data" and defeats the demo's purpose.
+  if (session && demoPending) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+        }}
+      >
+        <Typography color="text.secondary">
+          {t("login.demoSubmitting")}
+        </Typography>
+      </Box>
+    );
+  }
+  if (session) {
     return <LedgerPage />;
   }
   if (loading) {

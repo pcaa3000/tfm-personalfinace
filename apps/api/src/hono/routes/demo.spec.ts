@@ -247,6 +247,7 @@ describe("POST /api/v1/demo/session (demo-maria-session T6, S4/S8)", () => {
         workspaceId: `ws-demo-${options.sessionId ?? "sid-fixed"}`,
       })),
       endSession: vi.fn(async () => undefined),
+      sessionStatus: vi.fn(async () => ({ ready: false })),
     };
     const app = new Hono<HonoEnv>();
     registerDemoRoutes(app, {
@@ -287,7 +288,11 @@ describe("POST /api/v1/demo/session (demo-maria-session T6, S4/S8)", () => {
   });
 
   it("answers 403 when DEMO_SUBJECT is not configured (fail closed)", async () => {
-    const demoSession = { createSession: vi.fn(), endSession: vi.fn() };
+    const demoSession = {
+      createSession: vi.fn(),
+      endSession: vi.fn(),
+      sessionStatus: vi.fn(),
+    };
     const app = new Hono<HonoEnv>();
     registerDemoRoutes(app, {
       demoSession,
@@ -386,6 +391,7 @@ describe("DELETE /api/v1/demo/session (demo-maria-session T6)", () => {
     const demoSession = {
       createSession: vi.fn(),
       endSession: vi.fn(async () => undefined),
+      sessionStatus: vi.fn(async () => ({ ready: false })),
     };
     const app = new Hono<HonoEnv>();
     registerDemoRoutes(app, {
@@ -428,7 +434,11 @@ describe("DELETE /api/v1/demo/session (demo-maria-session T6)", () => {
   });
 
   it("answers 403 when DEMO_SUBJECT is not configured (fail closed)", async () => {
-    const demoSession = { createSession: vi.fn(), endSession: vi.fn() };
+    const demoSession = {
+      createSession: vi.fn(),
+      endSession: vi.fn(),
+      sessionStatus: vi.fn(),
+    };
     const app = new Hono<HonoEnv>();
     registerDemoRoutes(app, {
       demoSession,
@@ -513,6 +523,65 @@ describe("DELETE /api/v1/demo/session (demo-maria-session T6)", () => {
  * a demo-session resolution failure maps to a fail-closed 403 — never
  * the shared `issuer|subject` workspace.
  */
+describe("GET /api/v1/demo/session/status (demo-maria-session T9, S10)", () => {
+  const DEMO_CALLER: CallerIdentity = {
+    issuer: "local",
+    subject: "demo-maria",
+  };
+
+  it("answers {ready} for the x-demo-session sid", async () => {
+    const callerResolver = { resolve: vi.fn(async () => DEMO_CALLER) };
+    const demoSession = {
+      createSession: vi.fn(),
+      endSession: vi.fn(),
+      sessionStatus: vi.fn(async () => ({ ready: true })),
+    };
+    const app = new Hono<HonoEnv>();
+    registerDemoRoutes(app, {
+      demoSession,
+      callerResolver,
+      demoSubject: DEMO_CALLER.subject,
+    });
+    app.onError(httpErrorHandler());
+
+    const res = await app.request("/api/v1/demo/session/status", {
+      headers: { "x-demo-session": "sid-live" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ready: true });
+    expect(demoSession.sessionStatus).toHaveBeenCalledWith(
+      DEMO_CALLER,
+      "sid-live",
+    );
+  });
+
+  it("applies the same subject gate as POST/DELETE (403 for non-demo subjects)", async () => {
+    const callerResolver = {
+      resolve: vi.fn(async () => ({ issuer: "local", subject: "dev-user" })),
+    };
+    const demoSession = {
+      createSession: vi.fn(),
+      endSession: vi.fn(),
+      sessionStatus: vi.fn(),
+    };
+    const app = new Hono<HonoEnv>();
+    registerDemoRoutes(app, {
+      demoSession,
+      callerResolver,
+      demoSubject: DEMO_CALLER.subject,
+    });
+    app.onError(httpErrorHandler());
+
+    const res = await app.request("/api/v1/demo/session/status", {
+      headers: { "x-demo-session": "sid-1" },
+    });
+
+    expect(res.status).toBe(403);
+    expect(demoSession.sessionStatus).not.toHaveBeenCalled();
+  });
+});
+
 describe("x-demo-session plumbing (demo-maria-session T6, S5)", () => {
   const WS_CTX: WorkspaceContext = {
     workspaceId: (() => {

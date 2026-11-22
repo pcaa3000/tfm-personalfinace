@@ -27,6 +27,7 @@ import {
   reviseTransaction,
   createDemoSession,
   deleteDemoSession,
+  getDemoSessionStatus,
   retryReceiptScan,
   unarchiveAccount,
   updateWorkspace,
@@ -197,6 +198,25 @@ describe("demo session (demo-maria-session T8, S2+S3; L10 per-sid model)", () =>
     const headers = (init?.headers ?? {}) as Record<string, string>;
     expect(headers["authorization"]).toBe("Bearer token-abc");
     expect(headers["x-demo-session"]).toBe("sid-7");
+  });
+
+  it("getDemoSessionStatus GETs /demo/session/status carrying bearer + sid (T9, S10)", async () => {
+    stubDemoSid("sid-9");
+    setAccessTokenProvider(async () => "token-abc");
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ ready: false }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    const result = await getDemoSessionStatus();
+
+    expect(result).toEqual({ ready: false });
+    expect(calledUrl()).toBe("/api/v1/demo/session/status");
+    const headers = calledHeaders();
+    expect(headers["x-demo-session"]).toBe("sid-9");
+    expect(headers["authorization"]).toBe("Bearer token-abc");
   });
 
   it("deleteDemoSession propagates API errors so sign-out can treat it as best-effort", async () => {

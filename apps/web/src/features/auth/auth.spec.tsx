@@ -52,13 +52,15 @@ function makeClient(overrides: Record<string, unknown> = {}) {
 }
 
 function Probe() {
-  const { configured, misconfigured, loading, session, signOut } = useAuth();
+  const { configured, misconfigured, loading, session, signOut, demoPending } =
+    useAuth();
   return (
     <div>
       <span data-testid="configured">{String(configured)}</span>
       <span data-testid="misconfigured">{String(misconfigured)}</span>
       <span data-testid="loading">{String(loading)}</span>
       <span data-testid="email">{session?.user.email ?? "none"}</span>
+      <span data-testid="demo-pending">{String(demoPending)}</span>
       <button onClick={() => void signOut()}>logout</button>
     </div>
   );
@@ -540,12 +542,16 @@ describe("AuthProvider", () => {
       }),
     });
     getSupabaseClient.mockReturnValue(client);
-    const fetchSpy = vi.fn<typeof fetch>(
-      async () =>
-        new Response(
-          JSON.stringify({ sessionId: "sid-1", workspaceId: "ws-1" }),
-          { status: 201, headers: { "content-type": "application/json" } },
-        ),
+    const fetchSpy = vi.fn<typeof fetch>(async (input) =>
+      String(input).endsWith("/demo/session/status")
+        ? new Response(JSON.stringify({ ready: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
+        : new Response(
+            JSON.stringify({ sessionId: "sid-1", workspaceId: "ws-1" }),
+            { status: 201, headers: { "content-type": "application/json" } },
+          ),
     );
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -582,8 +588,11 @@ describe("AuthProvider", () => {
     expect(signInOrder).toBeDefined();
     expect(fetchOrder).toBeDefined();
     expect(signInOrder!).toBeLessThan(fetchOrder!);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    const sessionCalls = fetchSpy.mock.calls.filter(
+      ([input]) => String(input) === "/api/v1/demo/session",
+    );
+    expect(sessionCalls).toHaveLength(1);
+    const [url, init] = sessionCalls[0] ?? [];
     expect(String(url)).toBe("/api/v1/demo/session");
     expect((init as RequestInit | undefined)?.method).toBe("POST");
     const headers = new Headers(
@@ -769,8 +778,13 @@ describe("AuthProvider", () => {
       getSession: vi.fn(async () => ({ data: { session }, error: null })),
     });
     getSupabaseClient.mockReturnValue(client);
-    const fetchSpy = vi.fn<typeof fetch>(
-      async () => new Response(null, { status: 204 }),
+    const fetchSpy = vi.fn<typeof fetch>(async (input) =>
+      String(input).endsWith("/demo/session/status")
+        ? new Response(JSON.stringify({ ready: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
+        : new Response(null, { status: 204 }),
     );
     vi.stubGlobal("fetch", fetchSpy);
     await enqueueTransaction(inputFixture({ idempotencyKey: "demo-queued" }));
@@ -789,11 +803,26 @@ describe("AuthProvider", () => {
       expect(client.auth.signOut).toHaveBeenCalledTimes(1);
     });
     // DELETE /demo/session carried the bearer + sid and ran BEFORE
-    // supabase.auth.signOut.
+    // supabase.auth.signOut. T9: the status poll may add calls to the
+    // same spy — isolate the DELETE by method + URL.
     await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(
+        fetchSpy.mock.calls.some(
+          ([input, initArg]) =>
+            String(input) === "/api/v1/demo/session" &&
+            (initArg as RequestInit | undefined)?.method === "DELETE",
+        ),
+      ).toBe(true);
     });
-    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    const deleteCall = fetchSpy.mock.calls.find(
+      ([input, initArg]) =>
+        String(input) === "/api/v1/demo/session" &&
+        (initArg as RequestInit | undefined)?.method === "DELETE",
+    );
+    const deleteInvocation = fetchSpy.mock.invocationCallOrder[
+      fetchSpy.mock.calls.indexOf(deleteCall!)
+    ];
+    const [url, init] = deleteCall ?? [];
     expect(String(url)).toBe("/api/v1/demo/session");
     expect((init as RequestInit | undefined)?.method).toBe("DELETE");
     const headers = new Headers(
@@ -801,9 +830,8 @@ describe("AuthProvider", () => {
     );
     expect(headers.get("authorization")).toBe("Bearer demo-tok");
     expect(headers.get("x-demo-session")).toBe("sid-9");
-    const deleteOrder = fetchSpy.mock.invocationCallOrder[0];
     const signOutOrder = client.auth.signOut.mock.invocationCallOrder[0];
-    expect(deleteOrder!).toBeLessThan(signOutOrder!);
+    expect(deleteInvocation).toBeLessThan(signOutOrder!);
     // sid dropped together with the client caches.
     expect(sessionStorage.getItem("demo-sid")).toBeNull();
     await waitFor(async () => {
@@ -867,8 +895,13 @@ describe("AuthProvider", () => {
       signOut: vi.fn(async () => ({ error: failure })),
     });
     getSupabaseClient.mockReturnValue(client);
-    const fetchSpy = vi.fn<typeof fetch>(
-      async () => new Response(null, { status: 204 }),
+    const fetchSpy = vi.fn<typeof fetch>(async (input) =>
+      String(input).endsWith("/demo/session/status")
+        ? new Response(JSON.stringify({ ready: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
+        : new Response(null, { status: 204 }),
     );
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -924,12 +957,16 @@ describe("AuthProvider", () => {
       })),
     });
     getSupabaseClient.mockReturnValue(client);
-    const fetchSpy = vi.fn<typeof fetch>(
-      async () =>
-        new Response(
-          JSON.stringify({ sessionId: "sid-restored", workspaceId: "ws-r" }),
-          { status: 201, headers: { "content-type": "application/json" } },
-        ),
+    const fetchSpy = vi.fn<typeof fetch>(async (input) =>
+      String(input).endsWith("/demo/session/status")
+        ? new Response(JSON.stringify({ ready: true }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
+        : new Response(
+            JSON.stringify({ sessionId: "sid-restored", workspaceId: "ws-r" }),
+            { status: 201, headers: { "content-type": "application/json" } },
+          ),
     );
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -938,7 +975,6 @@ describe("AuthProvider", () => {
     await waitFor(() => {
       expect(sessionStorage.getItem("demo-sid")).toBe("sid-restored");
     });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0] ?? [];
     expect(String(url)).toBe("/api/v1/demo/session");
     expect((init as RequestInit | undefined)?.method).toBe("POST");
@@ -950,5 +986,85 @@ describe("AuthProvider", () => {
         "mariademo@example.com",
       );
     });
+  });
+
+  it("holds the demo gate (demoPending) until the seed status reports ready, then releases it (T9, S10)", async () => {
+    vi.stubEnv("VITE_DEMO_EMAIL", "mariademo@example.com");
+    isAuthConfigured.mockReturnValue(true);
+    const demoSession = {
+      access_token: "demo-tok",
+      user: { id: "demo-1", email: "mariademo@example.com" },
+    };
+    const client = makeClient({
+      getSession: vi.fn(async () => ({
+        data: { session: demoSession },
+        error: null,
+      })),
+    });
+    getSupabaseClient.mockReturnValue(client);
+    let statusCalls = 0;
+    const fetchSpy = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/demo/session/status")) {
+        statusCalls += 1;
+        return new Response(
+          JSON.stringify({ ready: statusCalls >= 2 }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({ sessionId: "sid-restored", workspaceId: "ws-r" }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("demo-pending").textContent).toBe("true");
+    });
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("demo-pending").textContent).toBe("false");
+      },
+      { timeout: 5000 },
+    );
+    const statusRequests = fetchSpy.mock.calls.filter(([input]) =>
+      String(input).endsWith("/demo/session/status"),
+    );
+    expect(statusRequests.length).toBeGreaterThanOrEqual(2);
+    const headers = new Headers(
+      (statusRequests[0]?.[1] as RequestInit | undefined)?.headers,
+    );
+    expect(headers.get("x-demo-session")).toBe("sid-restored");
+  });
+
+  it("never holds demoPending for a non-demo session (T9, S10)", async () => {
+    vi.stubEnv("VITE_DEMO_EMAIL", "mariademo@example.com");
+    isAuthConfigured.mockReturnValue(true);
+    const session = {
+      access_token: "tok",
+      user: { id: "u-1", email: "ana@example.com" },
+    };
+    const client = makeClient({
+      getSession: vi.fn(async () => ({
+        data: { session },
+        error: null,
+      })),
+    });
+    getSupabaseClient.mockReturnValue(client);
+    const fetchSpy = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("email").textContent).toBe(
+        "ana@example.com",
+      );
+    });
+    expect(screen.getByTestId("demo-pending").textContent).toBe("false");
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

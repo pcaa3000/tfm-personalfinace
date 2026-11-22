@@ -180,6 +180,19 @@ export async function deleteDemoSession(): Promise<void> {
   return request<void>("/demo/session", { method: "DELETE" });
 }
 
+/**
+ * `GET /demo/session/status` — readiness of the sid's async seed
+ * (demo-maria-session T9, S10): `{ready:true}` once the workspace
+ * already holds ledger rows, so the client can hold a "preparing"
+ * state instead of landing the visitor on an empty ledger while the
+ * background seed is still running.
+ */
+export async function getDemoSessionStatus(): Promise<{
+  ready: boolean;
+}> {
+  return request<{ ready: boolean }>("/demo/session/status");
+}
+
 /** `GET /api/v1/balance` — per-currency aggregates for the strip (T24). */
 export function fetchBalance(): Promise<BalanceItemView[]> {
   return request<BalanceItemView[]>("/balance");
