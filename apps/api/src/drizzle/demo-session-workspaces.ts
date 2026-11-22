@@ -170,6 +170,22 @@ export interface SeedDemoSessionWorkspaceResult {
   /** "YYYY-MM" keys generated, in spec order (current, -1, -2). */
   readonly generatedMonths: readonly string[];
   readonly insertedTransactions: number;
+  /**
+   * True when the session workspace row was already gone before the
+   * scaffolding step ran (R1-001): the job aborted instead of letting
+   * {@link bootstrapDemoWorkspace} resurrect an ended session.
+   */
+  readonly aborted: boolean;
+}
+
+/**
+ * `pg_advisory_xact_lock` keyed on the session identity key (R1-001):
+ * shared by {@link seedDemoSessionWorkspace} (every step) and
+ * `endSession` so a DELETE /demo/session serializes with an in-flight
+ * seed step instead of colliding on FK RESTRICT.
+ */
+export function demoSessionAdvisoryLock(identityKey: string) {
+  return sql`select pg_advisory_xact_lock(hashtextextended(${identityKey}, 0))`;
 }
 
 /**
@@ -188,6 +204,11 @@ export interface SeedDemoSessionWorkspaceResult {
  * processes; each month also re-checks the workspace still exists so
  * a DELETE /demo/session mid-seed aborts the remaining months instead
  * of resurrecting ledger rows for a deleted workspace.
+ *
+ * R1-001: the scaffolding step checks the pre-created session row is
+ * still there INSIDE the lock — its absence means the session was
+ * ended (DELETE or orphan sweep) while the job was queued, so the job
+ * aborts instead of letting the bootstrap re-create the row.
  */
 export async function seedDemoSessionWorkspace(
   db: NodePgDatabase<DrizzleSchema>,
@@ -199,10 +220,24 @@ export async function seedDemoSessionWorkspace(
     workspaceId: options.workspaceId,
     kind: DEMO_WORKSPACE_KIND,
   };
-  const advisoryLock = sql`select pg_advisory_xact_lock(hashtextextended(${options.identityKey}, 0))`;
+  const advisoryLock = demoSessionAdvisoryLock(options.identityKey);
 
   const scaffolding = await db.transaction(async (tx) => {
     await tx.execute(advisoryLock);
+    // R1-001: POST /demo/session pre-creates this row before the job
+    // is kicked; its absence inside the lock means the session was
+    // ended meanwhile — abort rather than resurrect it below.
+    const [sessionRow] = await tx
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(
+        and(
+          eq(workspaces.identityKey, options.identityKey),
+          eq(workspaces.kind, DEMO_WORKSPACE_KIND),
+        ),
+      )
+      .limit(1);
+    if (!sessionRow) return null;
     const { workspace, workspaceId, created } =
       await bootstrapDemoWorkspace(tx, target);
     // Idempotent retry: a previous crashed job may have left partial
@@ -220,6 +255,18 @@ export async function seedDemoSessionWorkspace(
       accountIdByKey,
     };
   });
+
+  if (scaffolding === null) {
+    return {
+      identityKey: options.identityKey,
+      workspaceId: options.workspaceId,
+      workspaceCreated: false,
+      accountsCreated: 0,
+      generatedMonths: [],
+      insertedTransactions: 0,
+      aborted: true,
+    };
+  }
 
   const generatedMonths: string[] = [];
   let insertedTransactions = 0;
@@ -263,6 +310,7 @@ export async function seedDemoSessionWorkspace(
     accountsCreated: scaffolding.accountsCreated,
     generatedMonths,
     insertedTransactions,
+    aborted: false,
   };
 }
 

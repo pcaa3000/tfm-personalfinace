@@ -82,6 +82,35 @@ const defaultValue: AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue>(defaultValue);
 
+/**
+ * Restore-path demo mint (demo-maria-session R3-001): a signed-in
+ * Supabase demo user whose per-tab sid is gone (new tab, cleared
+ * storage) would hit fail-closed 403s on every API call — a dead
+ * demo tab. Minting a fresh sid is fire-and-forget: a fresh sid means
+ * a fresh seeded workspace, which is correct under the discard model.
+ * The in-flight flag keeps concurrent restore paths from minting
+ * twice; a failure is swallowed (the session stays usable, the API
+ * keeps failing closed) and the next demo sign-in mints again — the
+ * mint never loops on its own.
+ */
+let restoredDemoMint: Promise<void> | null = null;
+
+function mintRestoredDemoSession(session: Session): void {
+  if (getDemoSessionId() !== null || restoredDemoMint !== null) return;
+  const email = demoEmail();
+  if (email === null || session.user.email !== email) return;
+  restoredDemoMint = createDemoSession()
+    .then(({ sessionId }) => {
+      setDemoSessionId(sessionId);
+    })
+    .catch(() => {
+      // Best-effort — nothing to surface; see the contract above.
+    })
+    .finally(() => {
+      restoredDemoMint = null;
+    });
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   // T26: three explicit states — bypassed (dev passthrough), configured
   // (credentials present → login required) or misconfigured (fail closed).
@@ -114,9 +143,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       setSupabaseSession(data.session);
       setLoading(false);
+      // R3-001: restore-path sid mint for the demo account.
+      if (data.session) mintRestoredDemoSession(data.session);
     });
 
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+      // R3-004: never publish a demo session whose per-tab sid is
+      // still being minted — ledger queries would fire without
+      // x-demo-session and hit the fail-closed resolver. signInDemo
+      // and the restore path publish the demo session themselves.
+      const email = demoEmail();
+      if (
+        next !== null &&
+        email !== null &&
+        next.user.email === email &&
+        getDemoSessionId() === null
+      ) {
+        return;
+      }
       setSupabaseSession(next);
       setLoading(false);
     });
@@ -151,8 +195,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
     });
     if (error) throw error;
-    setSupabaseSession(data.session);
     try {
+      // R3-004: the sid must be stored BEFORE the session is
+      // published — otherwise ledger queries can fire without
+      // x-demo-session between the two updates and fail closed.
       const { sessionId } = await createDemoSession();
       setDemoSessionId(sessionId);
     } catch (sessionError) {
@@ -160,6 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSupabaseSession(null);
       throw sessionError;
     }
+    setSupabaseSession(data.session);
   }, []);
 
   // T30 (S13): the PKCE redirect flow navigates the browser away to

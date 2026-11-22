@@ -215,6 +215,15 @@ describe("DrizzleDemoSessionService (integration, real Postgres — T6)", () => 
     ).toBeGreaterThan(0);
   });
 
+  it("a DELETE racing the in-flight seed resolves cleanly and leaves no workspace behind (R1-001)", async () => {
+    const session = await service.createSession(caller(SUBJECT_A));
+    await service.endSession(caller(SUBJECT_A), session.sessionId);
+    await settle();
+    expect(
+      await workspaceRow(db, `${ISSUER}|${SUBJECT_A}|${session.sessionId}`),
+    ).toBeNull();
+  });
+
   it("endSession is idempotent for an unknown sid — 204 semantics, no rows touched", async () => {
     const before = await db
       .select({ id: workspaces.id })

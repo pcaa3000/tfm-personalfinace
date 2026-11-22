@@ -121,6 +121,15 @@ describe("seedDemoSessionWorkspace (integration, real Postgres — T6)", () => {
   });
 
   it("seeds a kind='demo' workspace month by month in window order: current, -1, -2 (S3)", async () => {
+    // POST /demo/session pre-inserts the bare row before kicking the
+    // job; the async seed adopts it (R1-001: a missing row aborts).
+    await db.insert(workspaces).values({
+      id: WORKSPACE_ID,
+      identityKey: IDENTITY_KEY,
+      kind: "demo",
+      timezone: "America/Lima",
+      defaultCurrency: "PEN",
+    });
     const result = await seedSessionWorkspace(db, {
       identityKey: IDENTITY_KEY,
       workspaceId: WORKSPACE_ID,
@@ -192,6 +201,24 @@ describe("seedDemoSessionWorkspace (integration, real Postgres — T6)", () => {
     expect(await transactionCount(db, WORKSPACE_ID)).toBe(
       first.insertedTransactions,
     );
+  });
+
+  // R1-001: a missing pre-inserted row means the session was ended — abort, never resurrect it.
+  it("aborts without resurrecting the workspace when the session row is already gone (R1-001)", async () => {
+    const result = await seedSessionWorkspace(db, {
+      identityKey: IDENTITY_KEY,
+      workspaceId: WORKSPACE_ID,
+      now: NOW,
+    });
+
+    expect(result.aborted).toBe(true);
+    expect(result.generatedMonths).toEqual([]);
+    expect(result.insertedTransactions).toBe(0);
+    const [row] = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.identityKey, IDENTITY_KEY));
+    expect(row).toBeUndefined();
   });
 });
 

@@ -11,6 +11,7 @@ import {
   deleteWorkspacesCascade,
   DEMO_WORKSPACE_KIND,
   demoOrphanCutoff,
+  demoSessionAdvisoryLock,
   DemoSessionSeedTrigger,
   seedDemoSessionWorkspace,
 } from "../../../drizzle/demo-session-workspaces.js";
@@ -40,7 +41,11 @@ import type {
  * `endSession` deletes that session's workspace with all its data
  * (cascade-safe order) and runs the same >24h orphan sweep — both in
  * ONE transaction, and idempotent: an unknown sid simply sweeps and
- * resolves, so logout is always a clean 204.
+ * resolves, so logout is always a clean 204. The transaction first
+ * takes the SAME per-sid `pg_advisory_xact_lock` the seed job uses
+ * (R1-001): a DELETE concurrent with seeding waits for the current
+ * seed step instead of colliding on FK RESTRICT, and the next seed
+ * step then sees the workspace gone and aborts.
  */
 export class DrizzleDemoSessionService implements DemoSessionPort {
   private readonly seeder: DemoSessionSeedTrigger;
@@ -52,9 +57,11 @@ export class DrizzleDemoSessionService implements DemoSessionPort {
         olderThan: demoOrphanCutoff(),
       });
       console.log(
-        `[api] demo session ${target.identityKey}: seeded ` +
-          `${seeded.insertedTransactions} transactions across ` +
-          `${seeded.generatedMonths.join(", ") || "no months"}; ` +
+        `[api] demo session ${target.identityKey}: ` +
+          (seeded.aborted
+            ? "seed aborted — session workspace already removed; "
+            : `seeded ${seeded.insertedTransactions} transactions ` +
+              `across ${seeded.generatedMonths.join(", ") || "no months"}; `) +
           `swept ${swept.deletedWorkspaceIds.length} orphan workspaces`,
       );
     });
@@ -84,6 +91,10 @@ export class DrizzleDemoSessionService implements DemoSessionPort {
   ): Promise<void> {
     const identityKey = `${caller.issuer}|${caller.subject}|${sessionId}`;
     await this.db.transaction(async (tx) => {
+      // R1-001: serialize with the in-flight seed for this sid — it
+      // takes the same advisory lock for every step, so this delete
+      // never races a concurrent bootstrap/month insert.
+      await tx.execute(demoSessionAdvisoryLock(identityKey));
       const [session] = await tx
         .select({ id: workspaces.id })
         .from(workspaces)

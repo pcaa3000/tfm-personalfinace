@@ -907,4 +907,48 @@ describe("AuthProvider", () => {
     });
     expect(sessionStorage.getItem("demo-sid")).toBe("sid-9");
   });
+
+
+  // R3-001: a restored demo session without a sid would be a dead tab — mint one.
+  it("mints a fresh demo sid when a restored session belongs to the demo account and none is stored (R3-001)", async () => {
+    vi.stubEnv("VITE_DEMO_EMAIL", "mariademo@example.com");
+    isAuthConfigured.mockReturnValue(true);
+    const demoSession = {
+      access_token: "demo-tok",
+      user: { id: "demo-1", email: "mariademo@example.com" },
+    };
+    const client = makeClient({
+      getSession: vi.fn(async () => ({
+        data: { session: demoSession },
+        error: null,
+      })),
+    });
+    getSupabaseClient.mockReturnValue(client);
+    const fetchSpy = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({ sessionId: "sid-restored", workspaceId: "ws-r" }),
+          { status: 201, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    renderProvider();
+
+    await waitFor(() => {
+      expect(sessionStorage.getItem("demo-sid")).toBe("sid-restored");
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/demo/session");
+    expect((init as RequestInit | undefined)?.method).toBe("POST");
+    const headers = new Headers((init as RequestInit | undefined)?.headers);
+    expect(headers.get("authorization")).toBe("Bearer demo-tok");
+    expect(headers.get("x-demo-session")).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId("email").textContent).toBe(
+        "mariademo@example.com",
+      );
+    });
+  });
 });
