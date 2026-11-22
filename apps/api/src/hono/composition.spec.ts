@@ -31,6 +31,8 @@ const ENV_KEYS = [
   "RECEIPT_SCAN_DISPATCHER",
   "GEMINI_API_KEY",
   "GEMINI_MODEL",
+  "VOICE_MAX_BYTES",
+  "VOICE_DISPATCHER",
 ] as const;
 
 const DATABASE_URL = "postgresql://u:p@db:5432/spec";
@@ -43,6 +45,10 @@ beforeEach(() => {
     saved[key] = process.env[key];
     delete process.env[key];
   }
+  // voice-drafts T2: the default VOICE_DISPATCHER=inline requires
+  // GEMINI_API_KEY at boot (fail-fast). Tests that don't exercise the
+  // voice dispatcher park it on pgboss; the voices describe overrides.
+  process.env.VOICE_DISPATCHER = "pgboss";
 });
 
 afterEach(() => {
@@ -347,5 +353,98 @@ describe("envFromProcess — RECEIPT_SCAN_DISPATCHER (receipt-scan-drafts T14, S
     process.env.AUTH_MODE = "dev";
     process.env.RECEIPT_SCAN_DISPATCHER = "inline";
     expect(() => envFromProcess()).toThrow(/GEMINI_API_KEY/);
+  });
+});
+
+describe("envFromProcess — voices config (voice-drafts T1, S1+S5)", () => {
+  it("defaults VOICE_MAX_BYTES to 5 MiB (S1)", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    expect(envFromProcess().voices.maxBytes).toBe(5 * 1024 * 1024);
+  });
+
+  it("reads VOICE_MAX_BYTES", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.VOICE_MAX_BYTES = "2097152";
+    expect(envFromProcess().voices.maxBytes).toBe(2_097_152);
+  });
+
+  it("rejects a non-positive VOICE_MAX_BYTES instead of silently disabling quarantine", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.VOICE_MAX_BYTES = "0";
+    expect(() => envFromProcess()).toThrow(/VOICE_MAX_BYTES/);
+  });
+
+  it("defaults VOICE_DISPATCHER to inline — the single-component deploy runs the draft pipeline in-process (S5) — and requires GEMINI_API_KEY like receipts inline (T2)", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    delete process.env.VOICE_DISPATCHER; // test the real default
+    process.env.GEMINI_API_KEY = "sk-voice";
+    expect(envFromProcess().voices.draftDispatcher).toEqual({
+      mode: "inline",
+      gemini: {
+        apiKey: "sk-voice",
+        model: "gemini-3.5-flash-lite",
+      },
+    });
+  });
+
+  it("fails fast at boot when the default inline dispatcher has no GEMINI_API_KEY (T2 — same policy as receipts inline)", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    delete process.env.VOICE_DISPATCHER; // test the real default
+    expect(() => envFromProcess()).toThrow(/GEMINI_API_KEY/);
+  });
+
+  it("accepts the explicit pgboss value and does NOT require GEMINI_API_KEY at API boot", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.VOICE_DISPATCHER = "pgboss";
+    expect(envFromProcess().voices.draftDispatcher).toEqual({ mode: "pgboss" });
+  });
+
+  it("accepts the explicit inline value with GEMINI_API_KEY", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.VOICE_DISPATCHER = "inline";
+    process.env.GEMINI_API_KEY = "sk-voice";
+    expect(envFromProcess().voices.draftDispatcher).toEqual({
+      mode: "inline",
+      gemini: {
+        apiKey: "sk-voice",
+        model: "gemini-3.5-flash-lite",
+      },
+    });
+  });
+
+  it("honours GEMINI_MODEL override for the voice pipeline in inline mode", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.VOICE_DISPATCHER = "inline";
+    process.env.GEMINI_API_KEY = "sk-voice";
+    process.env.GEMINI_MODEL = "gemini-custom";
+    expect(envFromProcess().voices.draftDispatcher).toEqual({
+      mode: "inline",
+      gemini: {
+        apiKey: "sk-voice",
+        model: "gemini-custom",
+      },
+    });
+  });
+
+  it("fails fast when the explicit inline dispatcher has no GEMINI_API_KEY", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.VOICE_DISPATCHER = "inline";
+    expect(() => envFromProcess()).toThrow(/GEMINI_API_KEY/);
+  });
+
+  it("fails closed on an unknown dispatcher value", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.VOICE_DISPATCHER = "sqs";
+    expect(() => envFromProcess()).toThrow(/VOICE_DISPATCHER/);
   });
 });

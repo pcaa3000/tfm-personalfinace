@@ -4,12 +4,31 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import i18n from "../../i18n";
+import { getVoiceConsent, setVoiceConsent } from "./api";
 import { PreferencesDialog } from "./PreferencesDialog";
 import type { WorkspaceView } from "./types";
+
+vi.mock("./api", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./api")>();
+  return {
+    ...original,
+    getVoiceConsent: vi.fn(),
+    setVoiceConsent: vi.fn(),
+  };
+});
 
 const workspace: WorkspaceView = {
   workspaceId: "ws-1",
@@ -46,6 +65,21 @@ function chooseOption(comboboxName: string, optionName: string) {
 
 beforeAll(async () => {
   await i18n.changeLanguage("es");
+});
+
+beforeEach(() => {
+  vi.mocked(getVoiceConsent).mockReset().mockResolvedValue({
+    provider: "gemini",
+    granted: true,
+    grantedAt: "2026-10-01T00:00:00.000Z",
+    revokedAt: null,
+  });
+  vi.mocked(setVoiceConsent).mockReset().mockResolvedValue({
+    provider: "gemini",
+    granted: false,
+    grantedAt: "2026-10-01T00:00:00.000Z",
+    revokedAt: "2026-11-10T12:00:00.000Z",
+  });
 });
 
 afterEach(cleanup);
@@ -102,5 +136,41 @@ describe("PreferencesDialog (S12-1, RF-003/RF-004)", () => {
 
     expect(onPatch).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the voice provider consent and revokes it via the switch (T5, S6)", async () => {
+    renderDialog();
+
+    const toggle = await screen.findByRole("switch", {
+      name: "Voz — envío de audio a Google Gemini",
+    });
+    expect(toggle).toHaveProperty("checked", true);
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(setVoiceConsent).toHaveBeenCalledWith(false);
+    });
+  });
+
+  it("re-grants a revoked consent from the same switch", async () => {
+    vi.mocked(getVoiceConsent).mockResolvedValue({
+      provider: "gemini",
+      granted: false,
+      grantedAt: "2026-10-01T00:00:00.000Z",
+      revokedAt: "2026-11-01T00:00:00.000Z",
+    });
+    renderDialog();
+
+    const toggle = await screen.findByRole("switch", {
+      name: "Voz — envío de audio a Google Gemini",
+    });
+    expect(toggle).toHaveProperty("checked", false);
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(setVoiceConsent).toHaveBeenCalledWith(true);
+    });
   });
 });

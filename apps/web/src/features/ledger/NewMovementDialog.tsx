@@ -15,9 +15,11 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   CameraIcon,
+  MicIcon,
   SwapIcon,
 } from "./icons";
 import { ReceiptFlow } from "./ReceiptFlow";
+import { VoiceFlow } from "./VoiceFlow";
 import {
   TransactionForm,
   type TransactionFormValues,
@@ -46,13 +48,15 @@ interface Props {
   onSubmit: (values: TransactionFormValues) => void;
   /** Receipt flow finished — the confirmed movement already exists. */
   onReceiptConfirmed?: ((transaction: TransactionView) => void) | undefined;
+  /** Voice flow finished — the confirmed movement already exists. */
+  onVoiceConfirmed?: ((transaction: TransactionView) => void) | undefined;
   /** Inline category creation in the manual + review forms (T8, S8). */
   onCreateCategory?:
     | ((input: CreateCategoryInput) => Promise<CategoryView>)
     | undefined;
 }
 
-type Picked = TransactionType | "receipt";
+type Picked = TransactionType | "receipt" | "voice";
 
 /**
  * "+ Nuevo movimiento" dialog (S12-1): first step offers the movement
@@ -72,6 +76,7 @@ export function NewMovementDialog({
   onClose,
   onSubmit,
   onReceiptConfirmed,
+  onVoiceConfirmed,
   onCreateCategory,
 }: Props) {
   const { t } = useTranslation();
@@ -116,13 +121,20 @@ export function NewMovementDialog({
       icon: <CameraIcon fontSize="small" />,
       colorKey: "primary",
     },
+    {
+      type: "voice",
+      label: t("movement.voice"),
+      hint: t("movement.voiceHint"),
+      icon: <MicIcon fontSize="small" />,
+      colorKey: "primary",
+    },
   ];
 
   return (
     <Dialog
       open={open}
       onClose={onClose}
-      maxWidth={picked === "receipt" ? "sm" : "xs"}
+      maxWidth={picked === "receipt" || picked === "voice" ? "sm" : "xs"}
       fullWidth
     >
       <DialogTitle>{t("movement.chooseType")}</DialogTitle>
@@ -180,6 +192,18 @@ export function NewMovementDialog({
             exponentOf={exponentOf}
             onClose={onClose}
             onConfirmed={(transaction) => onReceiptConfirmed?.(transaction)}
+            onCreateCategory={onCreateCategory}
+          />
+        ) : picked === "voice" ? (
+          <VoiceFlow
+            categories={categories}
+            accounts={accounts}
+            defaultCurrency={defaultCurrency}
+            currencies={currencies}
+            timezone={timezone}
+            exponentOf={exponentOf}
+            onClose={onClose}
+            onConfirmed={(transaction) => onVoiceConfirmed?.(transaction)}
             onCreateCategory={onCreateCategory}
           />
         ) : (

@@ -6,6 +6,11 @@ import type {
   ReceiptScanView,
 } from "./receipt-draft";
 import type {
+  VoiceConfirmInput,
+  VoiceDraftPayload,
+  VoiceNoteView,
+} from "./voice-draft";
+import type {
   AccountView,
   BalanceItemView,
   CategoryView,
@@ -412,4 +417,105 @@ export function retryReceiptScan(id: string): Promise<ReceiptScanView> {
   return request<ReceiptScanView>(`/receipts/${id}/retry`, {
     method: "POST",
   });
+}
+
+// --- Voice notes (voice-drafts T4, S1+S2+S4) -------------------------
+
+/**
+ * Provider-consent view (voice-drafts T5, S6): the caller's decision
+ * for the voice LLM provider — `granted:false` with no instants means
+ * undecided, so the client must show the consent dialog before the
+ * first audio send (docs/05 RF-070).
+ */
+export interface VoiceConsentView {
+  provider: string;
+  granted: boolean;
+  grantedAt: string | null;
+  revokedAt: string | null;
+}
+
+/** `GET /voices/consent` — the caller-scoped consent flag. */
+export function getVoiceConsent(): Promise<VoiceConsentView> {
+  return request<VoiceConsentView>("/voices/consent");
+}
+
+/**
+ * `PATCH /voices/consent` — grant or revoke the provider consent.
+ * Revocation keeps the record server-side (docs/05): `revokedAt` is
+ * stamped, nothing is deleted.
+ */
+export function setVoiceConsent(granted: boolean): Promise<VoiceConsentView> {
+  return request<VoiceConsentView>("/voices/consent", {
+    method: "PATCH",
+    body: JSON.stringify({ granted }),
+  });
+}
+
+/** `POST /voices` — multipart `file` audio field → 201 pending note. */
+export function uploadVoiceNote(file: File): Promise<VoiceNoteView> {
+  const form = new FormData();
+  form.append("file", file);
+  return requestMultipart<VoiceNoteView>("/voices", form);
+}
+
+/** `GET /voices/:id` — status polling while the pipeline runs. */
+export function getVoiceNote(id: string): Promise<VoiceNoteView> {
+  return request<VoiceNoteView>(`/voices/${id}`);
+}
+
+/** `GET /voices/:id/draft` — the stored draft once `draft_ready`. */
+export function getVoiceDraft(id: string): Promise<VoiceDraftPayload> {
+  return request<VoiceDraftPayload>(`/voices/${id}/draft`);
+}
+
+export interface ConfirmVoiceDraftResult {
+  transaction: TransactionView;
+  createdCategories: CategoryView[];
+}
+
+/** `POST /voices/:id/confirm` — approve the draft → 201 transaction. */
+export function confirmVoiceDraft(
+  id: string,
+  input: VoiceConfirmInput & { idempotencyKey: string },
+): Promise<ConfirmVoiceDraftResult> {
+  return request<ConfirmVoiceDraftResult>(`/voices/${id}/confirm`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** `POST /voices/:id/reject` — discard the draft without registering. */
+export function rejectVoiceNote(id: string): Promise<VoiceNoteView> {
+  return request<VoiceNoteView>(`/voices/${id}/reject`, {
+    method: "POST",
+  });
+}
+
+/**
+ * `POST /voices/:id/retry` — reset a `failed` note to `pending` and
+ * re-queue its job over the original audio, never re-uploading (same
+ * S11 pattern as receipts). `confirmed`/`rejected` notes answer 409
+ * VOICE_ALREADY_FINAL.
+ */
+export function retryVoiceNote(id: string): Promise<VoiceNoteView> {
+  return request<VoiceNoteView>(`/voices/${id}/retry`, {
+    method: "POST",
+  });
+}
+
+/**
+ * `GET /voices/:id/file` — the stored audio as bytes. Binary, not
+ * JSON: same auth headers as `getReceiptFile`, body read as a blob —
+ * the raw URL 401s without Authorization so it is never linked
+ * directly (410 → audio eliminado).
+ */
+export async function getVoiceFile(id: string): Promise<Blob> {
+  const response = await fetch(`${BASE}/voices/${id}/file`, {
+    headers: await authHeaders(),
+  });
+  if (!response.ok) {
+    // Always throws the ApiError for non-OK responses.
+    await parseResponse<never>(response);
+  }
+  return response.blob();
 }

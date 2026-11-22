@@ -40,6 +40,8 @@ export const en: TranslationShape = {
     transferHint: "Move an amount between same-currency accounts",
     receipt: "Receipt / photo",
     receiptHint: "Scan a voucher or receipt from the camera or gallery",
+    voice: "Voice / microphone",
+    voiceHint: "Dictate a short movement and review the draft",
   },
   receipt: {
     chooseImage: "Choose image",
@@ -69,6 +71,50 @@ export const en: TranslationShape = {
     confirming: "Recording…",
     discard: "Discard",
     discarding: "Discarding…",
+  },
+  voice: {
+    startRecording: "Record",
+    stopRecording: "Stop",
+    recording: "Recording… {{elapsed}}",
+    maxDuration: "Max {{seconds}} s",
+    useRecording: "Use recording",
+    discardRecording: "Discard",
+    micUnavailable: "The microphone is unavailable.",
+    uploading: "Uploading audio…",
+    analyzing: "Analyzing audio…",
+    retry: "Retry",
+    requiresConnection: "Voice recording requires a connection.",
+    draftFailed: "The audio could not be processed.",
+    pollTimeout: "The analysis took too long. Retry.",
+    transcript: "Transcript",
+    currencyConflict:
+      "The audio mentions more than one currency. Check the chosen currency.",
+    splitsHeading: "Breakdown by category",
+    addSplit: "Add row",
+    removeSplit: "Remove row",
+    lowConfidence: "Low confidence",
+    totalMismatch:
+      "The item sum does not match the dictated total. Adjust the amounts.",
+    possibleDuplicates:
+      "Possible duplicate: you recorded a similar movement on {{date}} ({{concept}}, {{amount}} {{currency}})",
+    newCategoryOption: "new: {{name}}",
+    total: "Total",
+    confirm: "Approve & record",
+    confirming: "Recording…",
+    discard: "Discard",
+    discarding: "Discarding…",
+    viewerTitle: "Voice note audio",
+    audioDeleted: "This note's audio was already deleted.",
+    closeViewer: "Close",
+    loading: "Loading…",
+    // T5 (S6 — docs/05 RF-070): informed provider consent.
+    consentTitle: "Send audio to Google Gemini",
+    consentBody:
+      "The recorded audio is sent to Google Gemini to transcribe it and build the movement draft. On the free tier, Google may use submitted data to train its models. Audios are kept for 30 days and then deleted. You can revoke this permission at any time from Manage → Preferences. If you prefer not to send audio, you can always register the movement manually.",
+    consentAccept: "Allow and send",
+    consentDecline: "Don't send",
+    consentDeclined:
+      "The audio was not sent. You can register the movement manually.",
   },
   form: {
     newTransaction: "New transaction",
@@ -145,6 +191,9 @@ export const en: TranslationShape = {
     title: "Preferences",
     save: "Save",
     cancel: "Cancel",
+    voiceConsent: "Voice — audio sent to Google Gemini",
+    voiceConsentHint:
+      "Turn it off to stop sending audios to the provider; manual registration stays available.",
   },
   settings: {
     defaultCurrency: "Default currency",
@@ -207,6 +256,8 @@ export const en: TranslationShape = {
     splitCount: "Split ({{count}})",
     ticketBadge: "receipt",
     viewTicket: "View scanned receipt",
+    voiceBadge: "voice",
+    playVoice: "Play voice note",
   },
   tickets: {
     title: "Uploaded receipts",
@@ -420,6 +471,18 @@ export const en: TranslationShape = {
     RECEIPT_TYPE_NOT_ALLOWED: "The image format is not valid.",
     RECEIPT_SPLITS_REQUIRED: "The draft needs at least one row.",
     RECEIPT_DRAFT_INVALID: "The receipt draft is not valid.",
+    VOICE_NOT_FOUND: "The voice note does not exist.",
+    VOICE_NOT_READY: "The voice draft is not ready yet.",
+    VOICE_ALREADY_FINAL:
+      "The voice note was already confirmed or discarded.",
+    VOICE_EMPTY: "The audio is empty.",
+    VOICE_TOO_LARGE: "The audio exceeds the maximum size.",
+    VOICE_TYPE_NOT_ALLOWED: "The audio format is not valid.",
+    VOICE_SPLITS_REQUIRED: "The draft needs at least one row.",
+    VOICE_DRAFT_INVALID: "The voice draft is not valid.",
+    VOICE_MEDIA_DELETED: "This note's audio was already deleted.",
+    VOICE_CONSENT_REVOKED:
+      "The audio was not processed because voice consent was revoked.",
     WORKSPACE_NO_CHANGES: "There are no changes to save.",
     WORKSPACE_ID_INVALID: "Internal workspace error.",
   },

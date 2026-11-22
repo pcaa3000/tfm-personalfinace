@@ -20,6 +20,8 @@ import type { ReceiptRouteDeps } from "./routes/receipts.js";
 import { registerReceiptRoutes } from "./routes/receipts.js";
 import type { TransactionRouteDeps } from "./routes/transactions.js";
 import { registerTransactionRoutes } from "./routes/transactions.js";
+import type { VoiceRouteDeps } from "./routes/voices.js";
+import { registerVoiceRoutes } from "./routes/voices.js";
 import type { WorkspaceRouteDeps } from "./routes/workspace.js";
 import { registerWorkspaceRoutes } from "./routes/workspace.js";
 
@@ -33,7 +35,8 @@ export type HonoDeps = TransactionRouteDeps &
   CurrencyRouteDeps &
   WorkspaceRouteDeps &
   NotificationRouteDeps &
-  ReceiptRouteDeps;
+  ReceiptRouteDeps &
+  VoiceRouteDeps;
 
 /** HTTP hardening knobs (S4/S5) — resolved from env in the composition root. */
 export interface HttpSecurityConfig {
@@ -55,6 +58,12 @@ export interface HttpSecurityConfig {
    * RECEIPT_MAX_BYTES + multipart slack in the composition root.
    */
   readonly receiptUploadBodyLimitBytes: number;
+  /**
+   * Multipart cap for `POST /api/v1/voices` only (voice-drafts T1):
+   * audio uploads need more than the 1 MiB JSON write cap. Set to
+   * VOICE_MAX_BYTES + multipart slack in the composition root.
+   */
+  readonly voiceUploadBodyLimitBytes: number;
 }
 
 /**
@@ -67,6 +76,7 @@ export const DEFAULT_HTTP_SECURITY: HttpSecurityConfig = {
   rateLimit: { max: 60, windowMs: 60_000 },
   rateLimitRead: { max: 240, windowMs: 60_000 },
   receiptUploadBodyLimitBytes: 5 * 1024 * 1024 + 256 * 1024,
+  voiceUploadBodyLimitBytes: 5 * 1024 * 1024 + 256 * 1024,
 };
 
 const WRITE_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
@@ -99,8 +109,9 @@ export function createApp(
       maxAge: 600,
     }),
   );
-  // receipt-scan-drafts T3: the upload endpoint gets its own larger cap
-  // BEFORE the generic write limiter, which skips it below.
+  // receipt-scan-drafts T3 + voice-drafts T1: the upload endpoints get
+  // their own larger caps BEFORE the generic write limiter, which
+  // skips them below.
   app.use("/api/v1/receipts", async (c, next) => {
     if (c.req.method !== "POST") {
       return next();
@@ -114,10 +125,24 @@ export function createApp(
         ),
     })(c, next);
   });
+  app.use("/api/v1/voices", async (c, next) => {
+    if (c.req.method !== "POST") {
+      return next();
+    }
+    return bodyLimit({
+      maxSize: config.voiceUploadBodyLimitBytes,
+      onError: (ctx) =>
+        ctx.json(
+          { code: "PAYLOAD_TOO_LARGE", message: "Request body too large" },
+          413,
+        ),
+    })(c, next);
+  });
   app.use("/api/*", async (c, next) => {
     if (
       !WRITE_METHODS.has(c.req.method) ||
-      (c.req.method === "POST" && c.req.path === "/api/v1/receipts")
+      (c.req.method === "POST" &&
+        (c.req.path === "/api/v1/receipts" || c.req.path === "/api/v1/voices"))
     ) {
       return next();
     }
@@ -161,6 +186,7 @@ export function createApp(
   registerWorkspaceRoutes(app, deps);
   registerNotificationRoutes(app, deps);
   registerReceiptRoutes(app, deps);
+  registerVoiceRoutes(app, deps);
 
   app.notFound((c) =>
     c.json(

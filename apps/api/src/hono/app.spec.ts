@@ -138,6 +138,50 @@ function makeDeps() {
     purgeReceiptMedia: {
       execute: vi.fn(async () => 0),
     },
+    // voice-drafts T1 — stubs; the shell specs never call them.
+    uploadVoiceNote: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    listVoiceNotes: {
+      execute: vi.fn(async () => ({ items: [], nextCursor: null })),
+    },
+    getVoiceNote: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getVoiceFile: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    // voice-drafts T3 — stubs; the shell specs never call them.
+    getVoiceDraft: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    confirmVoiceDraft: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    rejectVoiceNote: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    retryVoiceNote: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    // voice-drafts T5 (S6): consent endpoints — unused in these
+    // suites; mocks exist only to satisfy the VoiceRouteDeps shape.
+    getVoiceConsent: {
+      execute: vi.fn(async () => ({
+        provider: "gemini",
+        granted: false,
+        grantedAt: null,
+        revokedAt: null,
+      })),
+    },
+    setVoiceConsent: {
+      execute: vi.fn(async () => ({
+        provider: "gemini",
+        granted: false,
+        grantedAt: null,
+        revokedAt: null,
+      })),
+    },
   };
 }
 
@@ -240,6 +284,47 @@ describe("HTTP hardening (S4 — GAP-SEC-02)", () => {
 
     // Reached the handler instead of being cut by the generic write limit.
     expect(res.status).not.toBe(413);
+  });
+
+  it("POST /api/v1/voices gets the larger multipart limit, not the 1 MiB write cap (voice-drafts T1)", async () => {
+    const app = createApp(makeDeps(), {
+      bodyLimitBytes: 64,
+      voiceUploadBodyLimitBytes: 4096,
+    });
+    const form = new FormData();
+    form.append(
+      "file",
+      new File([new Uint8Array(1000)], "nota.webm", { type: "audio/webm" }),
+    );
+
+    const res = await app.request("/api/v1/voices", {
+      method: "POST",
+      body: form,
+    });
+
+    // Reached the handler instead of being cut by the generic write limit.
+    expect(res.status).not.toBe(413);
+  });
+
+  it("POST /api/v1/voices still rejects bodies over the voice limit with 413", async () => {
+    const app = createApp(makeDeps(), {
+      bodyLimitBytes: 64,
+      voiceUploadBodyLimitBytes: 256,
+    });
+    const form = new FormData();
+    form.append(
+      "file",
+      new File([new Uint8Array(1000)], "nota.webm", { type: "audio/webm" }),
+    );
+
+    const res = await app.request("/api/v1/voices", {
+      method: "POST",
+      body: form,
+    });
+
+    expect(res.status).toBe(413);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("PAYLOAD_TOO_LARGE");
   });
 
   it("POST /api/v1/receipts still rejects bodies over the receipt limit with 413", async () => {

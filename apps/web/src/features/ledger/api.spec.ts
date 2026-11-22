@@ -6,12 +6,17 @@ import {
   archiveAccount,
   archiveCategory,
   archiveCurrency,
+  confirmVoiceDraft,
   createAccount,
   createCategory,
   createTransaction,
   deleteReceiptFile,
   fetchBalance,
   getReceiptFile,
+  getVoiceConsent,
+  getVoiceDraft,
+  getVoiceFile,
+  getVoiceNote,
   getWorkspace,
   listAccounts,
   listCategories,
@@ -21,13 +26,17 @@ import {
   purgeReceiptMedia,
   listTransactionRevisions,
   listTransactions,
+  rejectVoiceNote,
   reviseAccount,
   reviseCategory,
   reviseCurrency,
   reviseTransaction,
   retryReceiptScan,
+  retryVoiceNote,
+  setVoiceConsent,
   unarchiveAccount,
   updateWorkspace,
+  uploadVoiceNote,
   voidTransaction,
   setAccessTokenProvider,
 } from "./api";
@@ -509,6 +518,168 @@ describe("receipt media bulk purge (receipt-retention-30d T7, S6)", () => {
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toEqual({ olderThanDays: 30 });
     expect(result).toEqual({ deleted: 3 });
+  });
+});
+
+describe("voice notes (voice-drafts T4, S1+S2+S4)", () => {
+  afterEach(() => {
+    setAccessTokenProvider(null);
+  });
+
+  it("uploads the audio as multipart FormData to POST /voices", async () => {
+    const file = new File(["audio"], "voz.webm", { type: "audio/webm" });
+
+    await uploadVoiceNote(file);
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/voices");
+    expect(init?.method).toBe("POST");
+    // Multipart: the browser sets the boundary content-type — the api
+    // client must NOT force application/json on FormData bodies.
+    const headers = new Headers(init?.headers);
+    expect(headers.get("content-type")).toBeNull();
+    const form = init?.body as FormData;
+    expect(form.get("file")).toBe(file);
+  });
+
+  it("polls the note with GET /voices/:id", async () => {
+    await getVoiceNote("vn-1");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/voices/vn-1");
+    expect(init?.method ?? "GET").toBe("GET");
+  });
+
+  it("reads the draft with GET /voices/:id/draft", async () => {
+    await getVoiceDraft("vn-1");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/voices/vn-1/draft");
+    expect(init?.method ?? "GET").toBe("GET");
+  });
+
+  it("confirms the draft with POST /voices/:id/confirm", async () => {
+    const input = {
+      accountId: "acc-1",
+      type: "expense" as const,
+      businessDate: "2026-10-03",
+      currency: "PEN",
+      concept: "Champú",
+      splits: [
+        {
+          categoryId: "cat-food",
+          newCategory: null,
+          amountMinorUnits: 70,
+        },
+      ],
+      idempotencyKey: "key-voice-1",
+    };
+
+    await confirmVoiceDraft("vn-1", input);
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/voices/vn-1/confirm");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual(input);
+  });
+
+  it("rejects the draft with POST /voices/:id/reject", async () => {
+    await rejectVoiceNote("vn-1");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/voices/vn-1/reject");
+    expect(init?.method).toBe("POST");
+  });
+
+  it("retries a failed note with POST /voices/:id/retry — no re-upload", async () => {
+    await retryVoiceNote("vn-1");
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/voices/vn-1/retry");
+    expect(init?.method).toBe("POST");
+  });
+
+  it("fetches /voices/:id/file as a blob through the auth path", async () => {
+    setAccessTokenProvider(async () => "token-abc");
+    fetchMock.mockResolvedValueOnce(
+      new Response("webm-bytes", {
+        status: 200,
+        headers: { "content-type": "audio/webm" },
+      }),
+    );
+
+    const blob = await getVoiceFile("vn-1");
+
+    expect(blob).toBeInstanceOf(Blob);
+    expect(await blob.text()).toBe("webm-bytes");
+    expect(calledUrl()).toBe("/api/v1/voices/vn-1/file");
+    const headers = new Headers(calledHeaders());
+    expect(headers.get("authorization")).toBe("Bearer token-abc");
+  });
+
+  it("throws ApiError on voice file failures (410 media deleted)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ code: "VOICE_MEDIA_DELETED", message: "gone" }),
+        { status: 410, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const error = await getVoiceFile("vn-1").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ code: "VOICE_MEDIA_DELETED", status: 410 });
+  });
+});
+
+describe("voice consent (voice-drafts T5, S6)", () => {
+  it("reads the consent flag with GET /voices/consent", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          provider: "gemini",
+          granted: true,
+          grantedAt: "2026-11-10T12:00:00.000Z",
+          revokedAt: null,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const view = await getVoiceConsent();
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/voices/consent");
+    expect(init?.method ?? "GET").toBe("GET");
+    expect(view).toEqual({
+      provider: "gemini",
+      granted: true,
+      grantedAt: "2026-11-10T12:00:00.000Z",
+      revokedAt: null,
+    });
+  });
+
+  it("writes the decision with PATCH /voices/consent {granted}", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          provider: "gemini",
+          granted: false,
+          grantedAt: "2026-11-10T12:00:00.000Z",
+          revokedAt: "2026-11-11T12:00:00.000Z",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const view = await setVoiceConsent(false);
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/voices/consent");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({ granted: false });
+    expect(view.granted).toBe(false);
+    expect(view.revokedAt).toBe("2026-11-11T12:00:00.000Z");
   });
 });
 

@@ -265,6 +265,93 @@ export const receiptScans = pgTable(
 );
 
 /**
+ * Quarantined voice-note uploads (voice-drafts T1, S5) — the sibling
+ * mirror of `receipts_receipt_scans`. The object lives in storage under
+ * `storageKey`; the row tracks the async pipeline status (`pending` →
+ * `draft_ready` → `confirmed`, or `rejected`/`failed`) and carries the
+ * extraction/draft payloads, the persisted transcript (S7 — same
+ * sensitivity as the audio) and the confirmed transaction once the
+ * user approves the draft (T3).
+ */
+export const voiceNotes = pgTable(
+  "voices_voice_notes",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspaceId").notNull(),
+    uploaderSubject: text("uploaderSubject").notNull(),
+    storageKey: text("storageKey").notNull(),
+    originalFilename: text("originalFilename").notNull(),
+    mimeType: text("mimeType").notNull(),
+    sizeBytes: integer("sizeBytes").notNull(),
+    status: text("status").notNull().default("pending"),
+    extractedPayload: jsonb("extractedPayload"),
+    draftPayload: jsonb("draftPayload"),
+    // S7: the LLM transcript — same 30-day retention as the audio.
+    transcript: text("transcript"),
+    transactionId: text("transactionId"),
+    // S5: SHA-256 hex of the uploaded bytes — exact-hash dedup at
+    // upload time, same mechanics as the receipts scans table.
+    fileHash: text("fileHash"),
+    error: text("error"),
+    // S7: fixed 30-day media retention — persisted at creation
+    // (createdAt + 30d) from day one; never extended by configuration.
+    expiresAt: timestamp("expiresAt", { mode: "date", precision: 3 })
+      .notNull(),
+    // Early/purged media deletion (S7): the storage object is gone;
+    // the note row and its transaction survive.
+    mediaDeletedAt: timestamp("mediaDeletedAt", { mode: "date", precision: 3 }),
+    createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("voices_voice_notes_workspaceId_idx").on(table.workspaceId),
+    uniqueIndex("voices_voice_notes_workspaceId_fileHash_key").on(
+      table.workspaceId,
+      table.fileHash,
+    ),
+    foreignKey({
+      name: "voices_voice_notes_transactionId_fkey",
+      columns: [table.transactionId],
+      foreignColumns: [ledgerTransactions.id],
+    }).onDelete("set null").onUpdate("cascade"),
+  ],
+);
+
+/**
+ * Provider-consent records (voice-drafts T5, S6 — docs/05 RF-070 +
+ * revocación): ONE row per (workspace, subject, provider) keeps the
+ * latest decision with both instants — `grantedAt`/`revokedAt` are
+ * nullable because an explicit refusal has no grant and an active
+ * consent has no revoke. The record is never deleted on revoke.
+ */
+export const voiceConsents = pgTable(
+  "voices_voice_consents",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspaceId").notNull(),
+    subject: text("subject").notNull(),
+    provider: text("provider").notNull(),
+    grantedAt: timestamp("grantedAt", { mode: "date", precision: 3 }),
+    revokedAt: timestamp("revokedAt", { mode: "date", precision: 3 }),
+    createdAt: timestamp("createdAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updatedAt", { mode: "date", precision: 3 })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex(
+      "voices_voice_consents_workspaceId_subject_provider_key",
+    ).on(table.workspaceId, table.subject, table.provider),
+  ],
+);
+
+/**
  * Transactional outbox (worker-pgboss-outbox S1): domain events are
  * inserted in the SAME transaction as the business write; a separate
  * worker drains pending rows (`processedAt IS NULL`) into pg-boss.

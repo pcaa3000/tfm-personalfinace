@@ -24,6 +24,7 @@ import {
 } from "./icons";
 import { categoryLabel } from "./category-label";
 import { TicketOriginBadge } from "./TicketOriginBadge";
+import { VoiceOriginBadge } from "./VoiceOriginBadge";
 import type {
   AccountView,
   CategoryView,
@@ -215,6 +216,11 @@ export function TransactionDayCards({
                     </Typography>
                     {trx.origin === "ticket" ? (
                       <TicketOriginBadge
+                        originReference={trx.originReference}
+                      />
+                    ) : null}
+                    {trx.origin === "voice" ? (
+                      <VoiceOriginBadge
                         originReference={trx.originReference}
                       />
                     ) : null}

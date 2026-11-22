@@ -158,6 +158,9 @@ describe("receipt media deletion e2e (receipt-retention-30d T3, S3, CA-012)", ()
     process.env.RATE_LIMIT_MAX ??= "100000";
     process.env.STORAGE_DRIVER = "local";
     process.env.RECEIPT_STORAGE_DIR = storageDir;
+    // voice-drafts T2: the default inline voice dispatcher requires
+    // GEMINI_API_KEY at boot — park voice notes on the queue instead.
+    process.env.VOICE_DISPATCHER = "pgboss";
     const built = buildApp(envFromProcess());
     const server = serve({ fetch: built.app.fetch, port: 0 });
     const address = server.address() as AddressInfo;
@@ -179,6 +182,7 @@ describe("receipt media deletion e2e (receipt-retention-30d T3, S3, CA-012)", ()
     // parallel suites may still reference — the confirm e2e owns it.
     await closeApp();
     rmSync(storageDir, { recursive: true, force: true });
+    delete process.env.VOICE_DISPATCHER;
   });
 
   it("DELETE → 204 → GET file 410 → repeat DELETE 204; scan row + confirmed transaction survive", async () => {

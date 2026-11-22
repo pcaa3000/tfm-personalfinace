@@ -71,6 +71,31 @@ import { RejectReceiptScanUseCase } from "../modules/receipts/application/reject
 import { RetryReceiptScanUseCase } from "../modules/receipts/application/retry-receipt-scan.use-case.js";
 import { PurgeReceiptMediaUseCase } from "../modules/receipts/application/purge-receipt-media.use-case.js";
 import { RECEIPT_MAX_BYTES_DEFAULT } from "../modules/receipts/domain/receipt-upload.js";
+import { DrizzleVoiceNoteRepository } from "../modules/voices/infrastructure/drizzle-voice-note.repository.js";
+import { DrizzleVoiceConsentRepository } from "../modules/voices/infrastructure/drizzle-voice-consent.repository.js";
+import { ConsentGatedVoiceDraftDispatcher } from "../modules/voices/infrastructure/consent-gated-voice-draft.dispatcher.js";
+import { VoiceDraftConsentGuard } from "../modules/voices/application/voice-draft-consent-guard.js";
+import { GetVoiceConsentUseCase } from "../modules/voices/application/get-voice-consent.use-case.js";
+import { SetVoiceConsentUseCase } from "../modules/voices/application/set-voice-consent.use-case.js";
+import { DrizzleVoiceWorkspaceContextAdapter } from "../modules/voices/infrastructure/drizzle-voice-workspace-context.adapter.js";
+import { PgBossVoiceDraftDispatcher } from "../modules/voices/infrastructure/pgboss-voice-draft.dispatcher.js";
+import { InlineVoiceDraftDispatcher } from "../modules/voices/infrastructure/inline-voice-draft.dispatcher.js";
+import { GeminiVoiceDraftAdapter } from "../modules/voices/infrastructure/gemini-voice-draft.adapter.js";
+import type { VoiceDraftDispatcher } from "../modules/voices/application/ports/voice-draft-dispatcher.port.js";
+import type { VoiceDraftPort } from "../modules/voices/application/ports/voice-draft.port.js";
+import {
+  handleVoiceDraft,
+  type VoiceDraftJobDeps,
+} from "../jobs/voice-draft.js";
+import { UploadVoiceNoteUseCase } from "../modules/voices/application/upload-voice-note.use-case.js";
+import { GetVoiceNoteUseCase } from "../modules/voices/application/get-voice-note.use-case.js";
+import { GetVoiceFileUseCase } from "../modules/voices/application/get-voice-file.use-case.js";
+import { GetVoiceDraftUseCase } from "../modules/voices/application/get-voice-draft.use-case.js";
+import { ConfirmVoiceDraftUseCase } from "../modules/voices/application/confirm-voice-draft.use-case.js";
+import { RejectVoiceNoteUseCase } from "../modules/voices/application/reject-voice-note.use-case.js";
+import { RetryVoiceNoteUseCase } from "../modules/voices/application/retry-voice-note.use-case.js";
+import { ListVoiceNotesUseCase } from "../modules/voices/application/list-voice-notes.use-case.js";
+import { VOICE_MAX_BYTES_DEFAULT } from "../modules/voices/domain/voice-upload.js";
 
 /**
  * Composition root (T4): explicit wiring, no DI container.
@@ -116,6 +141,29 @@ export type ReceiptScanDispatcherEnv =
       readonly scanner?: ReceiptScanPort;
     };
 
+/**
+ * Voice-draft dispatcher selection (voice-drafts T1, S5): `pgboss`
+ * keeps the API→queue→worker topology; `inline` — the DEFAULT, same
+ * single-component deploy constraint as receipts on Render free —
+ * runs the draft pipeline in-process — T2 wires `handleVoiceDraft`
+ * there, so `inline` needs the Gemini config at API boot (fail-fast,
+ * identical to the receipts inline policy).
+ */
+export type VoiceDraftDispatcherEnv =
+  | { readonly mode: "pgboss" }
+  | {
+      readonly mode: "inline";
+      readonly gemini: {
+        readonly apiKey: string;
+        readonly model: string;
+      };
+      /**
+       * Test seam: e2e specs inject a fake VoiceDraftPort instead of
+       * the real Gemini adapter. Unset → GeminiVoiceDraftAdapter.
+       */
+      readonly processor?: VoiceDraftPort;
+    };
+
 export interface AppEnv {
   readonly databaseUrl: string;
   readonly authMode: "dev" | "oidc";
@@ -129,6 +177,10 @@ export interface AppEnv {
     readonly maxBytes: number;
     readonly storage: ReceiptStorageEnv;
     readonly scanDispatcher: ReceiptScanDispatcherEnv;
+  };
+  readonly voices: {
+    readonly maxBytes: number;
+    readonly draftDispatcher: VoiceDraftDispatcherEnv;
   };
 }
 
@@ -161,6 +213,7 @@ export function buildApp(env: AppEnv): BuiltApp {
 
   const clock = new SystemClock();
   const ids = new CryptoIdGenerator();
+  const fileHasher = new CryptoFileHasher();
 
   // receipt-scan-drafts D2: storage driver selected via STORAGE_DRIVER.
   const receiptStorage = createReceiptStorage(env.receipts.storage);
@@ -173,6 +226,32 @@ export function buildApp(env: AppEnv): BuiltApp {
       storage: receiptStorage,
       categories: categoryValidation,
       clock,
+    },
+  );
+
+  // voice-drafts T1 (S5): the same storage driver instance serves the
+  // voices module — VoiceStoragePort is structurally the receipts
+  // contract, no second driver/env surface.
+  const voiceNotes = new DrizzleVoiceNoteRepository(db);
+  // voice-drafts T5 (S6 — docs/05 revocación): the consent record +
+  // the gate that stops pending audio from reaching the provider
+  // after a revoke — wired into BOTH dispatch paths below.
+  const voiceConsents = new DrizzleVoiceConsentRepository(db);
+  const voiceConsentGuard = new VoiceDraftConsentGuard(
+    voiceNotes,
+    voiceConsents,
+    clock,
+  );
+  const voiceDraftDispatcher = createVoiceDraftDispatcher(
+    env.voices.draftDispatcher,
+    {
+      databaseUrl: env.databaseUrl,
+      notes: voiceNotes,
+      storage: receiptStorage,
+      categories: categoryValidation,
+      workspaceContext: new DrizzleVoiceWorkspaceContextAdapter(db),
+      clock,
+      consentGuard: voiceConsentGuard,
     },
   );
 
@@ -229,7 +308,7 @@ export function buildApp(env: AppEnv): BuiltApp {
       receiptScans,
       // T13 (S12): exact-hash dedup index + SHA-256 hasher.
       receiptScans,
-      new CryptoFileHasher(),
+      fileHasher,
       receiptDispatcher,
       clock,
       ids,
@@ -274,12 +353,54 @@ export function buildApp(env: AppEnv): BuiltApp {
       receiptStorage,
       clock,
     ),
+    // voices (voice-drafts T1: upload + quarantine + polling)
+    uploadVoiceNote: new UploadVoiceNoteUseCase(
+      receiptStorage,
+      voiceNotes,
+      // S5: exact-hash dedup index + shared SHA-256 hasher.
+      voiceNotes,
+      fileHasher,
+      voiceDraftDispatcher,
+      clock,
+      ids,
+      { maxBytes: env.voices.maxBytes },
+    ),
+    listVoiceNotes: new ListVoiceNotesUseCase(voiceNotes),
+    getVoiceNote: new GetVoiceNoteUseCase(voiceNotes),
+    getVoiceFile: new GetVoiceFileUseCase(voiceNotes, receiptStorage),
+    // voice-drafts T3: draft review + confirm (same wiring shape as
+    // receipts — read-time duplicates, create-or-reuse categories,
+    // retry without re-upload).
+    getVoiceDraft: new GetVoiceDraftUseCase(
+      voiceNotes,
+      new DrizzleTransactionDuplicatesAdapter(db),
+    ),
+    confirmVoiceDraft: new ConfirmVoiceDraftUseCase(
+      voiceNotes,
+      transactions,
+      recordManual,
+      createCategory,
+      categoryValidation,
+      categories,
+      clock,
+    ),
+    rejectVoiceNote: new RejectVoiceNoteUseCase(voiceNotes, clock),
+    retryVoiceNote: new RetryVoiceNoteUseCase(
+      voiceNotes,
+      voiceDraftDispatcher,
+      clock,
+    ),
+    // voice-drafts T5 (S6): provider consent read/write — the client
+    // gates the first audio send on this flag (docs/05 RF-070).
+    getVoiceConsent: new GetVoiceConsentUseCase(voiceConsents),
+    setVoiceConsent: new SetVoiceConsentUseCase(voiceConsents, clock, ids),
   };
 
   return {
     app: createApp(deps, env.security),
     db,
     close: async () => {
+      await voiceDraftDispatcher.close();
       await receiptDispatcher.close();
       await pool.end();
     },
@@ -334,6 +455,15 @@ function securityFromProcess(): HttpSecurityConfig {
         RECEIPT_MAX_BYTES_DEFAULT,
       ) +
       256 * 1024,
+    // voice-drafts T1: same multipart cap policy as receipts —
+    // VOICE_MAX_BYTES + slack for boundary/field overhead.
+    voiceUploadBodyLimitBytes:
+      parsePositiveInt(
+        "VOICE_MAX_BYTES",
+        process.env.VOICE_MAX_BYTES,
+        VOICE_MAX_BYTES_DEFAULT,
+      ) +
+      256 * 1024,
   };
 }
 
@@ -367,6 +497,7 @@ export function envFromProcess(): AppEnv {
   const databaseUrl = requiredEnv("DATABASE_URL");
   const security = securityFromProcess();
   const receipts = receiptsFromProcess();
+  const voices = voicesFromProcess();
   const authMode = process.env.AUTH_MODE;
   if (authMode === "oidc") {
     const required = (name: string): string => {
@@ -381,6 +512,7 @@ export function envFromProcess(): AppEnv {
       authMode: "oidc",
       security,
       receipts,
+      voices,
       oidc: {
         issuer: required("OIDC_ISSUER"),
         audience: required("OIDC_AUDIENCE"),
@@ -394,7 +526,7 @@ export function envFromProcess(): AppEnv {
         "AUTH_MODE=dev is forbidden when NODE_ENV=production",
       );
     }
-    return { databaseUrl, authMode: "dev", security, receipts };
+    return { databaseUrl, authMode: "dev", security, receipts, voices };
   }
   throw new Error(
     `AUTH_MODE must be "dev" or "oidc"; got ${
@@ -536,4 +668,110 @@ export function createReceiptStorage(
   return config.driver === "s3"
     ? new S3ReceiptStorage(config)
     : new LocalReceiptStorage(config.dir);
+}
+
+/**
+ * Voice quarantine + dispatcher config (voice-drafts T1, S1+S5).
+ * `VOICE_MAX_BYTES` mirrors RECEIPT_MAX_BYTES (default 5 MiB); the
+ * storage driver/env is SHARED with receipts — `STORAGE_DRIVER`,
+ * `RECEIPT_STORAGE_DIR` and the `S3_*`/`RECEIPT_S3_BUCKET` credentials
+ * already cover both modules.
+ */
+function voicesFromProcess(): AppEnv["voices"] {
+  return {
+    maxBytes: parsePositiveInt(
+      "VOICE_MAX_BYTES",
+      process.env.VOICE_MAX_BYTES,
+      VOICE_MAX_BYTES_DEFAULT,
+    ),
+    draftDispatcher: voiceDraftDispatcherFromProcess(),
+  };
+}
+
+/**
+ * Dispatcher env parsing (voice-drafts T1, S5): `inline` is the
+ * DEFAULT — the single-component deploy (Render free tier, no worker
+ * service) must run the draft pipeline in-process, the same call
+ * receipts made for RECEIPT_SCAN_DISPATCHER=inline — and the same
+ * consequence (T2): `inline` requires GEMINI_API_KEY at API boot
+ * (fail-fast); in `pgboss` mode the key stays worker-only and the API
+ * must NOT require it. Fails closed on any other value, like
+ * STORAGE_DRIVER.
+ */
+function voiceDraftDispatcherFromProcess(): VoiceDraftDispatcherEnv {
+  const mode = process.env.VOICE_DISPATCHER ?? "inline";
+  if (mode === "pgboss") {
+    return { mode: "pgboss" };
+  }
+  if (mode === "inline") {
+    // T2: inline runs the real LLM pipeline in-process — same fail-fast
+    // policy receipts applies (GEMINI_API_KEY mandatory, model optional).
+    return {
+      mode: "inline",
+      gemini: {
+        apiKey: requiredEnv("GEMINI_API_KEY"),
+        model: process.env.GEMINI_MODEL ?? GEMINI_DEFAULT_MODEL,
+      },
+    };
+  }
+  throw new Error(
+    `VOICE_DISPATCHER must be "inline" or "pgboss"; got ${JSON.stringify(mode)}`,
+  );
+}
+
+/**
+ * Builds the dispatcher for the parsed mode (voice-drafts T2, S5).
+ * `inline` wires the EXACT same job deps the worker builds (worker.ts)
+ * — shared notes repo, storage, category catalog, workspace context
+ * and clock instances — and reuses `handleVoiceDraft` verbatim. The
+ * draft runs fire-and-forget: if the process dies mid-draft the row
+ * stays `pending` and T3's retry is the recovery. `pgboss` enqueues on
+ * the `voice-draft` queue the worker consumer drains.
+ */
+function createVoiceDraftDispatcher(
+  config: VoiceDraftDispatcherEnv,
+  context: { readonly databaseUrl: string } & Omit<
+    VoiceDraftJobDeps,
+    "processor"
+  > & {
+    /** T5 (S6): the revocation gate wrapping every dispatch path. */
+    readonly consentGuard: VoiceDraftConsentGuard;
+  },
+): VoiceDraftDispatcher & { close(): Promise<void> } {
+  if (config.mode === "pgboss") {
+    // S6: gate at enqueue — a revoked uploader's note never reaches
+    // the queue. The drain-side check lives in the worker, out of
+    // this composition's reach.
+    return new ConsentGatedVoiceDraftDispatcher(
+      new PgBossVoiceDraftDispatcher(context.databaseUrl),
+      context.consentGuard,
+    );
+  }
+  const deps: VoiceDraftJobDeps = {
+    notes: context.notes,
+    storage: context.storage,
+    categories: context.categories,
+    processor:
+      config.processor ??
+      new GeminiVoiceDraftAdapter({
+        apiKey: config.gemini.apiKey,
+        model: config.gemini.model,
+      }),
+    workspaceContext: context.workspaceContext,
+    clock: context.clock,
+  };
+  // S6: the inline runner re-checks consent at EXECUTION time — a
+  // revoke between dispatch and the deferred run still stops the
+  // send (docs/05 "detiene nuevos envíos inmediatamente").
+  const inner = new InlineVoiceDraftDispatcher(async (job) => {
+    if (
+      await context.consentGuard.ensureDispatchable(
+        job.voiceNoteId,
+        job.workspaceId,
+      )
+    ) {
+      await handleVoiceDraft(deps, job);
+    }
+  });
+  return new ConsentGatedVoiceDraftDispatcher(inner, context.consentGuard);
 }

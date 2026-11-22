@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { formatBusinessDate } from "./format";
 import { categoryLabel } from "./category-label";
 import { TicketOriginBadge } from "./TicketOriginBadge";
+import { VoiceOriginBadge } from "./VoiceOriginBadge";
 import type {
   AccountView,
   CategoryView,
@@ -178,6 +179,13 @@ export function TransactionTable({
                   {trx.origin === "ticket" ? (
                     <Box component="span" sx={{ ml: 0.75 }}>
                       <TicketOriginBadge
+                        originReference={trx.originReference}
+                      />
+                    </Box>
+                  ) : null}
+                  {trx.origin === "voice" ? (
+                    <Box component="span" sx={{ ml: 0.75 }}>
+                      <VoiceOriginBadge
                         originReference={trx.originReference}
                       />
                     </Box>

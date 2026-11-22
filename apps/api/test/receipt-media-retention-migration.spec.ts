@@ -33,12 +33,16 @@ const snap = (file: string): Snap =>
 const T = "public.receipts_receipt_scans";
 
 describe("receipt media retention migration (S1+S2)", () => {
-  it("journal registers a 0007_* migration as the head", () => {
+  it("journal registers a 0007_* migration and stays contiguous at the head", () => {
     const { entries } = JSON.parse(read("meta/_journal.json")) as {
       entries: { idx: number; tag: string; when: number }[];
     };
-    expect(entries.at(-1)?.idx).toBe(7);
-    expect(entries.at(-1)?.tag).toMatch(/^0007_/);
+    // voice-drafts T1 added 0008 — the retention guard only pins that
+    // 0007 remains registered and the journal stays gapless.
+    expect(entries.some((e) => e.idx === 7 && /^0007_/.test(e.tag))).toBe(
+      true,
+    );
+    expect(entries.at(-1)?.idx).toBe(entries.length - 1);
     expect(entries.map((e) => e.idx)).toEqual(entries.map((_, i) => i));
   });
 

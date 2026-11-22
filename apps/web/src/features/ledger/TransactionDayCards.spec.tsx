@@ -162,6 +162,31 @@ describe("ticket origin badge (receipt-review-link T3, S2)", () => {
     const img = await within(viewer).findByRole("img");
     expect(img.getAttribute("src")).toBe("blob:ticket-image");
   });
+
+  it("shows the voice badge for voice origin (voice-drafts T4)", () => {
+    render(
+      <ThemeProvider theme={buildAppTheme("light")}>
+        <TransactionDayCards
+          transactions={[
+            {
+              ...baseRow,
+              origin: "voice",
+              originReference: "vn-7",
+            },
+          ]}
+          categories={[]}
+          accounts={accounts}
+          onEdit={vi.fn()}
+          onVoid={vi.fn()}
+          onHistory={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Escuchar nota de voz" }),
+    ).toBeTruthy();
+  });
 });
 
 describe("TransactionDayCards transfer identity (S9)", () => {

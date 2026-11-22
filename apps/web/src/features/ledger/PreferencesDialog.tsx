@@ -5,14 +5,22 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   MenuItem,
   Stack,
+  Switch,
   TextField,
+  Typography,
 } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { WorkspacePreferencesPatch } from "./api";
+import {
+  getVoiceConsent,
+  setVoiceConsent,
+  type VoiceConsentView,
+  type WorkspacePreferencesPatch,
+} from "./api";
 import type { WorkspaceView } from "./types";
 
 const TIMEZONES = [
@@ -66,6 +74,12 @@ export function PreferencesDialog({
 }: Props) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(() => draftFrom(workspace));
+  // T5 (S6 — docs/05 revocación): the voice provider consent —
+  // fetched fresh on every open so the switch mirrors the persisted
+  // flag; a fetch failure hides the section rather than showing a
+  // stale decision.
+  const [consent, setConsent] = useState<VoiceConsentView | null>(null);
+  const [consentBusy, setConsentBusy] = useState(false);
 
   // Reset the draft from the workspace each time the dialog opens.
   useEffect(() => {
@@ -73,6 +87,27 @@ export function PreferencesDialog({
       setDraft(draftFrom(workspace));
     }
   }, [open, workspace]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    getVoiceConsent()
+      .then((view) => {
+        if (!cancelled) setConsent(view);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const onToggleConsent = (granted: boolean) => {
+    setConsentBusy(true);
+    setVoiceConsent(granted)
+      .then((view) => setConsent(view))
+      .catch(() => undefined)
+      .finally(() => setConsentBusy(false));
+  };
 
   const currencyOptions = currencies.length
     ? currencies
@@ -133,6 +168,27 @@ export function PreferencesDialog({
               </MenuItem>
             ))}
           </TextField>
+          {/* T5 (S6): revoke/re-grant the voice provider consent —
+              docs/05 stops new audio sends immediately on revoke. */}
+          {consent !== null ? (
+            <Stack spacing={0.5}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={consent.granted}
+                    disabled={consentBusy}
+                    onChange={(event) =>
+                      onToggleConsent(event.target.checked)
+                    }
+                  />
+                }
+                label={t("preferences.voiceConsent")}
+              />
+              <Typography variant="caption" color="text.secondary">
+                {t("preferences.voiceConsentHint")}
+              </Typography>
+            </Stack>
+          ) : null}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>

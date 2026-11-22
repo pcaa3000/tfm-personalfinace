@@ -24,3 +24,4 @@ coverage/
 
 # receipt uploads (local storage driver, L18)
 apps/api/s3/
+.worktrees/

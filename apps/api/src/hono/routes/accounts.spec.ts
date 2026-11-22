@@ -252,6 +252,50 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
     purgeReceiptMedia: {
       execute: vi.fn(async () => 0),
     },
+    // voice-drafts T1 — stubs; these specs never call them.
+    uploadVoiceNote: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    listVoiceNotes: {
+      execute: vi.fn(async () => ({ items: [], nextCursor: null })),
+    },
+    getVoiceNote: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    getVoiceFile: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    // voice-drafts T3 — stubs; these specs never call them.
+    getVoiceDraft: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    confirmVoiceDraft: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    rejectVoiceNote: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    retryVoiceNote: {
+      execute: vi.fn(async () => err(new DomainError("X", "x"))),
+    },
+    // voice-drafts T5 (S6): consent endpoints — unused in these
+    // suites; mocks exist only to satisfy the VoiceRouteDeps shape.
+    getVoiceConsent: {
+      execute: vi.fn(async () => ({
+        provider: "gemini",
+        granted: false,
+        grantedAt: null,
+        revokedAt: null,
+      })),
+    },
+    setVoiceConsent: {
+      execute: vi.fn(async () => ({
+        provider: "gemini",
+        granted: false,
+        grantedAt: null,
+        revokedAt: null,
+      })),
+    },
   };
 }
 

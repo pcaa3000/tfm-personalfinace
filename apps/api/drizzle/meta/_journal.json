@@ -57,6 +57,20 @@
       "when": 1795140526515,
       "tag": "0007_absurd_misty_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795209334733,
+      "tag": "0008_ambitious_miss_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795212008288,
+      "tag": "0009_clumsy_landau",
+      "breakpoints": true
     }
   ]
 }

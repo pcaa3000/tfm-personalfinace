@@ -253,6 +253,28 @@ export const CameraIcon = makeIcon(
   </>,
 );
 
+export const MicIcon = makeIcon(
+  <>
+    <rect
+      x="9"
+      y="3"
+      width="6"
+      height="11"
+      rx="3"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    />
+    <path
+      d="M5 11a7 7 0 0 0 14 0M12 18v3"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+  </>,
+);
+
 export const ReceiptIcon = makeIcon(
   <>
     <path
