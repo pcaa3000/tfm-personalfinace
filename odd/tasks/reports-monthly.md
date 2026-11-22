@@ -24,7 +24,7 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 | T5 | Endpoint gastos hormiga (política ≥3/30d, medias, provisional o cerrado) | S3, S8 | api | done | RED→GREEN; suite 1330 (2 flakes pre-existentes); hormiga evalúa head categoryId, no splits (desviación anotada) |
 | T6 | Endpoint ahorro del mes por moneda (observado, déficit 0%) | S4, S8 | api | done | RED→GREEN; CA-008 deficit+no_income cubiertos |
 | T7 | Página web de reportes (4 secciones, tablas, react-query, i18n) | S7 | web | done | RED→GREEN 68 foc.; suite web 485; hash routing #/reports |
-| T8 | e2e + sync espejo Engram + cierre doc | todos | api+docs | pending | |
+| T8 | e2e + sync espejo Engram + cierre doc | todos | api+docs | done | reports specs 89/89 en estado commiteado; espejo Engram ok |
 
 ## Log
 
@@ -38,3 +38,4 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 - **L7** (proceso): T2 delegada; módulo `reports` creado (`reports_period_closes`, índice único parcial activo); invalidación por revise/void vía `PeriodCloseInvalidationPort` opcional en ledger; provisional queda computado (no persistido) para T3-T6. ASSESS medium → sin verifier.
 - **L6** (proceso): T1 delegada a worker; ASSESS medium → self-verification, sin verifier; spec journal-head de voice-consents ajustada a "contiene 0009" (fix inline del padre).
 - **L5** (exploración): no existe nada de reports/insights/snapshots en código; `ledger_transaction_splits` existe y gobierna el reporte por categoría; "Sin categorizar" usa `nature="uncategorized"` fuera de CategoryNature; `GET /api/v1/transactions` ya filtra by from/to/type/currency/category.
+- **L11** (cierre): feature completa en rama feat/reports-monthly, 4 commits (d357553 T1, 9ed4d92 T2, ed05a65 T3-T4, 544078e T5-T6, cdd5025 T7). Slice grande por snapshots generados de drizzle meta. Follow-ups anotados: hormiga split-aware; race en closes concurrentes → mapear a 409; MobileNav sin spec propio.
