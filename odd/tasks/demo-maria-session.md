@@ -2,17 +2,17 @@
 
 El botón "Probar con datos de María" pide solo el password (email fijo desde `VITE_DEMO_EMAIL`). El usuario demo es un usuario Supabase real (uid `378756d8-bcde-4ad7-ab52-3045d27f9cef`, `mariademo@example.com`); su workspace `<issuer>|<uid>` se pre-siembra y en cada login se refresca async: se garantiza data del mes actual, mes-1 y mes-2, y se depura lo anterior.
 
-## Specs
+## Specs (v2 — modelo por-sid, L10/L11 reemplaza specs compartidas)
 
-- S1 (L4): botón demo visible SOLO si `VITE_DEMO_EMAIL` tiene valor; si está vacía el botón se oculta/deshabilita. Pide solo password; sign-in real con ese email.
-- S2 (L4): workspace demo = `<issuer>|<demo-uid>` (oidc: `<OIDC_ISSUER>|378756d8-bcde-4ad7-ab52-3045d27f9cef`; dev: `local|demo-maria`, ya existente). Se siembra categorías+currencies+accounts por el path normal.
-- S3 (L4): mantenimiento demo — verificar que existan transactions en el mes actual; si no, generarlas (async, "por debajo"). Ídem mes-1 y mes-2. Purga data demo más vieja que la ventana de 3 meses.
-- S4 (L4): script pnpm (`db:seed:demo:refresh` o similar) que depura data demo dejando los últimos 3 meses y/o regenera lo faltante. Reusa la misma rutina que el endpoint.
-- S5 (L4): en cada login demo la web llama al endpoint de refresh (fire-and-forget async tras el sign-in) — la app carga la data existente del usuario demo.
-- S6 (L4): "ningun cambio en la sesion demo es persistente" → el refresco por login + el mantenimiento dejan el workspace en su estado semilla; los cambios dentro de una sesión se descartan en el próximo refresh (modelo simplificado: workspace compartido entre sesiones demo concurrentes, explícitamente aceptado por L4 al abandonar el modelo por-sid).
-- S7 (previo): el sujeto demo no debe invocar proveedores pagos (gate ya implementado en receipts por `DEMO_SUBJECT`; mantener).
-- S8 (L4, revisado): la generación de meses faltantes es async y no bloquea el login; el endpoint devuelve inmediatamente.
-- S9 (L2): debe funcionar con `pnpm qa` (oidc real) — requiere `DEMO_SUBJECT=378756d8-bcde-4ad7-ab52-3045d27f9cef` en env del API y `VITE_DEMO_EMAIL` en web.
+- S1: botón "Probar con datos de María" visible SOLO si `VITE_DEMO_EMAIL` tiene valor; pide solo password; sign-in real con ese email (Supabase uid `378756d8-bcde-4ad7-ab52-3045d27f9cef`).
+- S2: cada sesión demo materializa un workspace efímero `kind='demo'` `issuer|<demo-sub>|<sid>`; el sid vive en sessionStorage y viaja en `x-demo-session` (fail-closed sin él).
+- S3: sembrado async en orden: bootstrap (currency+categories+accounts) → mes actual → -1 → -2.
+- S4: depuración de huérfanos `kind='demo'` con createdAt < now()-24h en (a) nueva sesión, (b) DELETE /demo/session (además borra el sid actual), (c) `pnpm db:demo:cleanup`.
+- S5: resolver fail-closed: subject demo sin sid válido → 403, nunca cae a `issuer|subject`.
+- S6: ningún cambio demo persiste fuera de la sesión — el workspace muere al logout (DELETE) o a las 24h.
+- S7: sujeto demo nunca invoca proveedores pagos (gate DEMO_SUBJECT en receipts).
+- S8: seed async no bloquea el login (201 inmediato); race DELETE-vs-seed no resucita workspaces (advisory lock + abort).
+- S9: funciona con `pnpm qa` (oidc real) con `DEMO_SUBJECT=<uid>` + `VITE_DEMO_EMAIL` en env.
 
 ## Tasks
 
