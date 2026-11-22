@@ -1,3 +1,4 @@
+import { getDemoSessionId } from "../auth/demo-session";
 import { isAuthBypassed } from "../auth/supabase";
 import type {
   ReceiptConfirmInput,
@@ -104,13 +105,25 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
   const token = accessTokenProvider ? await accessTokenProvider() : null;
-  if (token) return { authorization: `Bearer ${token}` };
-  // Dev bypass (T26): AUTH_MODE=dev is fail-closed and requires the
-  // `x-dev-user` header (GAP-SEC-01). `dev-user` is the seeded subject
-  // (apps/api/src/drizzle/seed.ts). Never emitted outside dev builds.
-  if (isAuthBypassed()) return { "x-dev-user": "dev-user" };
-  return {};
+  if (token) {
+    headers["authorization"] = `Bearer ${token}`;
+  } else if (isAuthBypassed()) {
+    // Dev bypass (T26): AUTH_MODE=dev is fail-closed and requires the
+    // `x-dev-user` header (GAP-SEC-01). `dev-user` is the seeded
+    // subject (apps/api/src/drizzle/seed.ts). Never emitted outside
+    // dev builds.
+    headers["x-dev-user"] = "dev-user";
+  }
+  // Demo session (demo-maria-session T8, S2+S3; L10): the per-tab sid
+  // rides alongside the real bearer — the demo is an ordinary
+  // Supabase identity, and the API resolves `x-demo-session` to the
+  // ephemeral workspace of that session. No sid → no header (the
+  // demo subject then fails closed server-side).
+  const sid = getDemoSessionId();
+  if (sid) headers["x-demo-session"] = sid;
+  return headers;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -140,6 +153,49 @@ async function requestMultipart<T>(
     body: form,
   });
   return parseResponse<T>(response);
+}
+
+/**
+ * `POST /demo/session` — mints a fresh ephemeral workspace for the
+ * signed-in demo subject and returns its per-tab session id
+ * (demo-maria-session T8, S2+S3; L10). It goes through `request()` so
+ * the call carries the real bearer of the just-completed demo
+ * sign-in; the API answers 201 `{sessionId, workspaceId}`
+ * immediately and seeds the workspace async server-side.
+ */
+export async function createDemoSession(): Promise<{
+  sessionId: string;
+  workspaceId: string;
+}> {
+  return request<{ sessionId: string; workspaceId: string }>(
+    "/demo/session",
+    { method: "POST" },
+  );
+}
+
+/**
+ * `DELETE /demo/session` — tears down the ephemeral workspace of the
+ * sid carried in `x-demo-session` and sweeps orphaned demo workspaces
+ * (demo-maria-session T8; L10). The API answers 204 even for an
+ * unknown sid, so callers may treat it as best-effort — the auth
+ * layer fires it before demo sign-out and never blocks logout on its
+ * failure.
+ */
+export async function deleteDemoSession(): Promise<void> {
+  return request<void>("/demo/session", { method: "DELETE" });
+}
+
+/**
+ * `GET /demo/session/status` — readiness of the sid's async seed
+ * (demo-maria-session T9, S10): `{ready:true}` once the workspace
+ * already holds ledger rows, so the client can hold a "preparing"
+ * state instead of landing the visitor on an empty ledger while the
+ * background seed is still running.
+ */
+export async function getDemoSessionStatus(): Promise<{
+  ready: boolean;
+}> {
+  return request<{ ready: boolean }>("/demo/session/status");
 }
 
 /** `GET /api/v1/balance` — per-currency aggregates for the strip (T24). */

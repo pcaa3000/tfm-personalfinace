@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,9 +11,16 @@ import {
 } from "./app.js";
 import { requiredEnv } from "../env.js";
 import { createDrizzleDb, type DrizzleDb } from "../drizzle/db.js";
+import { seedDemoWorkspace } from "../drizzle/seed-demo-workspace.js";
+import {
+  DemoRefreshTrigger,
+  refreshDemoWorkspace,
+} from "../drizzle/refresh-demo-workspace.js";
 import { DevHeaderCallerResolver } from "../modules/identity-workspace/infrastructure/http/dev-header-caller.resolver.js";
 import { JwtCallerResolver } from "../modules/identity-workspace/infrastructure/http/jwt-caller.resolver.js";
 import { DrizzleWorkspaceAdapter } from "../modules/identity-workspace/infrastructure/drizzle-workspace.adapter.js";
+import { DemoSessionWorkspaceResolver } from "../modules/identity-workspace/infrastructure/demo-session-workspace.resolver.js";
+import { DrizzleDemoSessionService } from "../modules/demo/infrastructure/drizzle-demo-session.service.js";
 import { UpdateWorkspacePreferencesUseCase } from "../modules/identity-workspace/application/update-workspace-preferences.use-case.js";
 import { DrizzleAccountRepository } from "../modules/accounts/infrastructure/drizzle-account.repository.js";
 import { CreateAccountUseCase } from "../modules/accounts/application/create-account.use-case.js";
@@ -167,6 +175,14 @@ export type VoiceDraftDispatcherEnv =
 export interface AppEnv {
   readonly databaseUrl: string;
   readonly authMode: "dev" | "oidc";
+  /**
+   * demo-maria-session T3+T6 (S4/S5/S7): DEMO_SUBJECT gates
+   * POST/DELETE /demo/session, POST /demo/refresh, the demo workspace
+   * resolver and the receipts paid-provider gate. Dev mode defaults
+   * to "demo-maria"; under oidc an unset value leaves the endpoints
+   * refusing everyone (fail closed).
+   */
+  readonly demoSubject?: string;
   readonly oidc?: {
     readonly issuer: string;
     readonly audience: string;
@@ -205,7 +221,14 @@ export function buildApp(env: AppEnv): BuiltApp {
     (tx) => new DrizzleCurrencyRepository(tx),
     (tx) => new DrizzleCategoryRepository(tx),
   );
-
+  // demo-maria-session T6 (S5): for DEMO_SUBJECT the workspace comes
+  // from the x-demo-session sid (issuer|subject|sid, kind='demo') —
+  // fail closed; every other caller delegates to the lazy-create path.
+  const workspaceResolver = new DemoSessionWorkspaceResolver(
+    db,
+    workspace,
+    env.demoSubject,
+  );
   const callerResolver =
     env.authMode === "oidc" && env.oidc
       ? new JwtCallerResolver(env.oidc)
@@ -266,7 +289,31 @@ export function buildApp(env: AppEnv): BuiltApp {
 
   const deps: HonoDeps = {
     callerResolver,
-    workspaceContext: workspace,
+    workspaceContext: workspaceResolver,
+    // demo-maria-session T6 (S2–S5, S8; L10): ephemeral per-session
+    // demo workspaces + the orphan sweep — injected in ALL auth modes.
+    demoSession: new DrizzleDemoSessionService(db),
+    // demo-maria-session T3 (S5/S8) + T2 (S7): the shared demo workspace
+    // refresher + the paid-provider gate subject — injected in ALL auth
+    // modes. The trigger serializes runs in-process; the routine's
+    // pg_advisory_xact_lock serializes across processes. The run's
+    // outcome (S6 wipe + re-seed counts) is logged here — failures are
+    // logged inside the trigger itself.
+    demoRefresh: new DemoRefreshTrigger(async (caller) => {
+      const result = await refreshDemoWorkspace(db, {
+        identityKey: `${caller.issuer}|${caller.subject}`,
+        workspaceId: randomUUID(),
+      });
+      console.log(
+        `[api] demo refresh ${result.identityKey}: ` +
+          `wiped ${result.purgedTransactions} transactions, ` +
+          `re-seeded ${result.insertedTransactions} across ` +
+          `${result.generatedMonths.join(", ") || "no months"}`,
+      );
+    }),
+    ...(env.demoSubject === undefined
+      ? {}
+      : { demoSubject: env.demoSubject }),
     // transactions
     recordManual,
     listTransactions: new ListTransactionsUseCase(transactions),
@@ -394,6 +441,13 @@ export function buildApp(env: AppEnv): BuiltApp {
     // gates the first audio send on this flag (docs/05 RF-070).
     getVoiceConsent: new GetVoiceConsentUseCase(voiceConsents),
     setVoiceConsent: new SetVoiceConsentUseCase(voiceConsents, clock, ids),
+    // demo-maria-login T1 (S2/S4): POST /api/v1/demo/reset exists ONLY
+    // in dev auth mode — the dep is absent under oidc, so createApp
+    // never mounts the route (fail-closed, same policy as the
+    // x-dev-user dev caller above).
+    ...(env.authMode === "dev"
+      ? { demoReset: { reset: async () => (await seedDemoWorkspace(db)).counts } }
+      : {}),
   };
 
   return {
@@ -513,6 +567,9 @@ export function envFromProcess(): AppEnv {
       security,
       receipts,
       voices,
+      ...(process.env.DEMO_SUBJECT
+        ? { demoSubject: process.env.DEMO_SUBJECT }
+        : {}),
       oidc: {
         issuer: required("OIDC_ISSUER"),
         audience: required("OIDC_AUDIENCE"),
@@ -526,7 +583,14 @@ export function envFromProcess(): AppEnv {
         "AUTH_MODE=dev is forbidden when NODE_ENV=production",
       );
     }
-    return { databaseUrl, authMode: "dev", security, receipts, voices };
+    return {
+      databaseUrl,
+      authMode: "dev",
+      security,
+      receipts,
+      voices,
+      demoSubject: process.env.DEMO_SUBJECT || "demo-maria",
+    };
   }
   throw new Error(
     `AUTH_MODE must be "dev" or "oidc"; got ${

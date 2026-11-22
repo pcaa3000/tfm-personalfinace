@@ -14,6 +14,8 @@ import type { CategoryRouteDeps } from "./routes/categories.js";
 import { registerCategoryRoutes } from "./routes/categories.js";
 import type { CurrencyRouteDeps } from "./routes/currencies.js";
 import { registerCurrencyRoutes } from "./routes/currencies.js";
+import type { DemoRouteDeps } from "./routes/demo.js";
+import { registerDemoRoutes } from "./routes/demo.js";
 import type { NotificationRouteDeps } from "./routes/notifications.js";
 import { registerNotificationRoutes } from "./routes/notifications.js";
 import type { ReceiptRouteDeps } from "./routes/receipts.js";
@@ -36,7 +38,8 @@ export type HonoDeps = TransactionRouteDeps &
   WorkspaceRouteDeps &
   NotificationRouteDeps &
   ReceiptRouteDeps &
-  VoiceRouteDeps;
+  VoiceRouteDeps &
+  DemoRouteDeps;
 
 /** HTTP hardening knobs (S4/S5) — resolved from env in the composition root. */
 export interface HttpSecurityConfig {
@@ -187,6 +190,13 @@ export function createApp(
   registerNotificationRoutes(app, deps);
   registerReceiptRoutes(app, deps);
   registerVoiceRoutes(app, deps);
+  // demo-maria-login T1 (S4): /demo/reset stays dev-only — the
+  // composition root injects demoReset only under AUTH_MODE=dev.
+  // demo-maria-session T3+T6 (S5/S8): /demo/refresh and /demo/session
+  // mount in EVERY auth mode (the composition root always injects
+  // demoRefresh + demoSession); each route inside mounts only when its
+  // dep exists — fail-closed everywhere.
+  registerDemoRoutes(app, deps);
 
   app.notFound((c) =>
     c.json(

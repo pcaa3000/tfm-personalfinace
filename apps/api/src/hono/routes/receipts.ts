@@ -114,6 +114,12 @@ const confirmReceiptSchema = z.object({
 
 export interface ReceiptRouteDeps extends AuthDeps {
   readonly uploadReceipt: Pick<UploadReceiptUseCase, "execute">;
+  /**
+   * demo-maria-session T2 (S7): the configured DEMO_SUBJECT. Upload and
+   * retry — the only paths that dispatch a paid-provider scan job —
+   * refuse this subject with a controlled 403.
+   */
+  readonly demoSubject?: string;
   readonly listReceiptScans: Pick<ListReceiptScansUseCase, "execute">;
   readonly getReceiptScan: Pick<GetReceiptScanUseCase, "execute">;
   readonly getReceiptFile: Pick<GetReceiptFileUseCase, "execute">;
@@ -154,6 +160,18 @@ export function registerReceiptRoutes(
 ): void {
   const auth = authMiddleware(deps);
 
+  // demo-maria-session T2 (S7): a controlled 403 for the demo subject —
+  // a scan row is never created, so no job ever reaches Gemini (worker
+  // or inline dispatcher alike).
+  const assertNotDemoSubject = (subject: string): void => {
+    if (deps.demoSubject !== undefined && subject === deps.demoSubject) {
+      throw new HttpError(403, {
+        code: "DEMO_PROVIDER_FORBIDDEN",
+        message: "Demo sessions cannot invoke paid providers",
+      });
+    }
+  };
+
   app.post("/api/v1/receipts", auth, async (c) => {
     const body = await c.req.parseBody().catch(() => null);
     const file = body?.["file"];
@@ -165,6 +183,7 @@ export function registerReceiptRoutes(
     }
 
     const { caller, workspace } = authContext(c);
+    assertNotDemoSubject(caller.subject);
     const result = await deps.uploadReceipt.execute({
       workspaceId: workspace.workspaceId,
       uploaderSubject: caller.subject,
@@ -320,7 +339,8 @@ export function registerReceiptRoutes(
   });
 
   app.post("/api/v1/receipts/:id/retry", auth, async (c) => {
-    const { workspace } = authContext(c);
+    const { caller, workspace } = authContext(c);
+    assertNotDemoSubject(caller.subject);
     const result = await deps.retryReceiptScan.execute(
       workspace.workspaceId,
       c.req.param("id"),

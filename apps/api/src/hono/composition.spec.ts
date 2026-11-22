@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { envFromProcess } from "./composition.js";
+import { buildApp, envFromProcess, type AppEnv } from "./composition.js";
 
 /**
  * S3 (GAP-SEC-01): unknown/missing AUTH_MODE fails closed at boot.
@@ -33,6 +33,7 @@ const ENV_KEYS = [
   "GEMINI_MODEL",
   "VOICE_MAX_BYTES",
   "VOICE_DISPATCHER",
+  "DEMO_SUBJECT",
 ] as const;
 
 const DATABASE_URL = "postgresql://u:p@db:5432/spec";
@@ -291,6 +292,130 @@ describe("envFromProcess — receipt storage + upload limits (receipt-scan-draft
       accessKeyId: "ak",
       secretAccessKey: "sk",
     });
+  });
+});
+
+/**
+ * demo-maria-login T1 (S4): POST /api/v1/demo/reset exists ONLY under
+ * AUTH_MODE=dev — same fail-closed policy as the x-dev-user dev caller.
+ * The DB target is deliberately unreachable (127.0.0.1:1 refuses
+ * instantly): in oidc mode the request must 404 without touching the DB,
+ * and in dev mode reaching the seeder surfaces as a 500 — never a 404 —
+ * which proves the route is mounted.
+ */
+describe("POST /api/v1/demo/reset mounting (demo-maria-login T1, S4)", () => {
+  const unreachableDbEnv = (
+    authMode: AppEnv["authMode"],
+  ): AppEnv => ({
+    databaseUrl: "postgresql://u:p@127.0.0.1:1/unreachable",
+    authMode,
+    ...(authMode === "oidc"
+      ? {
+          oidc: {
+            issuer: "https://issuer.example",
+            audience: "aud",
+            jwksUri: "https://issuer.example/jwks.json",
+          },
+        }
+      : {}),
+    security: {
+      corsOrigins: [],
+      bodyLimitBytes: 1024,
+      rateLimit: { max: 0, windowMs: 60_000 },
+      rateLimitRead: { max: 0, windowMs: 60_000 },
+      receiptUploadBodyLimitBytes: 1024,
+      voiceUploadBodyLimitBytes: 1024,
+    },
+    receipts: {
+      maxBytes: 1024,
+      storage: { driver: "local", dir: "/tmp/tfm-demo-reset-spec" },
+      scanDispatcher: { mode: "pgboss" },
+    },
+    voices: {
+      maxBytes: 1024,
+      draftDispatcher: { mode: "pgboss" },
+    },
+  });
+
+  it("answers 404 in oidc mode — the route is never mounted", async () => {
+    const built = buildApp(unreachableDbEnv("oidc"));
+    try {
+      const res = await built.app.request("/api/v1/demo/reset", {
+        method: "POST",
+      });
+      expect(res.status).toBe(404);
+    } finally {
+      await built.close();
+    }
+  });
+
+  it("mounts the route in dev mode — the request reaches the seeder", async () => {
+    const built = buildApp(unreachableDbEnv("dev"));
+    try {
+      const res = await built.app.request("/api/v1/demo/reset", {
+        method: "POST",
+      });
+      // The unreachable DB makes the seeder fail → 500; a missing route
+      // would have answered 404 instead.
+      expect(res.status).toBe(500);
+      expect(((await res.json()) as { code: string }).code).toBe(
+        "INTERNAL_ERROR",
+      );
+    } finally {
+      await built.close();
+    }
+  });
+});
+
+/**
+ * demo-maria-session T3 (S4/S7): DEMO_SUBJECT gates POST /demo/refresh
+ * + the receipts paid-provider gate. Dev mode defaults to the local
+ * demo subject; oidc/prod fails closed — unset means the endpoint
+ * refuses.
+ */
+describe("envFromProcess — DEMO_SUBJECT (demo-maria-session T3, S4/S7)", () => {
+  it("defaults to demo-maria in dev mode when DEMO_SUBJECT is unset", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+
+    const env = envFromProcess();
+
+    expect(env.demoSubject).toBe("demo-maria");
+  });
+
+  it("honors an explicit DEMO_SUBJECT in dev mode", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "dev";
+    process.env.DEMO_SUBJECT = "qa-demo-sub";
+
+    const env = envFromProcess();
+
+    expect(env.demoSubject).toBe("qa-demo-sub");
+  });
+
+  it("is undefined in oidc mode when DEMO_SUBJECT is unset — the endpoint refuses (fail closed)", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "oidc";
+    process.env.OIDC_ISSUER = "https://issuer.example";
+    process.env.OIDC_AUDIENCE = "aud";
+    process.env.OIDC_JWKS_URI = "https://issuer.example/jwks.json";
+
+    const env = envFromProcess();
+
+    expect(env.demoSubject).toBeUndefined();
+  });
+
+  it("honors DEMO_SUBJECT in oidc mode (qa/prod demo sign-in)", () => {
+    process.env.DATABASE_URL = DATABASE_URL;
+    process.env.AUTH_MODE = "oidc";
+    process.env.OIDC_ISSUER = "https://issuer.example";
+    process.env.OIDC_AUDIENCE = "aud";
+    process.env.OIDC_JWKS_URI = "https://issuer.example/jwks.json";
+    process.env.DEMO_SUBJECT = "supabase-demo-user-uuid";
+
+    const env = envFromProcess();
+
+    expect(env.demoSubject).toBe("supabase-demo-user-uuid");
   });
 });
 

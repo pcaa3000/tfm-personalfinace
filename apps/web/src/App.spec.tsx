@@ -91,6 +91,27 @@ describe("App auth gate (T6-web)", () => {
     expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
   });
 
+  // demo-maria-session T8: a demo sign-in is a real Supabase
+  // session — the gate needs no demo-specific branch.
+  it("renders LedgerPage for a demo sign-in, which is a normal Supabase session", async () => {
+    isAuthConfigured.mockReturnValue(true);
+    useAuth.mockReturnValue(
+      authValue({
+        session: {
+          access_token: "demo-tok",
+          user: { id: "demo-1", email: "mariademo@example.com" },
+        },
+      }),
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Movimientos").length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
+  });
+
   it("renders LedgerPage without login when auth is bypassed (dev passthrough)", async () => {
     isAuthConfigured.mockReturnValue(false);
     useAuth.mockReturnValue(
