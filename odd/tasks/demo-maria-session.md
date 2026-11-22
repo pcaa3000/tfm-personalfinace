@@ -51,3 +51,4 @@ El botón "Probar con datos de María" pide solo el password (email fijo desde `
 - L15 (feedback UX): el workspace vacío durante el seed async confundía — la demo debe esperar a que haya datos antes de mostrar el ledger.
 - S10 (L15): la web no muestra el ledger demo hasta que el seed tiene filas — `GET /demo/session/status` reporta `{ready}`; la gate muestra "Preparando la demo…" con poll cada 500ms y timeout de 20s (fail-safe, nunca spinner eterno).
 - T9 | api+web | S10 | status endpoint + poll + gate demoPending | done | RED→GREEN (route 2 specs, service 1 spec, auth 2 specs, api client 1 spec); remediation: impl y specs en mismo batch, RED observado via stash.
+- L16 (review review-55c5e23649579ef0, aprobado): advisory R3-001 corregido — el await del mint comparte el deadline de 20s del poll, nunca wedge. Resto advisories follow-up (poll no cancelable post-logout ~40 reqs, sin backoff/observabilidad, spec de estado mid-seed exacto pendiente).

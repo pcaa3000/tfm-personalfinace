@@ -117,8 +117,7 @@ let restoredDemoMint: Promise<void> | null = null;
 const DEMO_SEED_POLL_MS = 500;
 const DEMO_SEED_TIMEOUT_MS = 20000;
 
-async function waitForDemoSeed(): Promise<void> {
-  const deadline = Date.now() + DEMO_SEED_TIMEOUT_MS;
+async function waitForDemoSeed(deadline: number): Promise<void> {
   for (;;) {
     try {
       const { ready } = await getDemoSessionStatus();
@@ -178,15 +177,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     let active = true;
     void (async () => {
-      // Restore path: a sid mint may still be in flight (R3-001) —
-      // wait for it, then for the seed. A failed mint leaves no sid;
-      // we unblock the gate anyway so the visitor sees the app
+      // ONE deadline covers mint + seed (advisory R3-001): a stalled
+      // restore-time POST /demo/session must never wedge the gate,
+      // exactly like a seed that never reports ready. A failed mint
+      // leaves no sid; we unblock anyway so the visitor sees the app
       // (fail-closed API errors) instead of an eternal spinner.
+      const deadline = Date.now() + DEMO_SEED_TIMEOUT_MS;
       if (restoredDemoMint !== null) {
-        await restoredDemoMint.catch(() => {});
+        await Promise.race([
+          restoredDemoMint.catch(() => {}),
+          new Promise((resolve) =>
+            setTimeout(resolve, DEMO_SEED_TIMEOUT_MS),
+          ),
+        ]);
       }
-      if (getDemoSessionId() !== null) {
-        await waitForDemoSeed();
+      if (getDemoSessionId() !== null && Date.now() < deadline) {
+        await waitForDemoSeed(deadline);
       }
       if (active) setDemoReady(true);
     })();
