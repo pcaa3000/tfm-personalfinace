@@ -17,9 +17,11 @@ import {
 import type { DrizzleDb, DrizzleSchema } from "./db.js";
 import {
   buildDemoPlan,
+  DEMO_ACCOUNTS,
   DEMO_CURRENCY,
   DEMO_TIMEZONE,
   type DemoAccountKey,
+  type DemoTransaction,
 } from "./seed-demo-data.js";
 import { DrizzleAccountRepository } from "../modules/accounts/infrastructure/drizzle-account.repository.js";
 import { CreateAccountUseCase } from "../modules/accounts/application/create-account.use-case.js";
@@ -44,17 +46,22 @@ import { WorkspaceId } from "../modules/shared-kernel/index.js";
  * ONE Postgres transaction (advisory: atomicity) — a failure mid-seed
  * rolls the workspace back to its previous state instead of leaving a
  * half-seeded demo.
+ *
+ * demo-maria-session T2: the bootstrap/account/record helpers below are
+ * also the building blocks of `refreshDemoWorkspace` — the rolling
+ * 3-month maintenance the shared demo workspace gets on every demo
+ * sign-in (`db:seed:demo` full-reseed behavior stays unchanged).
  */
 
 export const DEMO_IDENTITY_KEY = "local|demo-maria";
-const DEMO_WORKSPACE_ID = "ws-demo-maria";
+export const DEMO_WORKSPACE_ID = "ws-demo-maria";
 const DEMO_ACTOR = "demo-maria";
 
 /**
  * demo-maria-session T1 (S2): the seed is no longer bound to the single
- * `local|demo-maria` workspace — session sign-ins seed ephemeral
- * `issuer|subject|sid` workspaces of kind `demo` through the same code
- * path, so every INV-* invariant still applies verbatim.
+ * `local|demo-maria` workspace — callers may target any `issuer|subject`
+ * identity key through the same code path, so every INV-* invariant
+ * still applies verbatim.
  */
 export interface DemoWorkspaceTarget {
   readonly identityKey: string;
@@ -110,6 +117,8 @@ export interface DemoSeedResult {
   readonly accounts: readonly DemoSeedAccountBalance[];
 }
 
+type WorkspaceRow = typeof workspaces.$inferSelect;
+
 function minorToDecimal(minor: bigint | number): string {
   const value = typeof minor === "bigint" ? minor : BigInt(minor);
   const sign = value < 0n ? "-" : "";
@@ -117,6 +126,262 @@ function minorToDecimal(minor: bigint | number): string {
   const soles = absolute / 100n;
   const cents = absolute % 100n;
   return `${sign}${soles}.${String(cents).padStart(2, "0")}`;
+}
+
+export interface DemoWorkspaceBootstrap {
+  readonly workspace: WorkspaceRow;
+  readonly workspaceId: WorkspaceId;
+  /** True when this call inserted the workspace row. */
+  readonly created: boolean;
+}
+
+/**
+ * Workspace bootstrap (S7): finds or creates the target workspace and
+ * ensures its PEN currency plus the workspace-owned copies of the global
+ * catalog — idempotent, so the refresh routine can run it on every demo
+ * sign-in without clobbering an already-provisioned workspace.
+ */
+export async function bootstrapDemoWorkspace(
+  tx: DrizzleDb,
+  target: DemoWorkspaceTarget,
+): Promise<DemoWorkspaceBootstrap> {
+  const [existingWorkspace] = await tx
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.identityKey, target.identityKey))
+    .limit(1);
+  const workspace =
+    existingWorkspace ??
+    (
+      await tx
+        .insert(workspaces)
+        .values({
+          id: target.workspaceId,
+          identityKey: target.identityKey,
+          kind: target.kind,
+          timezone: DEMO_TIMEZONE,
+          defaultCurrency: DEMO_CURRENCY,
+        })
+        .returning()
+    )[0];
+  if (!workspace) {
+    throw new Error("workspace insert returned no row");
+  }
+
+  const workspaceIdResult = WorkspaceId.create(workspace.id);
+  if (!workspaceIdResult.ok) {
+    throw workspaceIdResult.error;
+  }
+
+  await tx
+    .insert(currencies)
+    .values({
+      id: randomUUID(),
+      workspaceId: workspace.id,
+      code: DEMO_CURRENCY,
+    })
+    .onConflictDoNothing();
+
+  // Workspace-owned copies of the global catalog (T19 pattern in
+  // seed.ts): only workspace rows carry workspaceId — the global
+  // catalog itself is seeded by `pnpm db:seed`.
+  for (const category of GLOBAL_CATEGORIES) {
+    await tx
+      .insert(categories)
+      .values({ id: randomUUID(), ...category, workspaceId: workspace.id })
+      .onConflictDoNothing();
+  }
+
+  return {
+    workspace,
+    workspaceId: workspaceIdResult.value,
+    created: existingWorkspace === undefined,
+  };
+}
+
+/** Workspace-owned category ids (key + workspaceId lookup). */
+export async function demoCategoryIdByKey(
+  tx: DrizzleDb,
+  workspaceRowId: string,
+): Promise<Map<string, string>> {
+  const categoryRows = await tx
+    .select()
+    .from(categories)
+    .where(
+      and(
+        eq(categories.workspaceId, workspaceRowId),
+        isNull(categories.archivedAt),
+      ),
+    );
+  return new Map(categoryRows.map((row) => [row.key, row.id]));
+}
+
+/**
+ * Ensures the four "María" demo accounts exist, matched by name
+ * (demo-maria-session T2): a fresh workspace gets all of them created
+ * via the real use case; an already-seeded one binds the existing rows
+ * to their generator keys without touching them.
+ */
+export async function ensureDemoAccounts(
+  tx: DrizzleDb,
+  workspaceId: WorkspaceId,
+): Promise<{
+  readonly accountIdByKey: Map<DemoAccountKey, string>;
+  readonly created: number;
+}> {
+  const createAccount = new CreateAccountUseCase(
+    new DrizzleAccountRepository(tx),
+    new DrizzleCurrencyRepository(tx),
+    new CryptoIdGenerator(),
+  );
+  const existing = await tx
+    .select()
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.workspaceId, workspaceId.value),
+        isNull(accounts.archivedAt),
+      ),
+    );
+  const idByName = new Map(existing.map((row) => [row.name, row.id]));
+
+  const accountIdByKey = new Map<DemoAccountKey, string>();
+  let created = 0;
+  for (const account of DEMO_ACCOUNTS) {
+    const found = idByName.get(account.name);
+    if (found !== undefined) {
+      accountIdByKey.set(account.key, found);
+      continue;
+    }
+    const createdAccount = await createAccount.execute({
+      workspaceId,
+      name: account.name,
+      currency: DEMO_CURRENCY,
+      kind: account.kind,
+      initialBalance: account.initialBalance,
+    });
+    if (!createdAccount.ok) {
+      throw new Error(
+        `CreateAccount failed for ${account.name}: ${createdAccount.error.code} — ${createdAccount.error.message}`,
+      );
+    }
+    accountIdByKey.set(account.key, createdAccount.value.id);
+    created += 1;
+  }
+  return { accountIdByKey, created };
+}
+
+/**
+ * Persists plan transactions through RecordManualTransactionUseCase —
+ * the same code path the HTTP composition root wires (S6) — and tracks
+ * the resulting per-account balances in minor units for summaries.
+ * Idempotency keys make a re-run of the same plan a no-op.
+ */
+export async function recordDemoTransactions(
+  tx: DrizzleDb,
+  args: {
+    readonly workspaceId: WorkspaceId;
+    readonly transactions: readonly DemoTransaction[];
+    readonly accountIdByKey: ReadonlyMap<DemoAccountKey, string>;
+    readonly categoryIdByKey: ReadonlyMap<string, string>;
+  },
+): Promise<{
+  readonly counts: DemoSeedCounts;
+  readonly balanceByKey: Map<DemoAccountKey, bigint>;
+}> {
+  const recordTransaction = new RecordManualTransactionUseCase(
+    new DrizzleTransactionRepository(tx),
+    new DrizzleAccountRepository(tx),
+    new DrizzleCategoryValidationAdapter(tx),
+    new SystemClock(),
+    new CryptoIdGenerator(),
+  );
+
+  // Track balances in minor units for the closing summary: initial
+  // balance + income − expense, transfers move between accounts.
+  const balanceByKey = new Map<DemoAccountKey, bigint>(
+    DEMO_ACCOUNTS.map((account) => {
+      const [soles = "0", cents = "0"] = account.initialBalance.split(".");
+      const minor = BigInt(soles) * 100n + BigInt(cents.padEnd(2, "0"));
+      return [account.key, minor];
+    }),
+  );
+
+  const counts = { income: 0, expense: 0, transfer: 0 };
+  for (const transaction of args.transactions) {
+    const accountId = args.accountIdByKey.get(transaction.accountKey);
+    if (!accountId) {
+      throw new Error(`Unknown account key ${transaction.accountKey}`);
+    }
+    const destinationAccountId =
+      transaction.destinationAccountKey !== undefined
+        ? (args.accountIdByKey.get(transaction.destinationAccountKey) ?? null)
+        : null;
+    if (transaction.type === "transfer" && !destinationAccountId) {
+      throw new Error(
+        `Unknown destination account ${transaction.destinationAccountKey}`,
+      );
+    }
+    const categoryId =
+      transaction.categoryKey !== undefined
+        ? (args.categoryIdByKey.get(transaction.categoryKey) ?? null)
+        : null;
+    if (transaction.categoryKey !== undefined && categoryId === null) {
+      throw new Error(`Unknown category key ${transaction.categoryKey}`);
+    }
+
+    const amount = minorToDecimal(transaction.amountMinor);
+    const recorded = await recordTransaction.execute({
+      workspaceId: args.workspaceId,
+      idempotencyKey: transaction.idempotencyKey,
+      type: transaction.type,
+      amount,
+      currency: DEMO_CURRENCY,
+      businessDate: transaction.businessDate,
+      timezone: DEMO_TIMEZONE,
+      concept: transaction.concept,
+      accountId,
+      destinationAccountId,
+      categoryId,
+      origin: "manual",
+      actor: DEMO_ACTOR,
+    });
+    if (!recorded.ok) {
+      throw new Error(
+        `RecordManualTransaction failed for ${transaction.idempotencyKey} ` +
+          `(${transaction.concept} ${amount}): ` +
+          `${recorded.error.code} — ${recorded.error.message}`,
+      );
+    }
+
+    counts[transaction.type] += 1;
+    const delta = BigInt(transaction.amountMinor);
+    if (transaction.type === "income") {
+      balanceByKey.set(
+        transaction.accountKey,
+        (balanceByKey.get(transaction.accountKey) ?? 0n) + delta,
+      );
+    } else if (transaction.type === "expense") {
+      balanceByKey.set(
+        transaction.accountKey,
+        (balanceByKey.get(transaction.accountKey) ?? 0n) - delta,
+      );
+    } else {
+      balanceByKey.set(
+        transaction.accountKey,
+        (balanceByKey.get(transaction.accountKey) ?? 0n) - delta,
+      );
+      const destination = transaction.destinationAccountKey;
+      if (destination) {
+        balanceByKey.set(
+          destination,
+          (balanceByKey.get(destination) ?? 0n) + delta,
+        );
+      }
+    }
+  }
+
+  return { counts, balanceByKey };
 }
 
 /**
@@ -143,245 +408,71 @@ export async function seedDemoWorkspace(
 }
 
 /**
- * Transaction-bound core of {@link seedDemoWorkspace} — exported so the
- * demo-session flow (demo-maria-session T1) can run the advisory lock +
- * stale-workspace cleanup + seed in ONE transaction.
+ * Transaction-bound core of {@link seedDemoWorkspace} — exported so
+ * callers can compose the seed with their own locking/cleanup inside
+ * ONE transaction.
  */
 export async function seedDemoWorkspaceInTransaction(
   tx: DrizzleDb,
   target: DemoWorkspaceTarget,
   now: Date,
 ): Promise<DemoSeedResult> {
-  {
-    // ── Workspace bootstrap (S7): dedicated demo workspace, separate
-    // from local|dev-user. Same pattern as seed.ts.
-    const [existingWorkspace] = await tx
-      .select()
-      .from(workspaces)
-      .where(eq(workspaces.identityKey, target.identityKey))
-      .limit(1);
-    const workspace =
-      existingWorkspace ??
-      (
-        await tx
-          .insert(workspaces)
-          .values({
-            id: target.workspaceId,
-            identityKey: target.identityKey,
-            kind: target.kind,
-            timezone: DEMO_TIMEZONE,
-            defaultCurrency: DEMO_CURRENCY,
-          })
-          .returning()
-      )[0];
-    if (!workspace) {
-      throw new Error("workspace insert returned no row");
-    }
+  const { workspace, workspaceId } = await bootstrapDemoWorkspace(tx, target);
 
-    const workspaceIdResult = WorkspaceId.create(workspace.id);
-    if (!workspaceIdResult.ok) {
-      throw workspaceIdResult.error;
-    }
-    const workspaceId = workspaceIdResult.value;
-
-
-    await tx
-      .insert(currencies)
-      .values({
-        id: randomUUID(),
-        workspaceId: workspace.id,
-        code: DEMO_CURRENCY,
-      })
-      .onConflictDoNothing();
-
-    // Workspace-owned copies of the global catalog (T19 pattern in
-    // seed.ts): only workspace rows carry workspaceId — the global
-    // catalog itself is seeded by `pnpm db:seed`.
-    for (const category of GLOBAL_CATEGORIES) {
-      await tx
-        .insert(categories)
-        .values({ id: randomUUID(), ...category, workspaceId: workspace.id })
-        .onConflictDoNothing();
-    }
-
-    // ── Reset (S4): wipe the demo workspace's ledger + accounts so a
-    // re-seed restores the original synthetic dataset. Splits and
-    // revisions go first (FK children); the ledger repository also wrote
-    // outbox rows for these transactions, so pending events and their
-    // notifications are cleaned too — the workspace, currencies and
-    // categories are deliberately NOT touched.
-    const workspaceTransactionIds = tx
-      .select({ id: ledgerTransactions.id })
-      .from(ledgerTransactions)
-      .where(eq(ledgerTransactions.workspaceId, workspace.id));
-    await tx
-      .delete(ledgerTransactionSplits)
-      .where(
-        inArray(ledgerTransactionSplits.transactionId, workspaceTransactionIds),
-      );
-    await tx
-      .delete(ledgerTransactionRevisions)
-      .where(
-        inArray(
-          ledgerTransactionRevisions.transactionId,
-          workspaceTransactionIds,
-        ),
-      );
-    await tx
-      .delete(ledgerTransactions)
-      .where(eq(ledgerTransactions.workspaceId, workspace.id));
-    await tx.delete(accounts).where(eq(accounts.workspaceId, workspace.id));
-    await tx
-      .delete(outboxEvents)
-      .where(eq(outboxEvents.workspaceId, workspace.id));
-    await tx
-      .delete(notifications)
-      .where(eq(notifications.workspaceId, workspace.id));
-
-    // Workspace-owned category ids (key + workspaceId lookup).
-    const categoryRows = await tx
-      .select()
-      .from(categories)
-      .where(
-        and(
-          eq(categories.workspaceId, workspace.id),
-          isNull(categories.archivedAt),
-        ),
-      );
-    const categoryIdByKey = new Map(
-      categoryRows.map((row) => [row.key, row.id]),
+  // ── Reset (S4): wipe the demo workspace's ledger + accounts so a
+  // re-seed restores the original synthetic dataset. Splits and
+  // revisions go first (FK children); the ledger repository also wrote
+  // outbox rows for these transactions, so pending events and their
+  // notifications are cleaned too — the workspace, currencies and
+  // categories are deliberately NOT touched.
+  const workspaceTransactionIds = tx
+    .select({ id: ledgerTransactions.id })
+    .from(ledgerTransactions)
+    .where(eq(ledgerTransactions.workspaceId, workspace.id));
+  await tx
+    .delete(ledgerTransactionSplits)
+    .where(
+      inArray(ledgerTransactionSplits.transactionId, workspaceTransactionIds),
     );
-
-    // ── Use cases wired like the HTTP composition root (S6). ──────
-    const ids = new CryptoIdGenerator();
-    const clock = new SystemClock();
-    const accountRepository = new DrizzleAccountRepository(tx);
-    const createAccount = new CreateAccountUseCase(
-      accountRepository,
-      new DrizzleCurrencyRepository(tx),
-      ids,
+  await tx
+    .delete(ledgerTransactionRevisions)
+    .where(
+      inArray(
+        ledgerTransactionRevisions.transactionId,
+        workspaceTransactionIds,
+      ),
     );
-    const recordTransaction = new RecordManualTransactionUseCase(
-      new DrizzleTransactionRepository(tx),
-      accountRepository,
-      new DrizzleCategoryValidationAdapter(tx),
-      clock,
-      ids,
-    );
+  await tx
+    .delete(ledgerTransactions)
+    .where(eq(ledgerTransactions.workspaceId, workspace.id));
+  await tx.delete(accounts).where(eq(accounts.workspaceId, workspace.id));
+  await tx
+    .delete(outboxEvents)
+    .where(eq(outboxEvents.workspaceId, workspace.id));
+  await tx
+    .delete(notifications)
+    .where(eq(notifications.workspaceId, workspace.id));
 
-    const plan = buildDemoPlan(now);
+  const categoryIdByKey = await demoCategoryIdByKey(tx, workspace.id);
+  const { accountIdByKey } = await ensureDemoAccounts(tx, workspaceId);
 
-    const accountIdByKey = new Map<DemoAccountKey, string>();
-    for (const account of plan.accounts) {
-      const created = await createAccount.execute({
-        workspaceId,
-        name: account.name,
-        currency: DEMO_CURRENCY,
-        kind: account.kind,
-        initialBalance: account.initialBalance,
-      });
-      if (!created.ok) {
-        throw new Error(
-          `CreateAccount failed for ${account.name}: ${created.error.code} — ${created.error.message}`,
-        );
-      }
-      accountIdByKey.set(account.key, created.value.id);
-    }
+  const plan = buildDemoPlan(now);
+  const { counts, balanceByKey } = await recordDemoTransactions(tx, {
+    workspaceId,
+    transactions: plan.transactions,
+    accountIdByKey,
+    categoryIdByKey,
+  });
 
-    // Track balances in minor units for the closing summary: initial
-    // balance + income − expense, transfers move between accounts.
-    const balanceByKey = new Map<DemoAccountKey, bigint>(
-      plan.accounts.map((account) => {
-        const [soles = "0", cents = "0"] = account.initialBalance.split(".");
-        const minor = BigInt(soles) * 100n + BigInt(cents.padEnd(2, "0"));
-        return [account.key, minor];
-      }),
-    );
-
-    const counts = { income: 0, expense: 0, transfer: 0 };
-    for (const transaction of plan.transactions) {
-      const accountId = accountIdByKey.get(transaction.accountKey);
-      if (!accountId) {
-        throw new Error(`Unknown account key ${transaction.accountKey}`);
-      }
-      const destinationAccountId =
-        transaction.destinationAccountKey !== undefined
-          ? (accountIdByKey.get(transaction.destinationAccountKey) ?? null)
-          : null;
-      if (transaction.type === "transfer" && !destinationAccountId) {
-        throw new Error(
-          `Unknown destination account ${transaction.destinationAccountKey}`,
-        );
-      }
-      const categoryId =
-        transaction.categoryKey !== undefined
-          ? (categoryIdByKey.get(transaction.categoryKey) ?? null)
-          : null;
-      if (transaction.categoryKey !== undefined && categoryId === null) {
-        throw new Error(`Unknown category key ${transaction.categoryKey}`);
-      }
-
-      const amount = minorToDecimal(transaction.amountMinor);
-      const recorded = await recordTransaction.execute({
-        workspaceId,
-        idempotencyKey: transaction.idempotencyKey,
-        type: transaction.type,
-        amount,
-        currency: DEMO_CURRENCY,
-        businessDate: transaction.businessDate,
-        timezone: DEMO_TIMEZONE,
-        concept: transaction.concept,
-        accountId,
-        destinationAccountId,
-        categoryId,
-        origin: "manual",
-        actor: DEMO_ACTOR,
-      });
-      if (!recorded.ok) {
-        throw new Error(
-          `RecordManualTransaction failed for ${transaction.idempotencyKey} ` +
-            `(${transaction.concept} ${amount}): ` +
-            `${recorded.error.code} — ${recorded.error.message}`,
-        );
-      }
-
-      counts[transaction.type] += 1;
-      const delta = BigInt(transaction.amountMinor);
-      if (transaction.type === "income") {
-        balanceByKey.set(
-          transaction.accountKey,
-          (balanceByKey.get(transaction.accountKey) ?? 0n) + delta,
-        );
-      } else if (transaction.type === "expense") {
-        balanceByKey.set(
-          transaction.accountKey,
-          (balanceByKey.get(transaction.accountKey) ?? 0n) - delta,
-        );
-      } else {
-        balanceByKey.set(
-          transaction.accountKey,
-          (balanceByKey.get(transaction.accountKey) ?? 0n) - delta,
-        );
-        const destination = transaction.destinationAccountKey;
-        if (destination) {
-          balanceByKey.set(
-            destination,
-            (balanceByKey.get(destination) ?? 0n) + delta,
-          );
-        }
-      }
-    }
-
-    return {
-      identityKey: target.identityKey,
-      workspaceId: workspace.id,
-      counts,
-      totalTransactions: plan.transactions.length,
-      accounts: plan.accounts.map((account) => ({
-        name: account.name,
-        kind: account.kind,
-        balance: minorToDecimal(balanceByKey.get(account.key) ?? 0n),
-      })),
-    };
-  }
+  return {
+    identityKey: target.identityKey,
+    workspaceId: workspace.id,
+    counts,
+    totalTransactions: plan.transactions.length,
+    accounts: DEMO_ACCOUNTS.map((account) => ({
+      name: account.name,
+      kind: account.kind,
+      balance: minorToDecimal(balanceByKey.get(account.key) ?? 0n),
+    })),
+  };
 }

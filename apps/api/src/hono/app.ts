@@ -166,9 +166,9 @@ export function createApp(
   registerReceiptRoutes(app, deps);
   // demo-maria-login T1 (S4): /demo/reset stays dev-only — the
   // composition root injects demoReset only under AUTH_MODE=dev.
-  // demo-maria-session T1 (S4): /demo/session mounts in EVERY auth mode
-  // (the composition root always injects demoSession); each route inside
-  // mounts only when its dep exists — fail-closed everywhere.
+  // demo-maria-session T3 (S5/S8): /demo/refresh mounts in EVERY auth
+  // mode (the composition root always injects demoRefresh); each route
+  // inside mounts only when its dep exists — fail-closed everywhere.
   registerDemoRoutes(app, deps);
 
   app.notFound((c) =>

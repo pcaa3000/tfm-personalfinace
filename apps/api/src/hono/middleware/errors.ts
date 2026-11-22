@@ -1,7 +1,6 @@
 import type { ErrorHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 
-import { DemoSessionError } from "../../modules/identity-workspace/index.js";
 import { DomainError } from "../../modules/shared-kernel/index.js";
 import type { HonoEnv } from "./auth.js";
 
@@ -34,12 +33,6 @@ export function httpErrorHandler(): ErrorHandler<HonoEnv> {
   return (err, c) => {
     if (err instanceof HttpError) {
       return c.json(err.body, err.status);
-    }
-    // demo-maria-session T1 (S5): fail-closed demo workspace resolution
-    // — missing/invalid x-demo-session for the demo subject is a 403,
-    // never the shared issuer|subject workspace.
-    if (err instanceof DemoSessionError) {
-      return c.json({ code: err.code, message: err.message }, 403);
     }
     if (err instanceof DomainError) {
       const status = err.code.endsWith("_NOT_FOUND")

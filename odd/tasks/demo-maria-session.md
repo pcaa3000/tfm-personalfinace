@@ -1,29 +1,34 @@
-# Feature: Demo "María" en QA/prod — workspace efímero por sesión
+# Feature: Demo "María" en QA/prod — workspace único + mantenimiento de 3 meses
 
-El botón "Probar con datos de María" pide solo el password (email fijo `mariademo@example.com`, usuario Supabase real). Cada sesión del navegador recibe un workspace efímero propio sembrado (`oidc|<demo-sub>|<sid>`); ningún cambio persiste entre sesiones ni dispositivos.
+El botón "Probar con datos de María" pide solo el password (email fijo desde `VITE_DEMO_EMAIL`). El usuario demo es un usuario Supabase real (uid `378756d8-bcde-4ad7-ab52-3045d27f9cef`, `mariademo@example.com`); su workspace `<issuer>|<uid>` se pre-siembra y en cada login se refresca async: se garantiza data del mes actual, mes-1 y mes-2, y se depura lo anterior.
 
 ## Specs
 
-- S1 (L1): botón demo pide SOLO el password; el email es fijo `mariademo@example.com` (usuario Supabase creado manualmente por el operador).
-- S2 (L1): "todos ven el mismo workspace o perfil" pero "los datos que modifiquen solo es valida para esa sesion del navegador" → cada sesión materializa un workspace efímero sembrado; en otro dispositivo/navegador se carga la semilla original (aislamiento por `sid`).
-- S3 (L1): "ningun cambio en la sesion demo es persistente" → los workspaces demo son descartables; un nuevo login demo crea workspace nuevo sembrado.
-- S4: `POST /api/v1/demo/session` requiere auth real y `caller.subject === DEMO_SUBJECT` (env); el endpoint existe en TODOS los modos (qa/prod), no solo dev.
-- S5: la resolución de workspace del sujeto demo usa `oidc|<sub>|<sid>` cuando la request trae `x-demo-session: <sid>` válido (efímero del sujeto). Sin header válido para el sujeto demo → 401/403 explícito (fail closed), nunca cae al workspace `oidc|<sub>` compartido ni lo crea.
-- S6 (L2): "Antes de realizar la publicacion se debe realizar las pruebas en qa" → la feature debe funcionar con `pnpm qa` (AUTH_MODE=oidc + Supabase real).
-- S7: el sujeto demo no debe invocar proveedores pagos (receipt-scan OCR / voz); el backend responde con escenario simulado o 403 controlado para `DEMO_SUBJECT`.
-- S8: cleanup — al crear una sesión demo nueva, los workspaces demo previos del mismo sujeto se borran; además un sweep por antigüedad (ej. >24h) para sesiones abandonadas.
+- S1 (L4): botón demo visible SOLO si `VITE_DEMO_EMAIL` tiene valor; si está vacía el botón se oculta/deshabilita. Pide solo password; sign-in real con ese email.
+- S2 (L4): workspace demo = `<issuer>|<demo-uid>` (oidc: `<OIDC_ISSUER>|378756d8-bcde-4ad7-ab52-3045d27f9cef`; dev: `local|demo-maria`, ya existente). Se siembra categorías+currencies+accounts por el path normal.
+- S3 (L4): mantenimiento demo — verificar que existan transactions en el mes actual; si no, generarlas (async, "por debajo"). Ídem mes-1 y mes-2. Purga data demo más vieja que la ventana de 3 meses.
+- S4 (L4): script pnpm (`db:seed:demo:refresh` o similar) que depura data demo dejando los últimos 3 meses y/o regenera lo faltante. Reusa la misma rutina que el endpoint.
+- S5 (L4): en cada login demo la web llama al endpoint de refresh (fire-and-forget async tras el sign-in) — la app carga la data existente del usuario demo.
+- S6 (L4): "ningun cambio en la sesion demo es persistente" → el refresco por login + el mantenimiento dejan el workspace en su estado semilla; los cambios dentro de una sesión se descartan en el próximo refresh (modelo simplificado: workspace compartido entre sesiones demo concurrentes, explícitamente aceptado por L4 al abandonar el modelo por-sid).
+- S7 (previo): el sujeto demo no debe invocar proveedores pagos (gate ya implementado en receipts por `DEMO_SUBJECT`; mantener).
+- S8 (L4, revisado): la generación de meses faltantes es async y no bloquea el login; el endpoint devuelve inmediatamente.
+- S9 (L2): debe funcionar con `pnpm qa` (oidc real) — requiere `DEMO_SUBJECT=378756d8-bcde-4ad7-ab52-3045d27f9cef` en env del API y `VITE_DEMO_EMAIL` en web.
 
 ## Tasks
 
 | ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
 |----|-------|----|------|--------|--------------------|
-| T1 | API: `POST /demo/session` (auth + DEMO_SUBJECT) crea workspace efímero `oidc|<sub>|<sid>` kind `demo` sembrado; borra workspaces demo previos del sujeto; resolver honra `x-demo-session` fail-closed | S2,S3,S4,S5,S8 | worker | done | RED→GREEN: 149/149 enfocados, suite 746/746; vivo: sid→accounts ok, sin sid→403, subject ajeno→403, sesión nueva mata sid viejo. S8 parcial: sweep por antigüedad queda post-MVP |
-| T2 | API: sujeto demo bloqueado en receipt-scan (upload+retry → 403 DEMO_PROVIDER_FORBIDDEN); voices no existe en esta rama | S7 | worker | done | receipts.spec +3; gate a nivel ruta |
-| T3 | Web: botón demo → diálogo solo password → signIn email fijo (`VITE_DEMO_EMAIL`, default mariademo@example.com) → POST /demo/session con bearer → sid en sessionStorage → header `x-demo-session` junto a bearer; rollback de sign-in si falla; flag/x-dev-user/pseudo-session eliminados | S1,S2,S3 | worker | done | RED→GREEN: suite web 386/386 |
-| T4 | i18n + specs + README + corrida QA (`pnpm qa`) documentada | S6 | inline | pending | i18n/README hechos; QA real pendiente: requiere usuario Supabase mariademo@example.com + DEMO_SUBJECT en env |
+| T1 | REVERTIR modelo por-sid: quitados `/demo/session`, resolver sid, middleware x-demo-session, módulo modules/demo | Simplificación L4 | worker | done | Suite api 848/848 |
+| T2 | API: `refreshDemoWorkspace` — advisory lock + bootstrap + purge < mes-2 día 1 + top-up por mes vía `buildDemoPlan(now,{months})`; script `db:seed:demo:refresh` | S2,S3,S4 | worker | done | refresh spec 16/16; live: purged 15 stale tx, 0 generadas |
+| T3 | API: `POST /api/v1/demo/refresh` — auth + `caller.subject === DEMO_SUBJECT`, mutex in-process, 202 fire-and-forget | S5,S8 | worker | done | live: demo→202, dev-user→403, sin auth→401, /demo/session→404 |
+| T4 | Web: revertido sid completo; botón solo si `VITE_DEMO_EMAIL`; password-only → signIn → refresh fire-and-forget | S1,S5 | worker | done | RED→GREEN: 81/81 enfocados, suite web 384/384 |
+| T5 | i18n + specs + README/env docs + nota QA | S9 | inline | in-progress | README actualizado; QA real requiere DEMO_SUBJECT + VITE_DEMO_EMAIL en env | |
 
 ## Log
 
 - L1: "primero creo el usuario demo \"mariademo@example.com\" en supabase, y el boton de \"Probar de datos de Maria\", en vez de pedirme el usuario y password, solo me deberia de pedir el pass, teniendo en cuenta el usuaro \"mariademo@example.com\". Si bien todos ven el mismo workspace o perfil, los datos que modifiquen o cambien solo es valida para esa sesion del navegador. En otro dispositivo el usuario cargara una nueva sesion con los datos originales de la semilla, tener en cuenta que ningun cambio en la sesion demo es persistente."
-- L2: "Antes de realizar la publicacion se debe realizar las pruebas en qa" — `pnpm qa` corre API con AUTH_MODE=oidc real; el modo actual (x-dev-user + endpoint dev-only) no aplica.
-- L3 (verificación en vivo, dev mode): POST /demo/session → sid; GET /accounts + sid → 4 cuentas sembradas; sin sid → 403; subject ajeno → 403; segunda sesión invalida el primer sid (S8 cleanup). Suite api 746/746, web 386/386, typecheck+eslint+depcruise limpios.
+- L2: "Antes de realizar la publicacion se debe realizar las pruebas en qa" — `pnpm qa` corre API con AUTH_MODE=oidc real.
+- L3 (modelo por-sid, implementado y verificado): ver commits previos — queda revertido por L4.
+- L4 (nueva dirección, reemplaza el modelo por-sid): "Creo que nos estamos complicando, exploremos esta nueva prespectiva. El usuario demo \"Maria\" ha sido creado en supabase su uid es 378756d8-bcde-4ad7-ab52-3045d27f9cef y su email es \"mariademo@example.com\", ese dato nos sirve para crear el workspace en la tabla \"identity_workspace_workspaces\", luego generar las categorias,currencies, accounts, luego verificar que exista data en transactions, primero en el mes actual, si no existe generarlo de acuerdo a la semilla, en modo asincrono y por debajo, verificar que exista data del mes-1, y mes-2, si no existe generar la data en transactions. Ademas generar un script de pnpm, para depurar data demo y dejar los ultimos tres meses y/o actualizar los data para los ulitmos tres meses si fuera necesario. Asi cuando el usuario se logee, con el boton de \"usar datos de usuario demo Maria\", e ingrese el pass, llamara a la data que tiene cargada para ese usuario. El email del usuario demo, que sirve para autenticarse, puede estar en una variable, como userdemo, en .env, si esta esta vacia, el boton para ingresar como usuario demo debe ser deshabilitado y no visible. A partir de este dato, la app sabra que el worksepace de este usuario sera para demo y no persistiran los cambios."
+- L5 (verificación live dev): POST /demo/refresh demo→202 async, dev-user→403, unauth→401, /demo/session→404 (revert OK); db:seed:demo:refresh purgó 15 tx viejas y dejó meses poblados; GET /accounts demo (sin sid) → 4 cuentas. Pendiente: QA real con Supabase + DEMO_SUBJECT/VITE_DEMO_EMAIL configurados (S9); workspace `kind='demo'` huérfano del modelo previo quedó en DB dev (dato, no código).
+- L6: lineage review-40a8bf2a3a2c9038 (modelo por-sid) quedó escalada y es moot — el candidato cambió por L4.

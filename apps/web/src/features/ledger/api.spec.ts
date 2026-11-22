@@ -25,7 +25,7 @@ import {
   reviseCategory,
   reviseCurrency,
   reviseTransaction,
-  createDemoSession,
+  refreshDemoWorkspace,
   retryReceiptScan,
   unarchiveAccount,
   updateWorkspace,
@@ -80,106 +80,54 @@ describe("dev auth bypass", () => {
   });
 });
 
-/**
- * In-memory sessionStorage stub — api.spec runs in the node
- * environment where no sessionStorage exists, so the per-tab demo
- * session id is faked through a direct global assignment
- * (demo-maria-session T3, S2+S3).
- */
-function stubDemoSid(value: string | null) {
-  const store = new Map<string, string>();
-  if (value !== null) store.set("demo-sid", value);
-  // Direct assignment (not vi.stubGlobal) so unstubAllGlobals can stay
-  // out of the cleanup path — it would also remove the module-level
-  // fetch stub and break every test that follows.
-  (globalThis as { sessionStorage?: unknown }).sessionStorage = {
-    getItem: (key: string) => store.get(key) ?? null,
-    setItem: (key: string, next: string) => void store.set(key, next),
-    removeItem: (key: string) => void store.delete(key),
-    clear: () => store.clear(),
-    key: () => null,
-    get length() {
-      return store.size;
-    },
-  };
-}
-
-function clearDemoSidStub() {
-  delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
-}
-
-describe("demo session (demo-maria-session T3, S2+S3)", () => {
+describe("demo workspace refresh (demo-maria-session T4, S5)", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
-    clearDemoSidStub();
     setAccessTokenProvider(null);
   });
 
-  it("sends x-demo-session alongside the bearer when a sid is stored", async () => {
-    stubDemoSid("sid-123");
+  it("refreshDemoWorkspace posts to /demo/refresh carrying the signed-in bearer", async () => {
     setAccessTokenProvider(async () => "token-abc");
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 202 }));
 
-    await listAccounts();
+    await refreshDemoWorkspace();
 
-    const headers = calledHeaders();
-    expect(headers["x-demo-session"]).toBe("sid-123");
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe("/api/v1/demo/refresh");
+    expect(init?.method).toBe("POST");
+    const headers = (init?.headers ?? {}) as Record<string, string>;
     expect(headers["authorization"]).toBe("Bearer token-abc");
-    expect(headers["x-dev-user"]).toBeUndefined();
-  });
-
-  it("omits x-demo-session when no sid is stored", async () => {
-    stubDemoSid(null);
-    setAccessTokenProvider(async () => "token-abc");
-
-    await listAccounts();
-
-    const headers = calledHeaders();
     expect(headers["x-demo-session"]).toBeUndefined();
-    expect(headers["authorization"]).toBe("Bearer token-abc");
   });
 
-  it("keeps the dev-user identity when the dev bypass is on and no sid is stored", async () => {
-    stubDemoSid(null);
+  it("never sends an x-demo-session header, even when sessionStorage holds a stale demo-sid", async () => {
+    // Simplified model (T4): the per-sid machinery is gone — a stale
+    // `demo-sid` left in sessionStorage by an older build must not
+    // leak into request headers.
+    (globalThis as { sessionStorage?: unknown }).sessionStorage = {
+      getItem: (key: string) => (key === "demo-sid" ? "sid-stale" : null),
+    };
+    try {
+      setAccessTokenProvider(async () => "token-abc");
+
+      await listAccounts();
+
+      const headers = calledHeaders();
+      expect(headers["x-demo-session"]).toBeUndefined();
+      expect(headers["authorization"]).toBe("Bearer token-abc");
+    } finally {
+      delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+    }
+  });
+
+  it("keeps the dev-user identity when the dev bypass is on", async () => {
     vi.stubEnv("DEV", true);
     vi.stubEnv("VITE_AUTH_BYPASS", "true");
 
     await listAccounts();
 
     expect(calledHeaders()["x-dev-user"]).toBe("dev-user");
-  });
-
-  it("createDemoSession posts to /demo/session with the bearer and returns the sid", async () => {
-    setAccessTokenProvider(async () => "token-abc");
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ sessionId: "sid-9" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-
-    const result = await createDemoSession();
-
-    const [url, init] = fetchMock.mock.calls[0] ?? [];
-    expect(String(url)).toBe("/api/v1/demo/session");
-    expect(init?.method).toBe("POST");
-    const headers = (init?.headers ?? {}) as Record<string, string>;
-    expect(headers["authorization"]).toBe("Bearer token-abc");
-    expect(result).toEqual({ sessionId: "sid-9" });
-  });
-
-  it("createDemoSession propagates API errors so no sid is stored on failure", async () => {
-    setAccessTokenProvider(async () => "token-abc");
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ code: "GENERIC" }), {
-        status: 500,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-
-    const error = await createDemoSession().catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(ApiError);
-    expect(error).toMatchObject({ code: "GENERIC", status: 500 });
+    expect(calledHeaders()["x-demo-session"]).toBeUndefined();
   });
 });
 

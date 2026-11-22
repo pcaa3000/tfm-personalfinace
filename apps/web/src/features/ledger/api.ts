@@ -1,4 +1,3 @@
-import { getDemoSessionId } from "../auth/demo-session";
 import { isAuthBypassed } from "../auth/supabase";
 import type {
   ReceiptConfirmInput,
@@ -111,13 +110,6 @@ async function authHeaders(): Promise<Record<string, string>> {
     // dev builds.
     headers["x-dev-user"] = "dev-user";
   }
-  // Demo session (demo-maria-session T3, S2): the per-tab sid rides
-  // alongside the real bearer — the demo is an ordinary Supabase
-  // identity, and the API resolves `x-demo-session` to the ephemeral
-  // workspace `oidc|<sub>|<sid>`. No sid → no header (the demo
-  // subject then fails closed server-side, S5).
-  const sid = getDemoSessionId();
-  if (sid) headers["x-demo-session"] = sid;
   return headers;
 }
 
@@ -151,18 +143,14 @@ async function requestMultipart<T>(
 }
 
 /**
- * `POST /demo/session` — materializes a fresh ephemeral workspace for
- * the signed-in demo subject and returns its per-tab session id
- * (demo-maria-session T3, S2+S3). It goes through `request()` so the
- * call carries the real bearer of the just-completed demo sign-in;
- * the API seeds `oidc|<sub>|<sid>` and answers `{sessionId}`.
+ * `POST /demo/refresh` — asks the API to refresh the demo workspace
+ * (demo-maria-session T4, S5): it goes through `request()` so the
+ * call carries the real bearer of the just-completed demo sign-in.
+ * Fired fire-and-forget after each demo login; the endpoint answers
+ * immediately and does the seed maintenance async server-side.
  */
-export async function createDemoSession(): Promise<{
-  sessionId: string;
-}> {
-  return request<{ sessionId: string }>("/demo/session", {
-    method: "POST",
-  });
+export async function refreshDemoWorkspace(): Promise<void> {
+  return request<void>("/demo/refresh", { method: "POST" });
 }
 
 /** `GET /api/v1/balance` — per-currency aggregates for the strip (T24). */

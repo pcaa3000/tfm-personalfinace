@@ -19,7 +19,14 @@ afterEach(() => {
   signUp.mockReset();
   signInDemo.mockReset();
   signInWithOAuth.mockReset();
+  vi.unstubAllEnvs();
 });
+
+// demo-maria-session T4 (S1): the demo entry exists only when the
+// deployment configures a demo account via VITE_DEMO_EMAIL.
+function stubDemoEmail(value = "mariademo@example.com") {
+  vi.stubEnv("VITE_DEMO_EMAIL", value);
+}
 
 beforeAll(async () => {
   await i18n.changeLanguage("es");
@@ -101,10 +108,29 @@ describe("LoginPage", () => {
     );
   });
 
-  // demo-maria-session T3 (S1): the demo entry asks ONLY for the demo
-  // password in a small prompt — the email is fixed in the auth
-  // context — and delegates the password to signInDemo.
+  // demo-maria-session T4 (S1): the demo entry asks ONLY for the demo
+  // password in a small prompt — the email is fixed by the
+  // VITE_DEMO_EMAIL env — and delegates the password to signInDemo.
+  it("hides the demo button when VITE_DEMO_EMAIL is unset or empty", () => {
+    vi.stubEnv("VITE_DEMO_EMAIL", "");
+    render(<LoginPage />);
+
+    expect(
+      screen.queryByRole("button", { name: "Probar con datos de María" }),
+    ).toBeNull();
+  });
+
+  it("shows the demo button when VITE_DEMO_EMAIL is configured", () => {
+    stubDemoEmail();
+    render(<LoginPage />);
+
+    expect(
+      screen.getByRole("button", { name: "Probar con datos de María" }),
+    ).toBeTruthy();
+  });
+
   it("asks only for the demo password and delegates it to signInDemo", async () => {
+    stubDemoEmail();
     signInDemo.mockResolvedValue(undefined);
     render(<LoginPage />);
 
@@ -135,6 +161,7 @@ describe("LoginPage", () => {
   });
 
   it("warns inside the prompt that demo changes are discarded on sign-out", () => {
+    stubDemoEmail();
     render(<LoginPage />);
 
     fireEvent.click(
@@ -147,6 +174,7 @@ describe("LoginPage", () => {
   });
 
   it("surfaces the localized demo error when the demo sign-in fails", async () => {
+    stubDemoEmail();
     signInDemo.mockRejectedValue(new Error("invalid demo password"));
     render(<LoginPage />);
 
@@ -168,6 +196,7 @@ describe("LoginPage", () => {
   });
 
   it("closes the demo prompt on cancel without calling signInDemo", async () => {
+    stubDemoEmail();
     render(<LoginPage />);
 
     fireEvent.click(

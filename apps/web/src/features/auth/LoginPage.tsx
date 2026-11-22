@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 
 import { BrandMark } from "../ledger/BrandMark";
 import { useAuth } from "./auth";
+import { demoEmail } from "./demo-session";
 
 type Mode = "signin" | "signup";
 
@@ -29,14 +30,17 @@ type Mode = "signin" | "signup";
 export function LoginPage() {
   const { t } = useTranslation();
   const { signIn, signInDemo, signInWithOAuth, signUp } = useAuth();
+  // demo-maria-session T4 (S1): the demo entry only exists when the
+  // deployment configures a demo account via VITE_DEMO_EMAIL.
+  const demoAvailable = demoEmail() !== null;
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(false);
-  // demo-maria-session T3 (S1): the demo entry opens a small prompt
-  // that asks ONLY for the demo password — the email is fixed in the
-  // auth context (DEMO_EMAIL).
+  // demo-maria-session T4 (S1): the demo entry opens a small prompt
+  // that asks ONLY for the demo password — the email is fixed by the
+  // VITE_DEMO_EMAIL env (demoEmail).
   const [demoOpen, setDemoOpen] = useState(false);
   const [demoPassword, setDemoPassword] = useState("");
   const [demoSubmitting, setDemoSubmitting] = useState(false);
@@ -61,10 +65,10 @@ export function LoginPage() {
     }
   };
 
-  // T3 (S1): the prompt submits the demo password to signInDemo,
-  // which signs in with the fixed demo email and then creates the
-  // per-tab ephemeral workspace — a failure surfaces the demo-specific
-  // error inside the prompt, never the credentials one.
+  // T4 (S1): the prompt submits the demo password to signInDemo,
+  // which signs in with the fixed demo email and then fires the
+  // workspace refresh — a failure surfaces the demo-specific error
+  // inside the prompt, never the credentials one.
   const openDemoPrompt = () => {
     setDemoPassword("");
     setDemoError(false);
@@ -161,14 +165,16 @@ export function LoginPage() {
               >
                 {t("login.continueWithFacebook")}
               </Button>
-              <Button
-                variant="outlined"
-                fullWidth
-                onClick={openDemoPrompt}
-                sx={{ textTransform: "none" }}
-              >
-                {t("login.tryDemo")}
-              </Button>
+              {demoAvailable ? (
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  onClick={openDemoPrompt}
+                  sx={{ textTransform: "none" }}
+                >
+                  {t("login.tryDemo")}
+                </Button>
+              ) : null}
             </Stack>
 
             <Divider sx={{ width: "100%" }}>{t("login.or")}</Divider>
@@ -236,7 +242,7 @@ export function LoginPage() {
         </CardContent>
       </Card>
 
-      {/* T3 (S1): password-only prompt for the "María" demo — the
+      {/* T4 (S1): password-only prompt for the "María" demo — the
           email is fixed; the hint warns that changes are discarded. */}
       <Dialog
         open={demoOpen}

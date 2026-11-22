@@ -22,11 +22,6 @@ export interface AuthDeps {
   readonly workspaceContext: WorkspaceContextPort;
 }
 
-/** demo-maria-session T1 (S5): carries the ephemeral demo session id. */
-export const DEMO_SESSION_HEADER = "x-demo-session";
-
-const MAX_DEMO_SESSION_LENGTH = 128;
-
 /** Collects the request headers into the resolver's plain-record shape. */
 function collectHeaders(c: Context<HonoEnv>): Record<string, string | undefined> {
   const headers: Record<string, string | undefined> = {};
@@ -41,10 +36,6 @@ function collectHeaders(c: Context<HonoEnv>): Record<string, string | undefined>
  * context, so route handlers stop repeating the per-endpoint boilerplate the
  * Nest controllers have. Unauthenticated requests get the generic 401 that
  * never reveals whether an account exists.
- *
- * demo-maria-session T1 (S5): the `x-demo-session` header is attached to
- * the caller identity as an optional component — only the demo subject's
- * workspace resolver consumes it; for everyone else it is inert.
  */
 export function authMiddleware(deps: AuthDeps): MiddlewareHandler<HonoEnv> {
   return async (c, next) => {
@@ -56,16 +47,8 @@ export function authMiddleware(deps: AuthDeps): MiddlewareHandler<HonoEnv> {
         401,
       );
     }
-    const rawSid = headers[DEMO_SESSION_HEADER];
-    const demoSessionId =
-      (Array.isArray(rawSid) ? rawSid[0] : rawSid)
-        ?.trim()
-        .slice(0, MAX_DEMO_SESSION_LENGTH) || undefined;
-    const callerWithSession: CallerIdentity = demoSessionId
-      ? { ...caller, demoSessionId }
-      : caller;
-    const workspace = await deps.workspaceContext.resolve(callerWithSession);
-    c.set("caller", callerWithSession);
+    const workspace = await deps.workspaceContext.resolve(caller);
+    c.set("caller", caller);
     c.set("workspace", workspace);
     await next();
   };

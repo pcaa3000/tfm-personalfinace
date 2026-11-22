@@ -357,11 +357,12 @@ describe("POST /api/v1/demo/reset mounting (demo-maria-login T1, S4)", () => {
 });
 
 /**
- * demo-maria-session T1 (S4): DEMO_SUBJECT gates POST /demo/session +
- * the demo workspace resolver. Dev mode defaults to the local demo
- * subject; oidc/prod fails closed — unset means the endpoint refuses.
+ * demo-maria-session T3 (S4/S7): DEMO_SUBJECT gates POST /demo/refresh
+ * + the receipts paid-provider gate. Dev mode defaults to the local
+ * demo subject; oidc/prod fails closed — unset means the endpoint
+ * refuses.
  */
-describe("envFromProcess — DEMO_SUBJECT (demo-maria-session T1, S4/S7)", () => {
+describe("envFromProcess — DEMO_SUBJECT (demo-maria-session T3, S4/S7)", () => {
   it("defaults to demo-maria in dev mode when DEMO_SUBJECT is unset", () => {
     process.env.DATABASE_URL = DATABASE_URL;
     process.env.AUTH_MODE = "dev";

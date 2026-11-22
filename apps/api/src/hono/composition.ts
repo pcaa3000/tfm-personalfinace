@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,11 +12,13 @@ import {
 import { requiredEnv } from "../env.js";
 import { createDrizzleDb, type DrizzleDb } from "../drizzle/db.js";
 import { seedDemoWorkspace } from "../drizzle/seed-demo-workspace.js";
+import {
+  DemoRefreshTrigger,
+  refreshDemoWorkspace,
+} from "../drizzle/refresh-demo-workspace.js";
 import { DevHeaderCallerResolver } from "../modules/identity-workspace/infrastructure/http/dev-header-caller.resolver.js";
 import { JwtCallerResolver } from "../modules/identity-workspace/infrastructure/http/jwt-caller.resolver.js";
 import { DrizzleWorkspaceAdapter } from "../modules/identity-workspace/infrastructure/drizzle-workspace.adapter.js";
-import { DemoSessionWorkspaceResolver } from "../modules/identity-workspace/infrastructure/demo-session-workspace.resolver.js";
-import { DrizzleDemoSessionService } from "../modules/demo/infrastructure/drizzle-demo-session.service.js";
 import { UpdateWorkspacePreferencesUseCase } from "../modules/identity-workspace/application/update-workspace-preferences.use-case.js";
 import { DrizzleAccountRepository } from "../modules/accounts/infrastructure/drizzle-account.repository.js";
 import { CreateAccountUseCase } from "../modules/accounts/application/create-account.use-case.js";
@@ -123,10 +126,10 @@ export interface AppEnv {
   readonly databaseUrl: string;
   readonly authMode: "dev" | "oidc";
   /**
-   * demo-maria-session T1 (S4): DEMO_SUBJECT gates POST /demo/session
-   * and the demo workspace resolver. Dev mode defaults to "demo-maria";
-   * under oidc an unset value leaves the endpoint refusing everyone
-   * (fail closed).
+   * demo-maria-session T3 (S4/S7): DEMO_SUBJECT gates POST /demo/refresh
+   * and the receipts paid-provider gate. Dev mode defaults to
+   * "demo-maria"; under oidc an unset value leaves the endpoint
+   * refusing everyone (fail closed).
    */
   readonly demoSubject?: string;
   readonly oidc?: {
@@ -163,15 +166,6 @@ export function buildApp(env: AppEnv): BuiltApp {
     (tx) => new DrizzleCurrencyRepository(tx),
     (tx) => new DrizzleCategoryRepository(tx),
   );
-  // demo-maria-session T1 (S5): for DEMO_SUBJECT the workspace comes
-  // from the x-demo-session sid (issuer|subject|sid, kind='demo') —
-  // fail closed; every other caller delegates to the lazy-create path.
-  const workspaceResolver = new DemoSessionWorkspaceResolver(
-    db,
-    workspace,
-    env.demoSubject,
-  );
-
   const callerResolver =
     env.authMode === "oidc" && env.oidc
       ? new JwtCallerResolver(env.oidc)
@@ -205,10 +199,17 @@ export function buildApp(env: AppEnv): BuiltApp {
 
   const deps: HonoDeps = {
     callerResolver,
-    workspaceContext: workspaceResolver,
-    // demo-maria-session T1+T2 (S2–S5, S7): ephemeral demo workspaces +
-    // the paid-provider gate subject — injected in ALL auth modes.
-    demoSession: new DrizzleDemoSessionService(db),
+    workspaceContext: workspace,
+    // demo-maria-session T3 (S5/S8) + T2 (S7): the shared demo workspace
+    // refresher + the paid-provider gate subject — injected in ALL auth
+    // modes. The trigger serializes runs in-process; the routine's
+    // pg_advisory_xact_lock serializes across processes.
+    demoRefresh: new DemoRefreshTrigger((caller) =>
+      refreshDemoWorkspace(db, {
+        identityKey: `${caller.issuer}|${caller.subject}`,
+        workspaceId: randomUUID(),
+      }),
+    ),
     ...(env.demoSubject === undefined
       ? {}
       : { demoSubject: env.demoSubject }),

@@ -107,6 +107,8 @@ function isoOf(year: number, month: number, day: number): string {
   return `${year}-${pad2(month)}-${pad2(day)}`;
 }
 
+
+
 interface YearMonth {
   readonly year: number;
   readonly month: number;
@@ -247,7 +249,57 @@ const FIXED_MONTHLY: readonly {
 const SALARY_MINOR = 450_000; // S/ 4,500 on the 1st of each month.
 const PAYDAY_SAVINGS_MINOR = 50_000; // S/ 500 moved to "Ahorros" on payday.
 
-export function buildDemoPlan(now: Date = new Date()): DemoPlan {
+/**
+ * demo-maria-session T2 (S3): the rolling maintenance window — the
+ * current calendar month and the two before it, in the demo timezone.
+ */
+export interface DemoWindowMonth {
+  /** "YYYY-MM" — matches `businessDate.slice(0, 7)`. */
+  readonly key: string;
+  /** "YYYY-MM-01" inclusive. */
+  readonly start: string;
+  /** First day of the next month, exclusive. */
+  readonly end: string;
+}
+
+/** Window months ordered as the spec lists them: current, -1, -2. */
+export function demoWindowMonths(
+  now: Date = new Date(),
+): readonly DemoWindowMonth[] {
+  const [year, month] = parseIso(timezoneToday(now));
+  const months: DemoWindowMonth[] = [];
+  for (let back = 0; back <= 2; back += 1) {
+    const first = new Date(Date.UTC(year, month - 1 - back, 1));
+    const next = new Date(Date.UTC(year, month - back, 1));
+    months.push({
+      key: first.toISOString().slice(0, 7),
+      start: first.toISOString().slice(0, 10),
+      end: next.toISOString().slice(0, 10),
+    });
+  }
+  return months;
+}
+
+/** "YYYY-MM-01" of the oldest window month — the purge cutoff (S3). */
+export function demoWindowStart(now: Date = new Date()): string {
+  const months = demoWindowMonths(now);
+  return months[months.length - 1]!.start;
+}
+
+export interface BuildDemoPlanOptions {
+  /**
+   * demo-maria-session T2 (S3): restrict the plan to these "YYYY-MM"
+   * months. Filtering happens AFTER the deterministic ordering and
+   * idempotency-key assignment, so a filtered month carries exactly the
+   * rows the full `db:seed:demo` plan produces for it.
+   */
+  readonly months?: readonly string[];
+}
+
+export function buildDemoPlan(
+  now: Date = new Date(),
+  options: BuildDemoPlanOptions = {},
+): DemoPlan {
   const rand = mulberry32(PRNG_SEED);
   const randInt = (min: number, max: number): number =>
     min + Math.floor(rand() * (max - min + 1));
@@ -477,5 +529,11 @@ export function buildDemoPlan(now: Date = new Date()): DemoPlan {
     idempotencyKey: `demo-maria-${pad2(index + 1).padStart(4, "0")}`,
   }));
 
-  return { accounts: DEMO_ACCOUNTS, transactions };
+  const filtered = options.months
+    ? transactions.filter((transaction) =>
+        options.months!.includes(transaction.businessDate.slice(0, 7)),
+      )
+    : transactions;
+
+  return { accounts: DEMO_ACCOUNTS, transactions: filtered };
 }
