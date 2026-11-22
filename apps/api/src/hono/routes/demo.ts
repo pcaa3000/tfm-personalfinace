@@ -64,7 +64,9 @@ export interface DemoRouteDeps {
  *   `issuer|subject` workspace bootstrap itself. Only DEMO_SUBJECT may
  *   trigger it; anyone else gets a 403 that never reveals whether the
  *   endpoint is wired. On success it answers 202 `{refresh:'started'}`
- *   immediately and the maintenance runs in the background.
+ *   immediately and the restore runs in the background — S6: the
+ *   routine wipes the workspace's session changes and re-seeds the
+ *   rolling 3-month dataset.
  */
 export function registerDemoRoutes(
   app: Hono<HonoEnv>,

@@ -86,7 +86,9 @@ describe("POST /api/v1/demo/reset", () => {
  * (unlike /demo/reset, which stays dev-only). It reuses the normal
  * caller resolution — a real JWT under oidc, x-dev-user under dev —
  * serves only the configured DEMO_SUBJECT, and returns 202 immediately:
- * the workspace maintenance runs fire-and-forget in the background.
+ * the workspace restore (S6: wipe + re-seed of the seed state, so a
+ * session's changes are discarded on the next demo sign-in) runs
+ * fire-and-forget in the background.
  */
 describe("POST /api/v1/demo/refresh (demo-maria-session T3, S5/S8)", () => {
   const DEMO_CALLER: CallerIdentity = {

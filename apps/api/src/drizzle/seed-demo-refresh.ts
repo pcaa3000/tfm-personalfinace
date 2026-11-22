@@ -9,9 +9,10 @@ import {
 
 /**
  * Demo refresh CLI — thin wrapper over {@link refreshDemoWorkspace}
- * (odd/tasks/demo-maria-session T2, S4): purges "María" demo ledger data
- * older than the rolling 3-month window and regenerates any window
- * month that has no transactions. Reuses the exact same routine as
+ * (odd/tasks/demo-maria-session T2, S4; S6 restore semantics): wipes
+ * the "María" demo workspace's ledger/accounts/outbox/notifications and
+ * re-seeds the rolling 3-month window, restoring the original
+ * synthetic dataset. Reuses the exact same routine as
  * POST /api/v1/demo/refresh.
  *
  * Defaults to the dev demo workspace `local|demo-maria`; override with
@@ -44,12 +45,14 @@ async function main(): Promise<void> {
       `${result.workspaceCreated ? " (created)" : ""}` +
       ` — accounts created: ${result.accountsCreated}`,
   );
-  console.log(`Purged transactions: ${result.purgedTransactions}`);
+  console.log(
+    `Wiped transactions (seed state restored): ${result.purgedTransactions}`,
+  );
   console.log(
     `Generated months: ${
       result.generatedMonths.length > 0
         ? result.generatedMonths.join(", ")
-        : "none (all window months already had data)"
+        : "none"
     }`,
   );
   console.log(`Inserted transactions: ${result.insertedTransactions}`);

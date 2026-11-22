@@ -355,7 +355,7 @@ export const en: TranslationShape = {
     demoSubmitting: "Preparing the demo…",
     demoCancel: "Cancel",
     demoHint:
-      "Explore the app with sample data. Your changes are discarded when you sign out.",
+      "Explore the app with sample data. Your changes are discarded on the next demo sign-in.",
     demoError: "Could not start the demo. Try again.",
     or: "or",
     loading: "Loading…",

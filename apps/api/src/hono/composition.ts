@@ -203,13 +203,21 @@ export function buildApp(env: AppEnv): BuiltApp {
     // demo-maria-session T3 (S5/S8) + T2 (S7): the shared demo workspace
     // refresher + the paid-provider gate subject — injected in ALL auth
     // modes. The trigger serializes runs in-process; the routine's
-    // pg_advisory_xact_lock serializes across processes.
-    demoRefresh: new DemoRefreshTrigger((caller) =>
-      refreshDemoWorkspace(db, {
+    // pg_advisory_xact_lock serializes across processes. The run's
+    // outcome (S6 wipe + re-seed counts) is logged here — failures are
+    // logged inside the trigger itself.
+    demoRefresh: new DemoRefreshTrigger(async (caller) => {
+      const result = await refreshDemoWorkspace(db, {
         identityKey: `${caller.issuer}|${caller.subject}`,
         workspaceId: randomUUID(),
-      }),
-    ),
+      });
+      console.log(
+        `[api] demo refresh ${result.identityKey}: ` +
+          `wiped ${result.purgedTransactions} transactions, ` +
+          `re-seeded ${result.insertedTransactions} across ` +
+          `${result.generatedMonths.join(", ") || "no months"}`,
+      );
+    }),
     ...(env.demoSubject === undefined
       ? {}
       : { demoSubject: env.demoSubject }),

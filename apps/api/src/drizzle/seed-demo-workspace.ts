@@ -385,6 +385,47 @@ export async function recordDemoTransactions(
 }
 
 /**
+ * The demo workspace reset (S4/S6): wipes the workspace-scoped ledger,
+ * accounts, pending outbox events and notifications — in FK-safe order
+ * (splits → revisions → transactions → accounts → outbox →
+ * notifications). The workspace row, currencies and category copies are
+ * deliberately NOT touched. Shared by {@link seedDemoWorkspaceInTransaction}
+ * (full re-seed) and `refreshDemoWorkspace` (S6 restore-on-refresh).
+ * Returns the number of ledger transactions deleted.
+ */
+export async function wipeDemoWorkspaceState(
+  tx: DrizzleDb,
+  workspaceRowId: string,
+): Promise<number> {
+  const wiped = await tx
+    .select({ id: ledgerTransactions.id })
+    .from(ledgerTransactions)
+    .where(eq(ledgerTransactions.workspaceId, workspaceRowId));
+  const wipedIds = wiped.map((row) => row.id);
+  if (wipedIds.length > 0) {
+    await tx
+      .delete(ledgerTransactionSplits)
+      .where(inArray(ledgerTransactionSplits.transactionId, wipedIds));
+    await tx
+      .delete(ledgerTransactionRevisions)
+      .where(
+        inArray(ledgerTransactionRevisions.transactionId, wipedIds),
+      );
+    await tx
+      .delete(ledgerTransactions)
+      .where(inArray(ledgerTransactions.id, wipedIds));
+  }
+  await tx.delete(accounts).where(eq(accounts.workspaceId, workspaceRowId));
+  await tx
+    .delete(outboxEvents)
+    .where(eq(outboxEvents.workspaceId, workspaceRowId));
+  await tx
+    .delete(notifications)
+    .where(eq(notifications.workspaceId, workspaceRowId));
+  return wipedIds.length;
+}
+
+/**
  * Ensures the demo workspace + PEN currency + workspace category copies,
  * wipes the workspace-scoped ledger/accounts and re-seeds them via the
  * composition-root use cases. Runs inside `db.transaction`, so the
@@ -425,33 +466,7 @@ export async function seedDemoWorkspaceInTransaction(
   // outbox rows for these transactions, so pending events and their
   // notifications are cleaned too — the workspace, currencies and
   // categories are deliberately NOT touched.
-  const workspaceTransactionIds = tx
-    .select({ id: ledgerTransactions.id })
-    .from(ledgerTransactions)
-    .where(eq(ledgerTransactions.workspaceId, workspace.id));
-  await tx
-    .delete(ledgerTransactionSplits)
-    .where(
-      inArray(ledgerTransactionSplits.transactionId, workspaceTransactionIds),
-    );
-  await tx
-    .delete(ledgerTransactionRevisions)
-    .where(
-      inArray(
-        ledgerTransactionRevisions.transactionId,
-        workspaceTransactionIds,
-      ),
-    );
-  await tx
-    .delete(ledgerTransactions)
-    .where(eq(ledgerTransactions.workspaceId, workspace.id));
-  await tx.delete(accounts).where(eq(accounts.workspaceId, workspace.id));
-  await tx
-    .delete(outboxEvents)
-    .where(eq(outboxEvents.workspaceId, workspace.id));
-  await tx
-    .delete(notifications)
-    .where(eq(notifications.workspaceId, workspace.id));
+  await wipeDemoWorkspaceState(tx, workspace.id);
 
   const categoryIdByKey = await demoCategoryIdByKey(tx, workspace.id);
   const { accountIdByKey } = await ensureDemoAccounts(tx, workspaceId);

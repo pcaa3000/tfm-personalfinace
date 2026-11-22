@@ -1,40 +1,40 @@
-import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import type { DrizzleSchema } from "./db.js";
-import {
-  ledgerTransactionRevisions,
-  ledgerTransactions,
-  ledgerTransactionSplits,
-} from "./schema.js";
 import { buildDemoPlan, demoWindowMonths } from "./seed-demo-data.js";
 import {
   bootstrapDemoWorkspace,
   demoCategoryIdByKey,
   ensureDemoAccounts,
   recordDemoTransactions,
+  wipeDemoWorkspaceState,
   type DemoWorkspaceTarget,
 } from "./seed-demo-workspace.js";
 import type { CallerIdentity } from "../modules/identity-workspace/index.js";
 
 /**
- * Rolling 3-month maintenance for the shared "María" demo workspace
- * (odd/tasks/demo-maria-session T2, S2/S3/S4): the demo subject keeps ONE
- * workspace `<issuer>|<demo-sub>` — `oidc: <OIDC_ISSUER>|<demo-uid>`,
- * `dev: local|demo-maria` — and every demo sign-in plus the
- * `pnpm db:seed:demo:refresh` script run this routine:
+ * Rolling 3-month refresh for the shared "María" demo workspace
+ * (odd/tasks/demo-maria-session T2, S2/S3/S4; S6 restore semantics):
+ * the demo subject keeps ONE workspace `<issuer>|<demo-sub>` —
+ * `oidc: <OIDC_ISSUER>|<demo-uid>`, `dev: local|demo-maria` — and every
+ * demo sign-in plus the `pnpm db:seed:demo:refresh` script run this
+ * routine:
  *
  * 1. Bootstrap — if the workspace does not exist yet, create it with the
  *    PEN currency, the 12 workspace category copies and the four seed
  *    accounts (same building blocks as `seedDemoWorkspace`).
- * 2. Purge — delete ledger transactions older than the window
- *    (current month, -1, -2), splits and revisions first.
- * 3. Top-up — for each window month with NO transactions, generate that
- *    month's slice of the deterministic plan through
- *    RecordManualTransactionUseCase. Months that already hold data —
- *    seeded or user-entered — are never touched (no wipe, S6's
- *    simplified model: session changes survive until data ages out or
- *    the dev-only /demo/reset runs).
+ * 2. Wipe — delete the workspace-scoped ledger state exactly like
+ *    `seedDemoWorkspaceInTransaction`'s reset: splits → revisions →
+ *    transactions → accounts → outbox events → notifications. This is
+ *    S6: a visitor's writes inside a demo session are discarded by the
+ *    NEXT refresh, and previously left outbox/notification rows never
+ *    accumulate.
+ * 3. Re-seed — recreate the four seed accounts and record the
+ *    deterministic plan filtered to the rolling window (current month,
+ *    -1, -2) through RecordManualTransactionUseCase, so the dataset
+ *    stays inside the window and every INV-* invariant is enforced by
+ *    construction.
  *
  * Everything runs in ONE transaction behind a `pg_advisory_xact_lock`
  * keyed on the identity key, so concurrent refreshes (two logins, the
@@ -55,14 +55,11 @@ export interface RefreshDemoWorkspaceResult {
   readonly workspaceId: string;
   readonly workspaceCreated: boolean;
   readonly accountsCreated: number;
+  /** Ledger transactions wiped before the re-seed (S6 restore). */
   readonly purgedTransactions: number;
   /** "YYYY-MM" keys (current, -1, -2 order) that were generated. */
   readonly generatedMonths: readonly string[];
   readonly insertedTransactions: number;
-}
-
-function dateAtStartOfDay(iso: string): Date {
-  return new Date(`${iso}T00:00:00Z`);
 }
 
 export async function refreshDemoWorkspace(
@@ -76,9 +73,6 @@ export async function refreshDemoWorkspace(
     kind: "personal",
   };
   const months = demoWindowMonths(now);
-  const cutoff = new Date(
-    `${months[months.length - 1]!.start}T00:00:00Z`,
-  );
 
   return db.transaction(async (tx) => {
     // Serialize concurrent refreshes of this demo identity across
@@ -89,79 +83,48 @@ export async function refreshDemoWorkspace(
 
     const { workspace, workspaceId, created } =
       await bootstrapDemoWorkspace(tx, target);
+
+    // ── Wipe (S6): restore the seed state — every ledger/account/event
+    // row a session touched goes away, not just data aged out of the
+    // window. Same reset as `seedDemoWorkspaceInTransaction`.
+    const purgedTransactions = await wipeDemoWorkspaceState(
+      tx,
+      workspace.id,
+    );
+
     const categoryIdByKey = await demoCategoryIdByKey(tx, workspace.id);
     const { accountIdByKey, created: accountsCreated } =
       await ensureDemoAccounts(tx, workspaceId);
 
-    // ── Purge: ledger rows older than the 3-month window. Splits and
-    // revisions go first (FK children) — the transactions themselves
-    // carry the (workspaceId, businessDate) index for this scan.
-    const stale = await tx
-      .select({ id: ledgerTransactions.id })
-      .from(ledgerTransactions)
-      .where(
-        and(
-          eq(ledgerTransactions.workspaceId, workspace.id),
-          lt(ledgerTransactions.businessDate, cutoff),
+    // ── Re-seed: the deterministic plan filtered to the rolling window
+    // (current, -1, -2) keeps the dataset inside the 3 months even when
+    // the plan's 90-day horizon reaches into a fourth calendar month.
+    const plan = buildDemoPlan(now, {
+      months: months.map((month) => month.key),
+    });
+    const { counts } = await recordDemoTransactions(tx, {
+      workspaceId,
+      transactions: plan.transactions,
+      accountIdByKey,
+      categoryIdByKey,
+    });
+    const generatedMonths = months
+      .filter((month) =>
+        plan.transactions.some((transaction) =>
+          transaction.businessDate.startsWith(month.key),
         ),
-      );
-    if (stale.length > 0) {
-      const staleIds = stale.map((row) => row.id);
-      await tx
-        .delete(ledgerTransactionSplits)
-        .where(inArray(ledgerTransactionSplits.transactionId, staleIds));
-      await tx
-        .delete(ledgerTransactionRevisions)
-        .where(
-          inArray(ledgerTransactionRevisions.transactionId, staleIds),
-        );
-      await tx
-        .delete(ledgerTransactions)
-        .where(inArray(ledgerTransactions.id, staleIds));
-    }
-
-    // ── Top-up: generate each empty window month; never wipe a month
-    // that already has data.
-    const generatedMonths: string[] = [];
-    let insertedTransactions = 0;
-    for (const month of months) {
-      const hasData = await tx
-        .select({ id: ledgerTransactions.id })
-        .from(ledgerTransactions)
-        .where(
-          and(
-            eq(ledgerTransactions.workspaceId, workspace.id),
-            gte(ledgerTransactions.businessDate, dateAtStartOfDay(month.start)),
-            lt(ledgerTransactions.businessDate, dateAtStartOfDay(month.end)),
-          ),
-        )
-        .limit(1);
-      if (hasData.length > 0) {
-        continue;
-      }
-      const plan = buildDemoPlan(now, { months: [month.key] });
-      if (plan.transactions.length === 0) {
-        continue;
-      }
-      const { counts } = await recordDemoTransactions(tx, {
-        workspaceId,
-        transactions: plan.transactions,
-        accountIdByKey,
-        categoryIdByKey,
-      });
-      generatedMonths.push(month.key);
-      insertedTransactions +=
-        counts.income + counts.expense + counts.transfer;
-    }
+      )
+      .map((month) => month.key);
 
     return {
       identityKey: options.identityKey,
       workspaceId: workspace.id,
       workspaceCreated: created,
       accountsCreated,
-      purgedTransactions: stale.length,
+      purgedTransactions,
       generatedMonths,
-      insertedTransactions,
+      insertedTransactions:
+        counts.income + counts.expense + counts.transfer,
     };
   });
 }

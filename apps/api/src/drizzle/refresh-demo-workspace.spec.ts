@@ -18,13 +18,16 @@ import {
 import type { CallerIdentity } from "../modules/identity-workspace/index.js";
 
 /**
- * demo-maria-session T2 (S2/S3/S4): the shared single demo workspace is
- * maintained — never recreated — by `refreshDemoWorkspace`. On every run:
- * bootstrap if missing (workspace + PEN currency + the 12 catalog
- * categories + the 4 seed accounts), purge ledger transactions older
- * than the rolling 3-month window, and generate each window month ONLY
- * when it has no transactions (top-up, not wipe). The same routine backs
- * POST /api/v1/demo/refresh and `pnpm db:seed:demo:refresh`.
+ * demo-maria-session T2 (S2/S3/S4) + S6: the shared single demo
+ * workspace is RESTORED — never topped up — by `refreshDemoWorkspace`.
+ * On every run: bootstrap if missing (workspace + PEN currency + the
+ * 12 catalog categories + the 4 seed accounts), wipe the workspace's
+ * ledger/accounts/outbox/notifications exactly like
+ * `seedDemoWorkspaceInTransaction`'s reset, then re-seed the rolling
+ * 3-month window through the deterministic plan. A visitor's writes
+ * inside a session are discarded by the NEXT refresh (S6). The same
+ * routine backs POST /api/v1/demo/refresh and
+ * `pnpm db:seed:demo:refresh`.
  */
 
 const DATABASE_URL =
@@ -37,7 +40,6 @@ const WORKSPACE_ID = "ws-demo-refresh-spec";
 const NOW = new Date("2026-03-15T12:00:00Z");
 // Window months for NOW: current, -1, -2 (in that order).
 const EXPECTED_MONTHS = ["2026-03", "2026-02", "2026-01"];
-const WINDOW_START = "2026-01-01";
 
 function refreshOptions() {
   return { identityKey: IDENTITY_KEY, workspaceId: WORKSPACE_ID, now: NOW };
@@ -166,76 +168,31 @@ describe("refreshDemoWorkspace (integration, real Postgres — T2)", () => {
     }
   });
 
-  it("is a no-op when every window month already has data — existing months stay untouched (S3)", async () => {
+  it("restores the seed state — a visitor's in-window writes, a stale row and a deleted seed row are all discarded/re-seeded (S6)", async () => {
     await refresh(db);
-    const before = await transactionRows(db, WORKSPACE_ID);
-
-    const again = await refresh(db);
-
-    expect(again.workspaceCreated).toBe(false);
-    expect(again.generatedMonths).toEqual([]);
-    expect(again.insertedTransactions).toBe(0);
-    expect(again.purgedTransactions).toBe(0);
-    const after = await transactionRows(db, WORKSPACE_ID);
-    expect(after.map((row) => row.id).sort()).toEqual(
-      before.map((row) => row.id).sort(),
+    const baselineKeys = (await transactionRows(db, WORKSPACE_ID)).map(
+      (row) => row.idempotencyKey,
     );
-  });
 
-  it("top-ups ONLY the missing month and leaves the existing ones untouched (S3)", async () => {
-    const first = await refresh(db);
-    const workspaceId = first.workspaceId;
-    const month = EXPECTED_MONTHS[1]!; // 2026-02 (month -1)
-    const untouchedMonths = [EXPECTED_MONTHS[0]!, EXPECTED_MONTHS[2]!];
-
-    const originalKeys = (
-      await transactionRows(db, workspaceId, month)
-    ).map((row) => row.idempotencyKey);
-    const untouchedIds = new Map<string, string[]>();
-    for (const kept of untouchedMonths) {
-      untouchedIds.set(
-        kept,
-        (await transactionRows(db, workspaceId, kept)).map((row) => row.id),
-      );
-    }
-
-    // Simulate a demo month that lost its data.
-    const doomed = await transactionRows(db, workspaceId, month);
-    await db
-      .delete(ledgerTransactions)
-      .where(
-        and(
-          eq(ledgerTransactions.workspaceId, workspaceId),
-          gte(
-            ledgerTransactions.businessDate,
-            monthRange(month).from,
-          ),
-          lt(ledgerTransactions.businessDate, monthRange(month).to),
-        ),
-      );
-    expect(doomed.length).toBeGreaterThan(0);
-
-    const again = await refresh(db);
-
-    expect(again.generatedMonths).toEqual([month]);
-    // The regenerated month carries the exact plan rows (deterministic keys).
-    const regeneratedKeys = (
-      await transactionRows(db, workspaceId, month)
-    ).map((row) => row.idempotencyKey);
-    expect(regeneratedKeys.sort()).toEqual(originalKeys.sort());
-    // The other months were never touched — same transaction ids.
-    for (const kept of untouchedMonths) {
-      const ids = (await transactionRows(db, workspaceId, kept)).map(
-        (row) => row.id,
-      );
-      expect(ids.sort()).toEqual(untouchedIds.get(kept)!.sort());
-    }
-  });
-
-  it("purges ledger transactions older than the 3-month window (S3)", async () => {
-    await refresh(db);
+    // A demo session's writes inside the window…
     await db.insert(ledgerTransactions).values([
       {
+        id: "demo-refresh-visitor-1",
+        workspaceId: WORKSPACE_ID,
+        idempotencyKey: "demo-refresh-visitor-1",
+        type: "expense",
+        amountMinor: 1_500n,
+        currency: "PEN",
+        businessDate: new Date("2026-02-10T00:00:00Z"),
+        timezone: "America/Lima",
+        concept: "Gasto de visita",
+        status: "confirmed",
+        origin: "manual",
+        confirmedAt: new Date("2026-02-10T00:00:00Z"),
+        confirmedBy: "demo-refresh-spec",
+      },
+      {
+        // …and one left outside the window.
         id: "demo-refresh-stale-1",
         workspaceId: WORKSPACE_ID,
         idempotencyKey: "demo-refresh-stale-1",
@@ -250,39 +207,93 @@ describe("refreshDemoWorkspace (integration, real Postgres — T2)", () => {
         confirmedAt: new Date("2025-12-31T00:00:00Z"),
         confirmedBy: "demo-refresh-spec",
       },
-      {
-        id: "demo-refresh-stale-2",
-        workspaceId: WORKSPACE_ID,
-        idempotencyKey: "demo-refresh-stale-2",
-        type: "income",
-        amountMinor: 5_000n,
-        currency: "PEN",
-        businessDate: new Date("2025-10-05T00:00:00Z"),
-        timezone: "America/Lima",
-        concept: "Stale octubre",
-        status: "confirmed",
-        origin: "manual",
-        confirmedAt: new Date("2025-10-05T00:00:00Z"),
-        confirmedBy: "demo-refresh-spec",
-      },
     ]);
+    // …plus the deletion of a seed row (splits/revisions cascade).
+    const [doomed] = await db
+      .select({ id: ledgerTransactions.id })
+      .from(ledgerTransactions)
+      .where(
+        and(
+          eq(ledgerTransactions.workspaceId, WORKSPACE_ID),
+          eq(ledgerTransactions.idempotencyKey, baselineKeys[0]!),
+        ),
+      )
+      .limit(1);
+    await db
+      .delete(ledgerTransactions)
+      .where(eq(ledgerTransactions.id, doomed!.id));
 
-    const result = await refresh(db);
+    const again = await refresh(db);
 
-    expect(result.purgedTransactions).toBe(2);
-    expect(result.generatedMonths).toEqual([]);
-    const remaining = await transactionRows(db, WORKSPACE_ID);
-    expect(remaining.every((row) => row.id !== "demo-refresh-stale-1")).toBe(
+    expect(again.workspaceCreated).toBe(false);
+    // Wiped: baseline − 1 deleted + visitor + stale = baseline + 1.
+    expect(again.purgedTransactions).toBe(baselineKeys.length + 1);
+    expect(again.generatedMonths).toEqual(EXPECTED_MONTHS);
+    const after = await transactionRows(db, WORKSPACE_ID);
+    const afterKeys = after.map((row) => row.idempotencyKey).sort();
+    // Seed state restored exactly: the deleted seed row is back and the
+    // session's rows are gone.
+    expect(afterKeys).toEqual([...baselineKeys].sort());
+    expect(after.every((row) => row.id !== "demo-refresh-visitor-1")).toBe(
       true,
     );
-    expect(remaining.every((row) => row.id !== "demo-refresh-stale-2")).toBe(
-      true,
+    expect(after.every((row) => row.id !== "demo-refresh-stale-1")).toBe(true);
+  });
+
+  it("purges outbox events and notifications left behind by previous runs (S6)", async () => {
+    await refresh(db);
+    await db.insert(outboxEvents).values({
+      id: "demo-refresh-orphan-outbox",
+      workspaceId: WORKSPACE_ID,
+      type: "demo.orphan",
+      payload: { orphan: true },
+    });
+    await db.insert(notifications).values({
+      id: "demo-refresh-orphan-notification",
+      workspaceId: WORKSPACE_ID,
+      kind: "demo_orphan",
+      title: "orphan",
+      body: "leftover",
+    });
+
+    // Call the routine directly (not the spec helper) so the wipe itself
+    // is observed — the helper's outbox cleanup would hide a miss.
+    const result = await refreshDemoWorkspace(db, refreshOptions());
+
+    expect(result.workspaceCreated).toBe(false);
+    const orphan = await db
+      .select({ id: outboxEvents.id })
+      .from(outboxEvents)
+      .where(eq(outboxEvents.id, "demo-refresh-orphan-outbox"));
+    expect(orphan).toHaveLength(0);
+    const leftover = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(eq(notifications.workspaceId, WORKSPACE_ID));
+    expect(leftover).toHaveLength(0);
+    // Hygiene: drop the pending outbox rows the re-seed just wrote.
+    await db
+      .delete(outboxEvents)
+      .where(eq(outboxEvents.workspaceId, WORKSPACE_ID));
+  });
+
+  it("is idempotent — every run reseeds the same deterministic window dataset (S6)", async () => {
+    const first = await refresh(db);
+    const firstKeys = (await transactionRows(db, WORKSPACE_ID)).map(
+      (row) => row.idempotencyKey,
     );
-    // Everything left sits inside the window.
-    const cutoff = new Date(`${WINDOW_START}T00:00:00Z`);
-    expect(
-      remaining.every((row) => row.businessDate.getTime() >= cutoff.getTime()),
-    ).toBe(true);
+
+    const again = await refresh(db);
+
+    expect(again.workspaceCreated).toBe(false);
+    // The re-seed wiped exactly what the first run inserted.
+    expect(again.purgedTransactions).toBe(first.insertedTransactions);
+    expect(again.generatedMonths).toEqual(EXPECTED_MONTHS);
+    expect(again.insertedTransactions).toBe(first.insertedTransactions);
+    const secondKeys = (await transactionRows(db, WORKSPACE_ID)).map(
+      (row) => row.idempotencyKey,
+    );
+    expect(secondKeys.sort()).toEqual([...firstKeys].sort());
   });
 });
 

@@ -351,7 +351,7 @@ export const es = {
     demoSubmitting: "Preparando la demo…",
     demoCancel: "Cancelar",
     demoHint:
-      "Explorá la app con datos de ejemplo. Los cambios se descartan al cerrar la sesión.",
+      "Explorá la app con datos de ejemplo. Los cambios se descartan en el próximo ingreso a la demo.",
     demoError: "No se pudo iniciar la demo. Intentá de nuevo.",
     or: "o",
     loading: "Cargando…",
