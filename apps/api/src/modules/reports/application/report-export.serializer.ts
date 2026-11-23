@@ -133,9 +133,27 @@ export function reportExportTables(
   ];
 }
 
+/**
+ * Neutralize spreadsheet-formula execution: a leading = + - or @ turns a
+ * user-controlled label into a formula when the file is opened in Excel
+ * or Sheets — prefixing with ' forces text interpretation (R3-001).
+ */
+export function neutralizeSpreadsheetCell(
+  value: string | number,
+): string | number {
+  const text = String(value);
+  // Plain numeric strings (amounts, incl. negative) are safe — Excel
+  // reads them as numbers, not formulas. Only non-numeric text is
+  // neutralized.
+  if (!/^[=+\-@]/.test(text) || text.trim() !== "" && !Number.isNaN(Number(text))) {
+    return value;
+  }
+  return `'${text}`;
+}
+
 /** RFC 4180 cell escaping: quote when the value holds , " CR or LF. */
 function csvCell(value: string | number): string {
-  const text = String(value);
+  const text = String(neutralizeSpreadsheetCell(value));
   if (!/[",\r\n]/.test(text)) {
     return text;
   }
@@ -158,5 +176,6 @@ export function serializeReportCsv(bundle: MonthlyReportBundle): string {
     }
     lines.push("");
   }
-  return lines.join("\n");
+  // \uFEFF BOM so Excel decodes UTF-8 instead of ANSI (R3-003).
+  return "\ufeff" + lines.join("\n");
 }

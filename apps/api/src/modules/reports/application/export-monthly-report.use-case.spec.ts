@@ -155,7 +155,7 @@ describe("ExportMonthlyReportUseCase", () => {
     expect(result.value.filename).toBe("report-EUR-2026-09.csv");
     expect(result.value.contentType).toBe("text/csv; charset=utf-8");
     const body = result.value.body as string;
-    expect(body.startsWith("## metadata\n")).toBe(true);
+    expect(body.startsWith("\ufeff## metadata\n")).toBe(true);
     expect(body).toContain("periodStatus,closed");
     expect(body).toContain("generatedAt,2026-10-01T12:00:00.000Z");
     expect(body).toContain("timezone,UTC");

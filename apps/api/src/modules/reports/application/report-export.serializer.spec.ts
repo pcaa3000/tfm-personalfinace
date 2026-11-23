@@ -211,7 +211,7 @@ describe("serializeReportCsv", () => {
 
     expect(csv).toBe(
       [
-        "## metadata",
+        "\ufeff## metadata",
         "key,value",
         "timezone,UTC",
         "currency,EUR",
@@ -284,6 +284,29 @@ describe("serializeReportCsv", () => {
     const csv = serializeReportCsv(bundle({ expensesByCategory: latin }));
 
     expect(csv).toContain("Sin categorizar,uncategorized,42.10,100,1");
+  });
+
+  it("neutralizes leading = + - @ so labels cannot run as formulas (R3-001)", () => {
+    const csv = serializeReportCsv(
+      bundle({
+        expensesByCategory: {
+          ...EXPENSES,
+          categories: [
+            {
+              categoryId: "c1",
+              key: "evil",
+              label: "=cmd|'/tmp'",
+              nature: "discretionary",
+              total: "1.00",
+              percentOfExpenses: 100,
+              transactionCount: 1,
+            },
+          ],
+        },
+      }),
+    );
+    expect(csv).toContain("'=cmd|'/tmp'");
+    expect(csv.startsWith("\ufeff")).toBe(true); // BOM for Excel UTF-8 (R3-003)
   });
 
   it("emits only the header row for sections without rows", () => {
