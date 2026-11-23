@@ -64,9 +64,10 @@ export const GROWTH_MIN_RATIO_PERCENT = 150;
 export const MONTHLY_RECURRING_MAX_RATIO_PERCENT = 115;
 
 /**
- * Shared noise floor: `ant` and `growth` additionally require the group
- * total to reach 1% of the discretionary spend so trivial amounts never
- * surface as leaks (integer test 100·total >= spend).
+ * Shared noise floor: `ant`, `recurring_charge`, `growth` and
+ * `monthly_recurring` additionally require the group total to reach 1%
+ * of the discretionary spend so trivial amounts never surface as
+ * leaks (integer test 100·total >= spend).
  */
 export const MIN_SHARE_OF_DISCRETIONARY_PERCENT = 1;
 
