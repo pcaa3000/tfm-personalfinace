@@ -2,7 +2,6 @@ import ExcelJS from "exceljs";
 
 import type { XlsxReportSerializerPort } from "../application/ports/xlsx-report-export.port.js";
 import {
-  neutralizeSpreadsheetCell,
   reportExportTables,
   type MonthlyReportBundle,
 } from "../application/report-export.serializer.js";
@@ -33,9 +32,9 @@ export class ExcelJsReportExportAdapter implements XlsxReportSerializerPort {
       );
       sheet.addRow([...table.columns]);
       for (const row of table.rows) {
-        // Neutralize = + - @ leading chars so labels can never be
-        // interpreted as formulas on open (R3-001).
-        sheet.addRow(row.map(neutralizeSpreadsheetCell));
+        // ExcelJS stores strings as shared strings — never formulas —
+        // so no neutralization is needed here (csv path handles it).
+        sheet.addRow([...row]);
       }
     }
     // exceljs' Buffer is an ArrayBuffer in its own typings — wrap it

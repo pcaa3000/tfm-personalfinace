@@ -309,6 +309,13 @@ describe("serializeReportCsv", () => {
     expect(csv.startsWith("\ufeff")).toBe(true); // BOM for Excel UTF-8 (R3-003)
   });
 
+  it("leaves numeric strings unprefixed — amounts are not formulas", () => {
+    const csv = serializeReportCsv(bundle());
+    // negative netFlow and positive amounts stay verbatim
+    expect(csv).toContain(",-7.25");
+    expect(csv).not.toContain("'-7.25");
+  });
+
   it("emits only the header row for sections without rows", () => {
     const csv = serializeReportCsv(
       bundle({

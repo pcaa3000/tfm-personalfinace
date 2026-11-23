@@ -142,10 +142,9 @@ export function neutralizeSpreadsheetCell(
   value: string | number,
 ): string | number {
   const text = String(value);
-  // Plain numeric strings (amounts, incl. negative) are safe — Excel
-  // reads them as numbers, not formulas. Only non-numeric text is
-  // neutralized.
-  if (!/^[=+\-@]/.test(text) || text.trim() !== "" && !Number.isNaN(Number(text))) {
+  // Only non-numeric text with a formula-leading char is neutralized —
+  // numeric strings (amounts, incl. negative) are safe as-is.
+  if (!/^[=+\-@]/.test(text) || !Number.isNaN(Number(text))) {
     return value;
   }
   return `'${text}`;
