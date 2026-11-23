@@ -19,6 +19,8 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 
 - **S12** (L21): La página de reportes debe ser usable en móvil: tablas apiladas (campos clave + comparación principal) o scroll horizontal indicado, targets táctiles ~44px, sin ocultar datos de decisión.
 
+- **S13** (L24): ReportsPage muestra primero un resumen ejecutivo siempre visible (ahorro observado, ahorro potencial de evitables + cantidad de grupos, cash flow neto total, top categoría discrecional) y debajo las 4 secciones como panels colapsables; la sección de Gastos evitables abre automáticamente cuando tiene grupos; el resto cerrado por default. Contenido interno de las secciones sin cambios.
+
 ## Tasks
 
 | ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
@@ -36,6 +38,7 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 | T11 | Seed demo: categoría "Transporte menor"/suscripciones discretionary + merchants explícitos | S10 | api (seed) | done | RED 3/3→GREEN; drizzle 29/29 DB real; commit 01d791b |
 | T12 | Evolución ant-expenses → reporte "Gastos evitables" con detectores (opción A) | S3, S11 | api+web | done | API 131/131, web 502, suite api 1372 |
 | T13 | UX móvil en ReportsPage: tablas responsive (stacked rows o scroll indicado) | S12 | web | done | RED 3→GREEN 23/23; web 507 |
+| T14 | Resumen ejecutivo + secciones colapsables con auto-apertura | S13 | web | pending | |
 
 ## Log
 
@@ -62,3 +65,4 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 - **L21** (usuario): "Puedes mejorar la UI/UX en los reportes, ya que en móvil no se ve bien". Guideline aplicado: gentle-ui-design references/adaptive-interfaces.md.
 - **L22** (proceso): T13 — tablas cash-flow/categorías/avoidable → stacked card rows <960px (DESKTOP_QUERY existente); savings ya era grid adaptive; targets 44px en selects/botones móvil; desktop pixel-intacto; sin keys i18n nuevas.
 - **L23** (revisión nativa 5ª ronda): T13 aprobado (2 lenses: readability+reliability), 6 advisory → backlog: scaffold Paper/CardHeadline/RowStat triplicado por sección (divergencia futura); opción `strong` de RowStat sin uso; key accountId??"unassigned" puede duplicar keys si la API algún día emite >1 grupo sin cuenta; matchMedia helper del spec pasa cualquier query no-px; targets 44px assert solo por sx (jsdom no mide px).
+- **L24** (usuario): "sí" — acepta la propuesta de resumen ejecutivo + secciones colapsables con auto-apertura por hallazgos (gráficos/tabs postergados: sin histórico multi-mes aún).
