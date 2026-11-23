@@ -143,11 +143,17 @@ export class ClosePeriodUseCase {
   }
 }
 
-/** PostgreSQL unique violation (23505) from any driver error shape. */
+/**
+ * PostgreSQL unique violation (23505) from any driver error shape —
+ * bare pg errors carry `code`, Drizzle wraps them on `cause`.
+ */
 function isUniqueViolation(cause: unknown): boolean {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    (cause as { code?: unknown }).code === "23505"
-  );
+  let current: unknown = cause;
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (typeof current !== "object" || current === null) return false;
+    const asError = current as { code?: unknown; cause?: unknown };
+    if (asError.code === "23505") return true;
+    current = asError.cause;
+  }
+  return false;
 }
