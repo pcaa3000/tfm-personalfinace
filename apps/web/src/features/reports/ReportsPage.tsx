@@ -8,7 +8,9 @@ import {
   Alert,
   Box,
   Button,
+  ButtonBase,
   Chip,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -37,7 +39,7 @@ import { ApiError, getWorkspace, listCurrencies } from "../ledger/api";
 import { errorMessage } from "../ledger/errors";
 import { formatBusinessDate } from "../ledger/format";
 import { BrandMark } from "../ledger/BrandMark";
-import { MoonIcon, SunIcon } from "../ledger/icons";
+import { ChevronDownIcon, MoonIcon, SunIcon } from "../ledger/icons";
 import { MobileNav } from "../ledger/MobileNav";
 import {
   persistRailCollapsed,
@@ -56,6 +58,7 @@ import {
   type AvoidableExpenseDetector,
   type AvoidableExpensesView,
   type CashFlowReportView,
+  type ExpenseCategoryView,
   type ExpensesByCategoryView,
   type MonthlySavingsView,
   type ReportExportFormat,
@@ -151,13 +154,19 @@ interface SectionFrameProps {
   loading: boolean;
   error: string | null;
   onRetry: () => void;
+  /** S13/T14 — whether the section content is expanded. */
+  expanded: boolean;
+  onToggle: () => void;
+  /** S13/T14 — one-line headline figures kept in the always-visible header. */
+  summary: string | null;
   children: React.ReactNode;
 }
 
 /**
- * Shared chrome of every report section: title + period badge + resolved
- * window caption, then skeleton / error+retry / content — the same
- * states the ledger list uses (S2, S3).
+ * Shared chrome of every report section: a heading button (title +
+ * period badge + resolved window + headline `summary` + chevron) that
+ * expands/collapses the content (S13), then skeleton / error+retry /
+ * content — the same states the ledger list uses (S2, S3).
  */
 function ReportSection({
   title,
@@ -165,44 +174,81 @@ function ReportSection({
   loading,
   error,
   onRetry,
+  expanded,
+  onToggle,
+  summary,
   children,
 }: SectionFrameProps) {
   const { t, i18n } = useTranslation();
   return (
     <Box component="section" aria-label={title} sx={{ mb: { xs: 3, md: 4 } }}>
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "baseline",
-          gap: 1.25,
-          mb: 1,
-          flexWrap: "wrap",
-        }}
+      <Typography
+        component="h3"
+        sx={{ m: 0, mb: 1, fontSize: { xs: 13, md: 14 }, fontWeight: 750 }}
       >
-        <Typography
-          component="h3"
-          sx={{ fontSize: { xs: 13, md: 14 }, fontWeight: 750 }}
+        <ButtonBase
+          onClick={onToggle}
+          aria-expanded={expanded}
+          sx={{
+            width: "100%",
+            display: "flex",
+            alignItems: "baseline",
+            gap: 1.25,
+            flexWrap: "wrap",
+            justifyContent: "flex-start",
+            textAlign: "left",
+            py: 0.5,
+            font: "inherit",
+            color: "inherit",
+          }}
         >
-          {title}
-        </Typography>
-        {period ? <PeriodBadge status={period.periodStatus} /> : null}
-        {period ? (
-          <Typography variant="caption" color="text.secondary">
-            {`${formatBusinessDate(period.from, i18n.language)} – ${formatBusinessDate(period.to, i18n.language)}`}
-          </Typography>
-        ) : null}
-      </Box>
-      {loading ? (
-        <Box
-          data-part="report-skeleton"
-          aria-label={t("reports.loading")}
-          sx={{ display: "grid", gap: 1 }}
-        >
-          <Skeleton variant="rounded" height={36} />
-          <Skeleton variant="rounded" height={52} />
-          <Skeleton variant="rounded" height={52} />
+          <Box component="span">{title}</Box>
+          {period ? <PeriodBadge status={period.periodStatus} /> : null}
+          {period ? (
+            <Typography variant="caption" color="text.secondary">
+              {`${formatBusinessDate(period.from, i18n.language)} – ${formatBusinessDate(period.to, i18n.language)}`}
+            </Typography>
+          ) : null}
+          {summary ? (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontVariantNumeric: "tabular-nums" }}
+            >
+              {summary}
+            </Typography>
+          ) : null}
+          <ChevronDownIcon
+            sx={{
+              ml: "auto",
+              fontSize: 18,
+              flexShrink: 0,
+              alignSelf: "center",
+              transform: expanded ? "rotate(180deg)" : "none",
+              transition: "transform 200ms",
+            }}
+          />
+        </ButtonBase>
+      </Typography>
+      <Collapse in={expanded}>
+        <Box>
+          {loading ? (
+            <Box
+              data-part="report-skeleton"
+              aria-label={t("reports.loading")}
+              sx={{ display: "grid", gap: 1 }}
+            >
+              <Skeleton variant="rounded" height={36} />
+              <Skeleton variant="rounded" height={52} />
+              <Skeleton variant="rounded" height={52} />
+            </Box>
+          ) : error ? null : (
+            children
+          )}
         </Box>
-      ) : error ? (
+      </Collapse>
+      {/* A load error is a signal — it stays visible even collapsed (S13). */}
+      {error ? (
         <Alert
           severity="error"
           action={
@@ -213,9 +259,7 @@ function ReportSection({
         >
           {t("reports.loadError")} {error}
         </Alert>
-      ) : (
-        children
-      )}
+      ) : null}
     </Box>
   );
 }
@@ -312,8 +356,28 @@ interface ReportQuerySectionProps {
   enabled: boolean;
 }
 
+/** S13/T14 — a section whose content sits behind a collapsible header. */
+interface CollapsibleReportSectionProps extends ReportQuerySectionProps {
+  expanded: boolean;
+  onToggle: () => void;
+}
+
+/** Display-only decimal sum of the per-account net flows (single currency). */
+function totalNetFlow(view: CashFlowReportView): string {
+  const total = view.accounts.reduce(
+    (sum, account) => sum + (Number(account.netFlow) || 0),
+    0,
+  );
+  return total.toFixed(2);
+}
+
 /** S1 — per-account income/expense/transfers/net flow table. */
-function CashFlowSection({ query, enabled }: ReportQuerySectionProps) {
+function CashFlowSection({
+  query,
+  enabled,
+  expanded,
+  onToggle,
+}: CollapsibleReportSectionProps) {
   const { t, i18n } = useTranslation();
   const desktop = useMediaQuery(DESKTOP_QUERY);
   const report = useQuery({
@@ -324,10 +388,16 @@ function CashFlowSection({ query, enabled }: ReportQuerySectionProps) {
   const money = (decimal: string) =>
     formatReportAmount(decimal, query.currency, i18n.language);
   const view: CashFlowReportView | undefined = report.data;
+  const summary = view
+    ? `${money(totalNetFlow(view))} · ${t("reports.summary.accounts", { count: view.accounts.length })}`
+    : null;
   return (
     <ReportSection
       title={t("reports.cashFlow.title")}
       period={view?.period}
+      expanded={expanded}
+      onToggle={onToggle}
+      summary={summary}
       loading={enabled && report.isLoading}
       error={report.isError ? errorMessage(report.error, t) : null}
       onRetry={() => void report.refetch()}
@@ -457,7 +527,9 @@ function CashFlowSection({ query, enabled }: ReportQuerySectionProps) {
 function ExpensesByCategorySection({
   query,
   enabled,
-}: ReportQuerySectionProps) {
+  expanded,
+  onToggle,
+}: CollapsibleReportSectionProps) {
   const { t, i18n } = useTranslation();
   const desktop = useMediaQuery(DESKTOP_QUERY);
   const report = useQuery({
@@ -473,10 +545,16 @@ function ExpensesByCategorySection({
         ([, total]) => Number(total) !== 0,
       )
     : [];
+  const summary = view
+    ? `${money(view.totalExpenses)} · ${t("reports.summary.categories", { count: view.categories.length })}`
+    : null;
   return (
     <ReportSection
       title={t("reports.categories.title")}
       period={view?.period}
+      expanded={expanded}
+      onToggle={onToggle}
+      summary={summary}
       loading={enabled && report.isLoading}
       error={report.isError ? errorMessage(report.error, t) : null}
       onRetry={() => void report.refetch()}
@@ -621,7 +699,12 @@ function detectorLabel(detector: AvoidableExpenseDetector, t: TFunction) {
  * one detector (ant, recurring_charge, concentration, growth), with the
  * headline potential-savings figure and a chip per fired detector.
  */
-function AvoidableExpensesSection({ query, enabled }: ReportQuerySectionProps) {
+function AvoidableExpensesSection({
+  query,
+  enabled,
+  expanded,
+  onToggle,
+}: CollapsibleReportSectionProps) {
   const { t, i18n } = useTranslation();
   const desktop = useMediaQuery(DESKTOP_QUERY);
   const report = useQuery({
@@ -632,10 +715,16 @@ function AvoidableExpensesSection({ query, enabled }: ReportQuerySectionProps) {
   const money = (decimal: string) =>
     formatReportAmount(decimal, query.currency, i18n.language);
   const view: AvoidableExpensesView | undefined = report.data;
+  const summary = view
+    ? `${money(view.potentialSavings)} · ${t("reports.summary.groups", { count: view.groups.length })}`
+    : null;
   return (
     <ReportSection
       title={t("reports.avoidable.title")}
       period={view?.period}
+      expanded={expanded}
+      onToggle={onToggle}
+      summary={summary}
       loading={enabled && report.isLoading}
       error={report.isError ? errorMessage(report.error, t) : null}
       onRetry={() => void report.refetch()}
@@ -815,7 +904,12 @@ function AvoidableExpensesSection({ query, enabled }: ReportQuerySectionProps) {
 }
 
 /** S4 — saved amount + observed rate, with deficit/no_income notes. */
-function MonthlySavingsSection({ query, enabled }: ReportQuerySectionProps) {
+function MonthlySavingsSection({
+  query,
+  enabled,
+  expanded,
+  onToggle,
+}: CollapsibleReportSectionProps) {
   const { t, i18n } = useTranslation();
   const report = useQuery({
     queryKey: ["reports", "monthly-savings", query],
@@ -843,10 +937,17 @@ function MonthlySavingsSection({ query, enabled }: ReportQuerySectionProps) {
     </Paper>
   );
 
+  const summary = view
+    ? `${money(view.saved)} · ${view.observedRate !== null ? formatReportPercent(view.observedRate, i18n.language) : "—"}`
+    : null;
+
   return (
     <ReportSection
       title={t("reports.savings.title")}
       period={view?.period}
+      expanded={expanded}
+      onToggle={onToggle}
+      summary={summary}
       loading={enabled && report.isLoading}
       error={report.isError ? errorMessage(report.error, t) : null}
       onRetry={() => void report.refetch()}
@@ -886,6 +987,148 @@ function MonthlySavingsSection({ query, enabled }: ReportQuerySectionProps) {
     </ReportSection>
   );
 }
+
+/** S13/T14 — one KPI card of the executive summary strip. */
+function SummaryCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+}) {
+  return (
+    <Paper
+      variant="outlined"
+      sx={{ borderRadius: "12px", px: 1.5, py: 1.25, minWidth: 0 }}
+    >
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ display: "block" }}
+      >
+        {label}
+      </Typography>
+      <Typography
+        noWrap
+        sx={{
+          fontWeight: 700,
+          fontSize: 16,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {value}
+      </Typography>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ display: "block" }}
+      >
+        {hint}
+      </Typography>
+    </Paper>
+  );
+}
+
+/**
+ * S13/T14 — always-visible executive summary: four KPIs computed from
+ * the same `reports` query keys the sections use (react-query dedupes
+ * the observers, so no extra requests). Missing views render "—";
+ * loaded zeroes render a real 0.
+ */
+function ExecutiveSummary({ query, enabled }: ReportQuerySectionProps) {
+  const { t, i18n } = useTranslation();
+  const savings = useQuery({
+    queryKey: ["reports", "monthly-savings", query],
+    queryFn: () => fetchMonthlySavings(query),
+    enabled,
+  }).data;
+  const avoidable = useQuery({
+    queryKey: ["reports", "avoidable-expenses", query],
+    queryFn: () => fetchAvoidableExpenses(query),
+    enabled,
+  }).data;
+  const cashFlow = useQuery({
+    queryKey: ["reports", "cash-flow", query],
+    queryFn: () => fetchCashFlowReport(query),
+    enabled,
+  }).data;
+  const categories = useQuery({
+    queryKey: ["reports", "expenses-by-category", query],
+    queryFn: () => fetchExpensesByCategory(query),
+    enabled,
+  }).data;
+  const money = (decimal: string) =>
+    formatReportAmount(decimal, query.currency, i18n.language);
+
+  const topCategory = categories?.categories
+    .filter((category) => category.nature === "discretionary")
+    .reduce<ExpenseCategoryView | undefined>(
+      (best, category) =>
+        best === undefined || Number(category.total) > Number(best.total)
+          ? category
+          : best,
+      undefined,
+    );
+
+  const savingsHint = savings
+    ? savings.note === "deficit"
+      ? `${t("reports.summary.deficit")}: ${money(savings.deficit ?? "0")}`
+      : savings.observedRate !== null
+        ? `${t("reports.savings.observedRate")}: ${formatReportPercent(savings.observedRate, i18n.language)}`
+        : "—"
+    : "—";
+
+  return (
+    <Box
+      component="section"
+      aria-label={t("reports.summary.title")}
+      sx={{ mb: { xs: 3, md: 4 } }}
+    >
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "repeat(2, 1fr)", md: "repeat(4, 1fr)" },
+          gap: 1,
+        }}
+      >
+        <SummaryCard
+          label={t("reports.summary.observedSavings")}
+          value={savings ? money(savings.saved) : "—"}
+          hint={savingsHint}
+        />
+        <SummaryCard
+          label={t("reports.summary.potentialSavings")}
+          value={avoidable ? money(avoidable.potentialSavings) : "—"}
+          hint={
+            avoidable
+              ? t("reports.summary.groups", { count: avoidable.groups.length })
+              : "—"
+          }
+        />
+        <SummaryCard
+          label={t("reports.summary.cashFlow")}
+          value={cashFlow ? money(totalNetFlow(cashFlow)) : "—"}
+          hint={
+            cashFlow
+              ? t("reports.summary.accounts", {
+                  count: cashFlow.accounts.length,
+                })
+              : "—"
+          }
+        />
+        <SummaryCard
+          label={t("reports.summary.topCategory")}
+          value={topCategory?.label ?? "—"}
+          hint={topCategory ? money(topCategory.total) : "—"}
+        />
+      </Box>
+    </Box>
+  );
+}
+
+type ReportSectionKey = "cashFlow" | "categories" | "avoidable" | "savings";
 
 /**
  * Reports page (reports-monthly T7, S7, CA-013): the four monthly
@@ -1006,6 +1249,29 @@ export function ReportsPage() {
     persistRailCollapsed(next);
     setRailCollapsed(next);
   };
+
+  // S13/T14: every section starts collapsed except avoidable expenses,
+  // which auto-opens once it detects groups — until the user overrides
+  // either way (a recorded toggle always wins).
+  const [sectionToggles, setSectionToggles] = useState<
+    Partial<Record<ReportSectionKey, boolean>>
+  >({});
+  const avoidablePeek = useQuery({
+    queryKey: ["reports", "avoidable-expenses", query],
+    queryFn: () => fetchAvoidableExpenses(query),
+    enabled,
+  });
+  const avoidableHasGroups =
+    (avoidablePeek.data?.groups.length ?? 0) > 0;
+  const autoExpanded = (key: ReportSectionKey) =>
+    key === "avoidable" ? avoidableHasGroups : false;
+  const sectionExpanded = (key: ReportSectionKey) =>
+    sectionToggles[key] ?? autoExpanded(key);
+  const toggleSection = (key: ReportSectionKey) =>
+    setSectionToggles((previous) => ({
+      ...previous,
+      [key]: !(previous[key] ?? autoExpanded(key)),
+    }));
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", alignItems: "stretch" }}>
@@ -1261,10 +1527,31 @@ export function ReportsPage() {
             },
           }}
         >
-          <CashFlowSection query={query} enabled={enabled} />
-          <ExpensesByCategorySection query={query} enabled={enabled} />
-          <AvoidableExpensesSection query={query} enabled={enabled} />
-          <MonthlySavingsSection query={query} enabled={enabled} />
+          <ExecutiveSummary query={query} enabled={enabled} />
+          <CashFlowSection
+            query={query}
+            enabled={enabled}
+            expanded={sectionExpanded("cashFlow")}
+            onToggle={() => toggleSection("cashFlow")}
+          />
+          <ExpensesByCategorySection
+            query={query}
+            enabled={enabled}
+            expanded={sectionExpanded("categories")}
+            onToggle={() => toggleSection("categories")}
+          />
+          <AvoidableExpensesSection
+            query={query}
+            enabled={enabled}
+            expanded={sectionExpanded("avoidable")}
+            onToggle={() => toggleSection("avoidable")}
+          />
+          <MonthlySavingsSection
+            query={query}
+            enabled={enabled}
+            expanded={sectionExpanded("savings")}
+            onToggle={() => toggleSection("savings")}
+          />
         </Box>
       </Box>
 

@@ -509,6 +509,20 @@ export const en: TranslationShape = {
       noIncomeNote:
         "No confirmed income in the period: the savings rate cannot be computed.",
     },
+    summary: {
+      title: "Executive summary",
+      observedSavings: "Observed savings",
+      potentialSavings: "Potential savings",
+      cashFlow: "Cash flow",
+      topCategory: "Top category",
+      deficit: "Deficit",
+      groups_one: "{{count}} group",
+      groups_other: "{{count}} groups",
+      accounts_one: "{{count}} account",
+      accounts_other: "{{count}} accounts",
+      categories_one: "{{count}} category",
+      categories_other: "{{count}} categories",
+    },
   },
   errors: {
     GENERIC: "The operation could not be completed. Try again.",

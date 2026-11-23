@@ -344,7 +344,8 @@ describe("ReportsPage (reports-monthly T7, S7, CA-013)", () => {
     renderPage();
 
     expect(await screen.findByText("Tasa observada")).toBeTruthy();
-    expect(screen.getByText(/75\s?%/)).toBeTruthy();
+    // S13: the rate also appears in the summary strip and section header.
+    expect(screen.getAllByText(/75\s?%/).length).toBeGreaterThan(0);
   });
 
   it("shows the deficit note with the deficit amount", async () => {
@@ -614,6 +615,174 @@ describe("ReportsPage export (reports-monthly T10)", () => {
   });
 });
 
+describe("ReportsPage executive summary + collapsible sections (reports-monthly T14, S13)", () => {
+  const discretionaryCategory = {
+    categoryId: "cat-cafes",
+    key: "cafes",
+    label: "Cafés",
+    nature: "discretionary",
+    total: "450.00",
+    percentOfExpenses: 36,
+    transactionCount: 20,
+  };
+
+  it("renders the four KPIs computed from the already-fetched views", async () => {
+    mockReports({
+      categories: {
+        ...categories,
+        categories: [...categories.categories, discretionaryCategory],
+      },
+    });
+    renderPage();
+
+    const summary = await screen.findByRole("region", {
+      name: "Resumen ejecutivo",
+    });
+
+    // Observed savings: saved amount + observed-rate hint.
+    expect(within(summary).getByText("Ahorro observado")).toBeTruthy();
+    expect(
+      await within(summary).findByText(/3750,00\s?PEN/),
+    ).toBeTruthy();
+    expect(within(summary).getByText(/Tasa observada: 75\s?%/)).toBeTruthy();
+
+    // Avoidable expenses: potential savings + group count hint.
+    expect(within(summary).getByText("Ahorro potencial")).toBeTruthy();
+    expect(within(summary).getByText(/130,00\s?PEN/)).toBeTruthy();
+    expect(within(summary).getByText("2 grupos")).toBeTruthy();
+
+    // Cash flow: sum of net flows across accounts (3500 + (-50)).
+    expect(within(summary).getByText("Flujo de caja")).toBeTruthy();
+    expect(within(summary).getByText(/3450,00\s?PEN/)).toBeTruthy();
+    expect(within(summary).getByText("2 cuentas")).toBeTruthy();
+
+    // Top discretionary category.
+    expect(within(summary).getByText("Top categoría")).toBeTruthy();
+    expect(within(summary).getByText("Cafés")).toBeTruthy();
+    // Anchored: "3450,00 PEN" (cash flow) would also match a loose 450 regex.
+    expect(within(summary).getByText(/^450,00\s?PEN$/)).toBeTruthy();
+  });
+
+  it("collapses the four sections by default, keeping a summary line in the header", async () => {
+    mockReports({
+      avoidable: { ...avoidable, groups: [], potentialSavings: "0.00" },
+    });
+    renderPage();
+
+    const cashFlowSection = await screen.findByRole("region", {
+      name: "Flujo de caja por cuenta",
+    });
+    const categoriesSection = screen.getByRole("region", {
+      name: "Gastos por categoría",
+    });
+    const avoidableSection = screen.getByRole("region", {
+      name: "Gastos evitables",
+    });
+    const savingsSection = screen.getByRole("region", {
+      name: "Ahorro del mes",
+    });
+
+    const header = (section: HTMLElement, name: RegExp) =>
+      within(section).getByRole("button", { name });
+
+    expect(
+      header(cashFlowSection, /Flujo de caja por cuenta/).getAttribute(
+        "aria-expanded",
+      ),
+    ).toBe("false");
+    expect(
+      header(categoriesSection, /Gastos por categoría/).getAttribute(
+        "aria-expanded",
+      ),
+    ).toBe("false");
+    expect(
+      header(avoidableSection, /Gastos evitables/).getAttribute(
+        "aria-expanded",
+      ),
+    ).toBe("false");
+    expect(
+      header(savingsSection, /Ahorro del mes/).getAttribute("aria-expanded"),
+    ).toBe("false");
+
+    // The collapsed header still surfaces the section's headline figures.
+    expect(
+      await within(cashFlowSection).findByText(/3450,00\s?PEN · 2 cuentas/),
+    ).toBeTruthy();
+    expect(
+      within(categoriesSection).getByText(/1250,00\s?PEN · 1 categoría/),
+    ).toBeTruthy();
+    expect(
+      within(avoidableSection).getByText(/0,00\s?PEN · 0 grupos/),
+    ).toBeTruthy();
+    expect(
+      within(savingsSection).getByText(/3750,00\s?PEN · 75\s?%/),
+    ).toBeTruthy();
+  });
+
+  it("auto-opens the avoidable section once it detects groups", async () => {
+    mockReports();
+    renderPage();
+
+    const section = await screen.findByRole("region", {
+      name: "Gastos evitables",
+    });
+    const header = within(section).getByRole("button", {
+      name: /Gastos evitables/,
+    });
+    await waitFor(() =>
+      expect(header.getAttribute("aria-expanded")).toBe("true"),
+    );
+  });
+
+  it("keeps the avoidable section collapsed when it detects no groups", async () => {
+    mockReports({
+      avoidable: { ...avoidable, groups: [], potentialSavings: "0.00" },
+    });
+    renderPage();
+
+    const section = await screen.findByRole("region", {
+      name: "Gastos evitables",
+    });
+    // Wait for the resolved data (the header summary is data-driven).
+    await within(section).findByText(/0 grupos/);
+    const header = within(section).getByRole("button", {
+      name: /Gastos evitables/,
+    });
+    expect(header.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("toggles a section open and closed when its header is clicked", async () => {
+    mockReports();
+    renderPage();
+
+    const categoriesSection = await screen.findByRole("region", {
+      name: "Gastos por categoría",
+    });
+    const categoriesHeader = within(categoriesSection).getByRole("button", {
+      name: /Gastos por categoría/,
+    });
+    expect(categoriesHeader.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(categoriesHeader);
+    expect(categoriesHeader.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(categoriesHeader);
+    expect(categoriesHeader.getAttribute("aria-expanded")).toBe("false");
+
+    // The user can also collapse an auto-opened section.
+    const avoidableSection = await screen.findByRole("region", {
+      name: "Gastos evitables",
+    });
+    const avoidableHeader = within(avoidableSection).getByRole("button", {
+      name: /Gastos evitables/,
+    });
+    await waitFor(() =>
+      expect(avoidableHeader.getAttribute("aria-expanded")).toBe("true"),
+    );
+    fireEvent.click(avoidableHeader);
+    expect(avoidableHeader.getAttribute("aria-expanded")).toBe("false");
+  });
+});
+
 describe("ReportsPage mobile layout (reports-monthly T13, S12)", () => {
   beforeEach(() => mockViewportWidth(390));
 
@@ -696,8 +865,11 @@ describe("ReportsPage mobile layout (reports-monthly T13, S12)", () => {
     expect(await within(section).findByText("Tasa observada")).toBeTruthy();
     expect(section.querySelector("table")).toBeNull();
     expect(within(section).getByText("Ahorro")).toBeTruthy();
-    expect(within(section).getByText(/3750,00\s?PEN/)).toBeTruthy();
-    expect(within(section).getByText(/75\s?%/)).toBeTruthy();
+    // S13: the collapsed header summary repeats these figures.
+    expect(
+      within(section).getAllByText(/3750,00\s?PEN/).length,
+    ).toBeGreaterThan(0);
+    expect(within(section).getAllByText(/75\s?%/).length).toBeGreaterThan(0);
   });
 
   it("keeps the wide tables on the desktop breakpoint", async () => {

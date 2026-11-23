@@ -505,6 +505,20 @@ export const es = {
       noIncomeNote:
         "Sin ingresos confirmados en el período: no se puede calcular la tasa de ahorro.",
     },
+    summary: {
+      title: "Resumen ejecutivo",
+      observedSavings: "Ahorro observado",
+      potentialSavings: "Ahorro potencial",
+      cashFlow: "Flujo de caja",
+      topCategory: "Top categoría",
+      deficit: "Déficit",
+      groups_one: "{{count}} grupo",
+      groups_other: "{{count}} grupos",
+      accounts_one: "{{count}} cuenta",
+      accounts_other: "{{count}} cuentas",
+      categories_one: "{{count}} categoría",
+      categories_other: "{{count}} categorías",
+    },
   },
   errors: {
     GENERIC: "No se pudo completar la operación. Intentá de nuevo.",
