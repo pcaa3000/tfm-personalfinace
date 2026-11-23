@@ -13,6 +13,8 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 - **S7** (L2, CA-013, RF-052): API + página web de reportes. Todo gráfico o métrica tiene tabla/resumen textual equivalente. Drill-down agregado→transacciones cubierto por `GET /api/v1/transactions` existente (RF-053).
 - **S8** (RN-001, INV-TRX-01): Solo transacciones `confirmed` participan en reportes; `voided`, borradores y pendientes de sincronización quedan excluidos de todo agregado.
 
+- **S10** (L17): El demo debe materializar gastos hormiga detectables: tarifas de transporte menor y/o snacks como categoría discretionary con merchant explícito compartido, y suscripciones (Spotify, Netflix...) separadas de `services` (essential) hacia una categoría discretionary.
+
 ## Tasks
 
 | ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
@@ -27,6 +29,7 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 | T8 | e2e + sync espejo Engram + cierre doc | todos | api+docs | done | reports specs 89/89 en estado commiteado; espejo Engram ok |
 | T9 | UI cierre de mes: botón + dialog integridad + refetch | S5, S7 | web | done | RED remediation 16 fail→GREEN 38; suite web 501 |
 | T10 | Exportación reportes CSV/XLSX (endpoint + botón descarga) | S9 | api+web | done | API: 50 specs foc.; suite 1363; web: botones blob-auth |
+| T11 | Seed demo: categoría "Transporte menor"/suscripciones discretionary + merchants explícitos | S10 | api (seed) | pending | |
 
 ## Log
 
@@ -46,3 +49,4 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 - **L14** (usuario): "En la UI, no veo la opcion para realizar el cierre de mes" + "asi mismo agregar la opcion para descargar los reportes en xlsx, csv".
 - **L15** (proceso): T9+T10-web un worker (surface ampliada a ledger/api.ts → requestBlob); T10-api worker relanzado (1er intento cancelado por aborto de tool call — completaba ~95%). exceljs ^4.4.0 añadido (dep nueva — item 5; ASSESS medium, sin verifier). Nota: workers reportaron S9 ausente de Specs — sí existe (entre S7 y S8).
 - **L16** (revisión nativa 3ª ronda): T9+T10 (`0ba98d5`/`a6400d4`) aprobados, 4 advisory → fixes aplicados: neutralización de fórmulas en CSV (`= + - @` → `'`), BOM UTF-8, guardia simplificada, xlsx sin prefijo (shared strings) + spec de cobertura. Fixes `b3a85df`/`c5c839e` aprobados. Backlog: workspaceYearMonth fallback a reloj local del browser (botón Cerrar puede ofrecerse un mes no terminado — el server rechaza igual); export materializa workbook completo en memoria (sin streaming ni bound); labels que legítimamente empiezan con `=` quedan con `'` en CSV.
+- **L17** (usuario): "recategoriza Transporte menor o snacks, y separa suscripciones de servicios — Spotify o Netflix no es un servicio esencial sino parte de Ocio, discrecional". Motivo: el reporte de gastos hormiga queda vacío con datos demo (transport essential excluido + merchants diversos por pick(TRANSPORT_CONCEPTS) + medias discretionary >1% ingreso).
