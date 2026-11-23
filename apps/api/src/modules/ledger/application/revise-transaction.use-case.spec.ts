@@ -581,11 +581,17 @@ describe("ReviseTransactionUseCase — period-close staleness (reports-monthly T
     calls: { workspaceId: string; currency: string; businessDate: string }[] =
       [];
 
+    failNext = false;
+
     async invalidateCovering(
       workspaceId: WorkspaceId,
       currency: string,
       businessDate: string,
     ) {
+      if (this.failNext) {
+        this.failNext = false;
+        throw new Error("invalidation failed");
+      }
       this.calls.push({
         workspaceId: workspaceId.value,
         currency,
@@ -618,6 +624,31 @@ describe("ReviseTransactionUseCase — period-close staleness (reports-monthly T
     expect(periodCloses.calls).toEqual([
       { workspaceId: "ws-1", currency: "EUR", businessDate: "2026-10-27" },
     ]);
+  });
+
+  it("does not persist the revision when invalidation fails (invalidate-before-save)", async () => {
+    const trx = await makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const periodCloses = new SpyPeriodCloses();
+    periodCloses.failNext = true;
+    const useCase = new ReviseTransactionUseCase(
+      repo,
+      accounts,
+      categories,
+      clock,
+      periodCloses,
+    );
+
+    await expect(
+      useCase.execute({
+        workspaceId: ws,
+        transactionId: "trx-1",
+        actor: "subject-1",
+        concept: "Revised concept",
+      }),
+    ).rejects.toThrow("invalidation failed");
+    // Nothing was committed: retry replays the invalidation (R4-002).
+    expect(repo.saved).toHaveLength(0);
   });
 
   it("invalidates both periods when the revision moves the business date across months", async () => {

@@ -58,8 +58,9 @@ export class VoidTransactionUseCase {
       return revision;
     }
 
-    await this.transactions.save(transaction);
-
+    // Invalidate BEFORE persisting the void: a failed invalidation
+    // leaves nothing committed so the retry replays it; a failed save
+    // after invalidation only leaves a conservative stale close.
     if (this.periodCloses !== undefined) {
       await this.periodCloses.invalidateCovering(
         transaction.workspaceId,
@@ -68,6 +69,8 @@ export class VoidTransactionUseCase {
         this.clock.now(),
       );
     }
+
+    await this.transactions.save(transaction);
 
     return ok(toTransactionView(transaction));
   }

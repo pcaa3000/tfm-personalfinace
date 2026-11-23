@@ -26,6 +26,8 @@ class InMemoryPeriodCloses implements PeriodCloseRepositoryPort {
   }
 
   async save() {}
+
+  async saveSuperseding() {}
 }
 
 const wsResult = WorkspaceId.create("ws-1");

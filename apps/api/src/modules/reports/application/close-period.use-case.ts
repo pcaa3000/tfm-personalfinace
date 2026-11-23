@@ -93,19 +93,19 @@ export class ClosePeriodUseCase {
       period.value.start,
     );
     const now = this.clock.now();
-    if (existing !== null) {
-      if (!existing.stale) {
-        return err(
-          new DomainError(
-            "PERIOD_ALREADY_CLOSED",
-            `Period ${period.value.start} is already closed for ${currency.value.code}`,
-          ),
-        );
-      }
-      // Stale close: supersede it — the row stays for history.
-      existing.markSuperseded(now);
-      await this.closes.save(existing);
+    if (existing !== null && !existing.stale) {
+      return err(
+        new DomainError(
+          "PERIOD_ALREADY_CLOSED",
+          `Period ${period.value.start} is already closed for ${currency.value.code}`,
+        ),
+      );
     }
+    // Stale close: supersede it — the row stays for history.
+    if (existing !== null) {
+      existing.markSuperseded(now);
+    }
+    const superseded = existing;
 
     const created = PeriodClose.close({
       id: this.ids.next(),
@@ -122,7 +122,32 @@ export class ClosePeriodUseCase {
       return created;
     }
 
-    await this.closes.save(created.value);
+    // Supersede + insert in ONE transaction (R4-003): a failed insert
+    // can never leave the period with zero active closes. The partial
+    // unique index is the final guard for concurrent closes — map its
+    // violation to the same PERIOD_ALREADY_CLOSED contract (409), not a 500.
+    try {
+      await this.closes.saveSuperseding(created.value, superseded);
+    } catch (cause) {
+      if (isUniqueViolation(cause)) {
+        return err(
+          new DomainError(
+            "PERIOD_ALREADY_CLOSED",
+            `Period ${period.value.start} is already closed for ${currency.value.code}`,
+          ),
+        );
+      }
+      throw cause;
+    }
     return ok(toPeriodCloseView(created.value));
   }
+}
+
+/** PostgreSQL unique violation (23505) from any driver error shape. */
+function isUniqueViolation(cause: unknown): boolean {
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    (cause as { code?: unknown }).code === "23505"
+  );
 }

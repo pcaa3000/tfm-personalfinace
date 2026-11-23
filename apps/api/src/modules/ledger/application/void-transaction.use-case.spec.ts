@@ -126,11 +126,17 @@ describe("VoidTransactionUseCase — period-close staleness (reports-monthly T2,
     calls: { workspaceId: string; currency: string; businessDate: string }[] =
       [];
 
+    failNext = false;
+
     async invalidateCovering(
       workspaceId: WorkspaceId,
       currency: string,
       businessDate: string,
     ) {
+      if (this.failNext) {
+        this.failNext = false;
+        throw new Error("invalidation failed");
+      }
       this.calls.push({
         workspaceId: workspaceId.value,
         currency,
@@ -156,6 +162,25 @@ describe("VoidTransactionUseCase — period-close staleness (reports-monthly T2,
     expect(periodCloses.calls).toEqual([
       { workspaceId: "ws-1", currency: "EUR", businessDate: "2026-10-27" },
     ]);
+  });
+
+  it("does not persist the void when invalidation fails (invalidate-before-save)", async () => {
+    const trx = makeTransaction();
+    const repo = new InMemoryTransactions([trx]);
+    const periodCloses = new SpyPeriodCloses();
+    periodCloses.failNext = true;
+    const useCase = new VoidTransactionUseCase(repo, clock, periodCloses);
+
+    await expect(
+      useCase.execute({
+        workspaceId: ws,
+        transactionId: "trx-1",
+        actor: "subject-1",
+      }),
+    ).rejects.toThrow("invalidation failed");
+    // Nothing was committed: a retry replays the invalidation — a
+    // close can never stay fresh over a voided transaction (R4-001).
+    expect(repo.saved).toHaveLength(0);
   });
 
   it("does not invalidate on the idempotent re-void path", async () => {

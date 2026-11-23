@@ -109,9 +109,12 @@ export class DrizzlePeriodCloseRepository
     return result.rowCount ?? 0;
   }
 
-  async save(close: PeriodClose): Promise<void> {
+  private async upsert(
+    executor: Pick<DrizzleDb, "insert">,
+    close: PeriodClose,
+  ): Promise<void> {
     const asDate = (iso: string): Date => new Date(`${iso}T00:00:00Z`);
-    await this.db
+    await executor
       .insert(periodCloses)
       .values({
         id: close.id,
@@ -133,5 +136,21 @@ export class DrizzlePeriodCloseRepository
           supersededAt: close.supersededAt,
         },
       });
+  }
+
+  async save(close: PeriodClose): Promise<void> {
+    await this.upsert(this.db, close);
+  }
+
+  async saveSuperseding(
+    created: PeriodClose,
+    superseded: PeriodClose | null,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      if (superseded !== null) {
+        await this.upsert(tx, superseded);
+      }
+      await this.upsert(tx, created);
+    });
   }
 }

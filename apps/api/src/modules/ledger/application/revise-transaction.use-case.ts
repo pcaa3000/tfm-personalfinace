@@ -270,8 +270,10 @@ export class ReviseTransactionUseCase {
       return revision;
     }
 
-    await this.transactions.save(transaction);
-
+    // Invalidate covering closes BEFORE persisting the revision: if
+    // invalidation fails nothing was committed and the retry replays it;
+    // if the save later fails, the closes are left stale — a conservative,
+    // recoverable state (never a fresh close over changed data).
     if (this.periodCloses !== undefined) {
       const at = this.clock.now();
       const effectiveCurrency = transaction.amount.currency.code;
@@ -294,6 +296,8 @@ export class ReviseTransactionUseCase {
         );
       }
     }
+
+    await this.transactions.save(transaction);
 
     return ok(toTransactionView(transaction));
   }

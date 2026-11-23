@@ -35,6 +35,17 @@ export interface PeriodCloseRepositoryPort {
   ): Promise<number>;
 
   save(close: PeriodClose): Promise<void>;
+
+  /**
+   * Atomically supersedes `superseded` and inserts `created` in one
+   * database transaction: a re-close over a stale close must never
+   * leave the period with zero active closes (R4-003). When
+   * `superseded` is null it degrades to a single insert.
+   */
+  saveSuperseding(
+    created: PeriodClose,
+    superseded: PeriodClose | null,
+  ): Promise<void>;
 }
 
 export const PERIOD_CLOSE_REPOSITORY = Symbol("PERIOD_CLOSE_REPOSITORY");

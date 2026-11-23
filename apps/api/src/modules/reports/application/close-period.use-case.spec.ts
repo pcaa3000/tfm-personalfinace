@@ -49,6 +49,19 @@ class InMemoryPeriodCloses implements PeriodCloseRepositoryPort {
       this.stored.push(close);
     }
   }
+
+  failNextSaveWith23505 = false;
+
+  async saveSuperseding(created: PeriodClose, superseded: PeriodClose | null) {
+    if (this.failNextSaveWith23505) {
+      this.failNextSaveWith23505 = false;
+      throw Object.assign(new Error("duplicate key"), { code: "23505" });
+    }
+    if (superseded !== null) {
+      await this.save(superseded);
+    }
+    await this.save(created);
+  }
 }
 
 const wsResult = WorkspaceId.create("ws-1");
@@ -311,6 +324,24 @@ describe("ClosePeriodUseCase", () => {
     expect(stale.supersededAt).toEqual(new Date("2026-10-15T12:00:00Z"));
     // The stale row update and the new insert both go through save().
     expect(repo.saved).toHaveLength(2);
+  });
+
+  it("maps a unique-index violation on insert to PERIOD_ALREADY_CLOSED", async () => {
+    const repo = new InMemoryPeriodCloses();
+    repo.failNextSaveWith23505 = true;
+    const useCase = new ClosePeriodUseCase(
+      repo,
+      clock("2026-10-15T12:00:00Z"),
+      ids("close"),
+    );
+
+    const result = await useCase.execute(baseCommand);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("PERIOD_ALREADY_CLOSED");
+    // R4-003: the client can tell its close was not applied — a 409,
+    // never a raw 500 from the partial unique index.
   });
 
   it("does not collide with a close of another currency for the same period", async () => {
