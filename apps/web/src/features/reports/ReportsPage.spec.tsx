@@ -6,8 +6,17 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import i18n from "../../i18n";
 import { ThemeModeProvider } from "../../theme-mode";
@@ -211,6 +220,30 @@ function closeView(
     stale: false,
     ...overrides,
   };
+}
+
+/** Simulate a real viewport width against min/max-width media queries. */
+function mockViewportWidth(width: number) {
+  window.matchMedia = vi.fn().mockImplementation(
+    (query: string): MediaQueryList => {
+      const min = /\(min-width:\s*(\d+(?:\.\d+)?)px\)/.exec(query);
+      const max = /\(max-width:\s*(\d+(?:\.\d+)?)px\)/.exec(query);
+      const matches =
+        query.includes("width") &&
+        (min === null || width >= Number(min[1])) &&
+        (max === null || width <= Number(max[1]));
+      return {
+        matches,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      };
+    },
+  );
 }
 
 /** Drives the MUI month/year selects (portal-rendered options). */
@@ -578,5 +611,107 @@ describe("ReportsPage export (reports-monthly T10)", () => {
     expect(
       await screen.findByText(/No se pudo descargar el reporte/),
     ).toBeTruthy();
+  });
+});
+
+describe("ReportsPage mobile layout (reports-monthly T13, S12)", () => {
+  beforeEach(() => mockViewportWidth(390));
+
+  it("stacks the cash-flow table, keeping every figure labeled", async () => {
+    mockReports();
+    renderPage();
+
+    const section = await screen.findByRole("region", {
+      name: "Flujo de caja por cuenta",
+    });
+    // Identifying field + secondary kind caption survive.
+    expect(await within(section).findByText("BCP Soles")).toBeTruthy();
+    expect(section.querySelector("table")).toBeNull();
+    expect(
+      section.querySelector('[data-part="report-stacked-rows"]'),
+    ).toBeTruthy();
+    expect(within(section).getByText("bank")).toBeTruthy();
+    expect(within(section).getByText("Sin cuenta")).toBeTruthy();
+    // Every column of the wide table stays visible, labeled, per row.
+    expect(within(section).getAllByText("Ingresos")).toHaveLength(2);
+    expect(within(section).getAllByText("Transf. entrantes")).toHaveLength(2);
+    expect(within(section).getAllByText("Flujo neto")).toHaveLength(2);
+    expect(within(section).getByText(/3500,00\s?PEN/)).toBeTruthy();
+    expect(within(section).getByText(/-50,00\s?PEN/)).toBeTruthy();
+  });
+
+  it("stacks the category table with nature, total, share and count", async () => {
+    mockReports();
+    renderPage();
+
+    const section = await screen.findByRole("region", {
+      name: "Gastos por categoría",
+    });
+    expect(await within(section).findByText("Comida")).toBeTruthy();
+    expect(section.querySelector("table")).toBeNull();
+    expect(
+      section.querySelector('[data-part="report-stacked-rows"]'),
+    ).toBeTruthy();
+    expect(within(section).getByText("Esencial")).toBeTruthy();
+    expect(
+      within(section).getAllByText(/800,00\s?PEN/).length,
+    ).toBeGreaterThan(0);
+    expect(within(section).getByText("64%")).toBeTruthy();
+    expect(within(section).getByText("12")).toBeTruthy();
+    // The nature subtotal chips stay on mobile too.
+    expect(within(section).getByText(/Esencial: 800,00\s?PEN/)).toBeTruthy();
+  });
+
+  it("stacks the avoidable-expenses table with detectors and figures", async () => {
+    mockReports();
+    renderPage();
+
+    const section = await screen.findByRole("region", {
+      name: "Gastos evitables",
+    });
+    expect(await within(section).findByText("starbucks")).toBeTruthy();
+    expect(section.querySelector("table")).toBeNull();
+    expect(
+      section.querySelector('[data-part="report-stacked-rows"]'),
+    ).toBeTruthy();
+    // Detector + confidence chips stay on each stacked row.
+    expect(within(section).getByText("Hormiga")).toBeTruthy();
+    expect(within(section).getByText("Recurrente")).toBeTruthy();
+    expect(within(section).getByText("Concentración")).toBeTruthy();
+    expect(within(section).getAllByText("Alta")).toHaveLength(2);
+    // Key figures: total, average, % discretionary, operations.
+    expect(within(section).getByText(/80,00\s?PEN/)).toBeTruthy();
+    expect(within(section).getByText(/16,00\s?PEN/)).toBeTruthy();
+    expect(within(section).getByText("17,78%")).toBeTruthy();
+    expect(within(section).getByText("5")).toBeTruthy();
+  });
+
+  it("keeps the savings figures readable as stacked stat cards", async () => {
+    mockReports();
+    renderPage();
+
+    const section = await screen.findByRole("region", {
+      name: "Ahorro del mes",
+    });
+    expect(await within(section).findByText("Tasa observada")).toBeTruthy();
+    expect(section.querySelector("table")).toBeNull();
+    expect(within(section).getByText("Ahorro")).toBeTruthy();
+    expect(within(section).getByText(/3750,00\s?PEN/)).toBeTruthy();
+    expect(within(section).getByText(/75\s?%/)).toBeTruthy();
+  });
+
+  it("keeps the wide tables on the desktop breakpoint", async () => {
+    mockViewportWidth(1400);
+    mockReports();
+    renderPage();
+
+    const section = await screen.findByRole("region", {
+      name: "Flujo de caja por cuenta",
+    });
+    expect(await within(section).findByText("BCP Soles")).toBeTruthy();
+    expect(section.querySelector("table")).toBeTruthy();
+    expect(
+      section.querySelector('[data-part="report-stacked-rows"]'),
+    ).toBeNull();
   });
 });

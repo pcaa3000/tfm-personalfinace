@@ -230,6 +230,82 @@ function EmptyState({ text }: { text: string }) {
 
 const tablePaperSx = { borderRadius: "12px", overflow: "hidden" } as const;
 const amountCellSx = { textAlign: "right", fontVariantNumeric: "tabular-nums" } as const;
+const stackedCardSx = {
+  borderRadius: "12px",
+  px: 1.5,
+  py: 1.25,
+  display: "grid",
+  gap: 0.5,
+} as const;
+
+/**
+ * S12 (T13) — mobile variant of a wide report table: one Paper card
+ * per record, identifying field + headline figure prominent, every
+ * remaining column as a labeled caption line. Nothing is dropped.
+ */
+function StackedRows({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      data-part="report-stacked-rows"
+      sx={{ display: "grid", gap: 1 }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+/** S12 — labeled secondary figure inside a stacked row. */
+function RowStat({
+  label,
+  value,
+  strong = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  strong?: boolean;
+}) {
+  return (
+    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
+      <Typography
+        variant="caption"
+        sx={{
+          fontVariantNumeric: "tabular-nums",
+          fontWeight: strong ? 700 : 400,
+          textAlign: "right",
+        }}
+      >
+        {value}
+      </Typography>
+    </Box>
+  );
+}
+
+/** S12 — the prominent figure + its label at the top of a stacked row. */
+function CardHeadline({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <Box sx={{ textAlign: "right", flexShrink: 0 }}>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ display: "block" }}
+      >
+        {label}
+      </Typography>
+      <Typography sx={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+        {value}
+      </Typography>
+    </Box>
+  );
+}
 
 interface ReportQuerySectionProps {
   query: ReportPeriodQuery;
@@ -239,6 +315,7 @@ interface ReportQuerySectionProps {
 /** S1 — per-account income/expense/transfers/net flow table. */
 function CashFlowSection({ query, enabled }: ReportQuerySectionProps) {
   const { t, i18n } = useTranslation();
+  const desktop = useMediaQuery(DESKTOP_QUERY);
   const report = useQuery({
     queryKey: ["reports", "cash-flow", query],
     queryFn: () => fetchCashFlowReport(query),
@@ -258,6 +335,60 @@ function CashFlowSection({ query, enabled }: ReportQuerySectionProps) {
       {view ? (
         view.accounts.length === 0 ? (
           <EmptyState text={t("reports.cashFlow.empty")} />
+        ) : !desktop ? (
+          <StackedRows>
+            {view.accounts.map((account) => (
+              <Paper
+                key={account.accountId ?? "unassigned"}
+                variant="outlined"
+                sx={stackedCardSx}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 1,
+                    alignItems: "start",
+                  }}
+                >
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontWeight: 650, fontSize: 14 }}>
+                      {account.name ?? t("reports.cashFlow.unassigned")}
+                    </Typography>
+                    {account.kind ? (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: "block" }}
+                      >
+                        {account.kind}
+                      </Typography>
+                    ) : null}
+                  </Box>
+                  <CardHeadline
+                    label={t("reports.cashFlow.netFlow")}
+                    value={money(account.netFlow)}
+                  />
+                </Box>
+                <RowStat
+                  label={t("reports.cashFlow.income")}
+                  value={money(account.income)}
+                />
+                <RowStat
+                  label={t("reports.cashFlow.expense")}
+                  value={money(account.expense)}
+                />
+                <RowStat
+                  label={t("reports.cashFlow.transfersIn")}
+                  value={money(account.transfersIn)}
+                />
+                <RowStat
+                  label={t("reports.cashFlow.transfersOut")}
+                  value={money(account.transfersOut)}
+                />
+              </Paper>
+            ))}
+          </StackedRows>
         ) : (
           <TableContainer component={Paper} variant="outlined" sx={tablePaperSx}>
             <Table size="small">
@@ -328,6 +459,7 @@ function ExpensesByCategorySection({
   enabled,
 }: ReportQuerySectionProps) {
   const { t, i18n } = useTranslation();
+  const desktop = useMediaQuery(DESKTOP_QUERY);
   const report = useQuery({
     queryKey: ["reports", "expenses-by-category", query],
     queryFn: () => fetchExpensesByCategory(query),
@@ -380,6 +512,54 @@ function ExpensesByCategorySection({
                 />
               ))}
             </Box>
+            {!desktop ? (
+              <StackedRows>
+                {view.categories.map((category) => (
+                  <Paper
+                    key={category.key}
+                    variant="outlined"
+                    sx={stackedCardSx}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 1,
+                        alignItems: "start",
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 650, fontSize: 14 }}>
+                          {category.label}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: "block" }}
+                        >
+                          {natureLabel(category.nature, t)}
+                        </Typography>
+                      </Box>
+                      <CardHeadline
+                        label={t("reports.categories.total")}
+                        value={money(category.total)}
+                      />
+                    </Box>
+                    <RowStat
+                      label={t("reports.categories.percent")}
+                      value={formatReportPercent(
+                        category.percentOfExpenses,
+                        i18n.language,
+                      )}
+                    />
+                    <RowStat
+                      label={t("reports.categories.count")}
+                      value={category.transactionCount}
+                    />
+                  </Paper>
+                ))}
+              </StackedRows>
+            ) : (
             <TableContainer
               component={Paper}
               variant="outlined"
@@ -423,6 +603,7 @@ function ExpensesByCategorySection({
                 </TableBody>
               </Table>
             </TableContainer>
+            )}
           </>
         )
       ) : null}
@@ -442,6 +623,7 @@ function detectorLabel(detector: AvoidableExpenseDetector, t: TFunction) {
  */
 function AvoidableExpensesSection({ query, enabled }: ReportQuerySectionProps) {
   const { t, i18n } = useTranslation();
+  const desktop = useMediaQuery(DESKTOP_QUERY);
   const report = useQuery({
     queryKey: ["reports", "avoidable-expenses", query],
     queryFn: () => fetchAvoidableExpenses(query),
@@ -478,6 +660,75 @@ function AvoidableExpensesSection({ query, enabled }: ReportQuerySectionProps) {
                 {`${t("reports.avoidable.totalDiscretionary")}: ${money(view.totalDiscretionary)}`}
               </Typography>
             </Box>
+            {!desktop ? (
+              <StackedRows>
+                {view.groups.map((group) => (
+                  <Paper
+                    key={group.key}
+                    variant="outlined"
+                    sx={stackedCardSx}
+                  >
+                    <Box
+                      sx={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 1,
+                        alignItems: "start",
+                      }}
+                    >
+                      <Typography
+                        sx={{ fontWeight: 650, fontSize: 14, minWidth: 0 }}
+                      >
+                        {group.label}
+                      </Typography>
+                      <CardHeadline
+                        label={t("reports.avoidable.total")}
+                        value={money(group.total)}
+                      />
+                    </Box>
+                    <Box
+                      sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}
+                    >
+                      {group.detectors.map((detector) => (
+                        <Chip
+                          key={detector}
+                          size="small"
+                          variant="outlined"
+                          label={detectorLabel(detector, t)}
+                        />
+                      ))}
+                      <Chip
+                        size="small"
+                        color={
+                          group.confidence === "high" ? "success" : "warning"
+                        }
+                        variant="outlined"
+                        label={t(
+                          group.confidence === "high"
+                            ? "reports.avoidable.confidenceHigh"
+                            : "reports.avoidable.confidenceLow",
+                        )}
+                      />
+                    </Box>
+                    <RowStat
+                      label={t("reports.avoidable.operations")}
+                      value={group.operationCount}
+                    />
+                    <RowStat
+                      label={t("reports.avoidable.average")}
+                      value={money(group.average)}
+                    />
+                    <RowStat
+                      label={t("reports.avoidable.percentDiscretionary")}
+                      value={formatReportPercent(
+                        group.percentOfDiscretionary,
+                        i18n.language,
+                      )}
+                    />
+                  </Paper>
+                ))}
+              </StackedRows>
+            ) : (
             <TableContainer
               component={Paper}
               variant="outlined"
@@ -555,6 +806,7 @@ function AvoidableExpensesSection({ query, enabled }: ReportQuerySectionProps) {
                 </TableBody>
               </Table>
             </TableContainer>
+            )}
           </>
         )
       ) : null}
@@ -886,7 +1138,7 @@ export function ReportsPage() {
           >
             <TextField
               select
-              size="small"
+              size={desktop ? "small" : "medium"}
               label={t("reports.month")}
               value={month}
               onChange={(event) => setMonth(Number(event.target.value))}
@@ -902,7 +1154,7 @@ export function ReportsPage() {
             </TextField>
             <TextField
               select
-              size="small"
+              size={desktop ? "small" : "medium"}
               label={t("reports.year")}
               value={year}
               onChange={(event) => setYear(Number(event.target.value))}
@@ -916,7 +1168,7 @@ export function ReportsPage() {
             </TextField>
             <TextField
               select
-              size="small"
+              size={desktop ? "small" : "medium"}
               label={t("reports.currency")}
               value={currency}
               onChange={(event) => setSelectedCurrency(event.target.value)}
@@ -950,6 +1202,7 @@ export function ReportsPage() {
                 variant="outlined"
                 disabled={exportDisabled}
                 onClick={() => exportMutation.mutate("csv")}
+                sx={desktop ? undefined : { minHeight: 44 }}
               >
                 {t("reports.export.csv")}
               </Button>
@@ -958,6 +1211,7 @@ export function ReportsPage() {
                 variant="outlined"
                 disabled={exportDisabled}
                 onClick={() => exportMutation.mutate("xlsx")}
+                sx={desktop ? undefined : { minHeight: 44 }}
               >
                 {t("reports.export.xlsx")}
               </Button>
@@ -970,6 +1224,7 @@ export function ReportsPage() {
                   closeMutation.reset();
                   setCloseDialogOpen(true);
                 }}
+                sx={desktop ? undefined : { minHeight: 44 }}
               >
                 {t("reports.closeMonth")}
               </Button>

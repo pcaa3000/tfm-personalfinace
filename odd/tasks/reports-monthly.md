@@ -35,7 +35,7 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 | T10 | Exportación reportes CSV/XLSX (endpoint + botón descarga) | S9 | api+web | done | API: 50 specs foc.; suite 1363; web: botones blob-auth |
 | T11 | Seed demo: categoría "Transporte menor"/suscripciones discretionary + merchants explícitos | S10 | api (seed) | done | RED 3/3→GREEN; drizzle 29/29 DB real; commit 01d791b |
 | T12 | Evolución ant-expenses → reporte "Gastos evitables" con detectores (opción A) | S3, S11 | api+web | done | API 131/131, web 502, suite api 1372 |
-| T13 | UX móvil en ReportsPage: tablas responsive (stacked rows o scroll indicado) | S12 | web | pending | |
+| T13 | UX móvil en ReportsPage: tablas responsive (stacked rows o scroll indicado) | S12 | web | done | RED 3→GREEN 23/23; web 507 |
 
 ## Log
 
@@ -60,3 +60,4 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 - **L19** (proceso): T12 implementado — endpoint `GET /reports/avoidable-expenses`; detectores ant/recurring_charge/concentration/growth por unión; `potentialSavings`; export sección avoidable-expenses + columna detectors; web renombrado a "Gastos evitables" con chips y headline de ahorro potencial. Surface extra aprobada: App.spec.tsx + seed comments. Fix residual T11: demo-session.service.spec 12→14 categorías.
 - **L20** (revisión nativa 4ª ronda): T12 aprobado con 3 advisory → fixes `80340b5` (noise floor 1% para recurring_charge + concentración en forma exacta total·100≥spend·N) aprobados; spec de boundary exacto añadido. Backlog: detector growth compara por key merchant??categoryId — mismatch merchant/NULL entre ventanas puede esconder crecimiento real; sin test de ese caso.
 - **L21** (usuario): "Puedes mejorar la UI/UX en los reportes, ya que en móvil no se ve bien". Guideline aplicado: gentle-ui-design references/adaptive-interfaces.md.
+- **L22** (proceso): T13 — tablas cash-flow/categorías/avoidable → stacked card rows <960px (DESKTOP_QUERY existente); savings ya era grid adaptive; targets 44px en selects/botones móvil; desktop pixel-intacto; sin keys i18n nuevas.
