@@ -11,7 +11,7 @@ const SHEET_NAMES: Record<string, string> = {
   metadata: "Metadata",
   "cash-flow": "Cash flow",
   "expenses-by-category": "Expenses by category",
-  "ant-expenses": "Ant expenses",
+  "avoidable-expenses": "Avoidable expenses",
   "monthly-savings": "Monthly savings",
 };
 

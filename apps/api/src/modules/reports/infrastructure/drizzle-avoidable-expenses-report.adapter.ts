@@ -3,9 +3,9 @@ import { sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../../drizzle/db.js";
 import type { WorkspaceId } from "../../shared-kernel/index.js";
 import type {
-  AntExpenseLine,
-  AntExpensesReportQueryPort,
-} from "../application/ports/ant-expenses-report.port.js";
+  AvoidableExpenseLine,
+  AvoidableExpensesReportQueryPort,
+} from "../application/ports/avoidable-expenses-report.port.js";
 
 interface RawLineRow {
   [key: string]: unknown;
@@ -23,16 +23,16 @@ interface RawIncomeRow {
 }
 
 /**
- * Drizzle adapter for {@link AntExpensesReportQueryPort}
+ * Drizzle adapter for {@link AvoidableExpensesReportQueryPort}
  * (reports-monthly T5, S3): eligible lines are confirmed, non-voided
  * `expense` rows in the window whose head `categoryId` joins a
  * `discretionary` category — the INNER JOIN itself excludes NULL
  * categoryIds and every non-discretionary nature, so uncategorized
- * spend never enters the hormiga universe. Income is the period's
+ * spend never enters the discretionary universe. Income is the period's
  * confirmed `income` total used by the 1%-of-income mean check.
  */
-export class DrizzleAntExpensesReportAdapter
-  implements AntExpensesReportQueryPort
+export class DrizzleAvoidableExpensesReportAdapter
+  implements AvoidableExpensesReportQueryPort
 {
   constructor(private readonly db: DrizzleDb) {}
 
@@ -41,7 +41,7 @@ export class DrizzleAntExpensesReportAdapter
     currency: string,
     from: string,
     to: string,
-  ): Promise<AntExpenseLine[]> {
+  ): Promise<AvoidableExpenseLine[]> {
     const result = await this.db.execute<RawLineRow>(sql`
       SELECT t.id AS transaction_id,
              t.merchant AS merchant,

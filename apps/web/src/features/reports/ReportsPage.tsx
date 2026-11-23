@@ -47,13 +47,14 @@ import {
 } from "../ledger/Sidebar";
 import {
   closePeriod,
-  fetchAntExpenses,
+  fetchAvoidableExpenses,
   fetchCashFlowReport,
   fetchExpensesByCategory,
   fetchMonthlySavings,
   fetchReportExport,
   listPeriodCloses,
-  type AntExpensesView,
+  type AvoidableExpenseDetector,
+  type AvoidableExpensesView,
   type CashFlowReportView,
   type ExpensesByCategoryView,
   type MonthlySavingsView,
@@ -429,20 +430,29 @@ function ExpensesByCategorySection({
   );
 }
 
-/** S3 — hormiga candidates: ops count, totals, % discretionary, confidence. */
-function AntExpensesSection({ query, enabled }: ReportQuerySectionProps) {
+/** Translated detector key — unknown keys pass through verbatim. */
+function detectorLabel(detector: AvoidableExpenseDetector, t: TFunction) {
+  return t(`reports.avoidable.detector.${detector}`);
+}
+
+/**
+ * S3+S11 (T12) — avoidable expenses: every group admitted by at least
+ * one detector (ant, recurring_charge, concentration, growth), with the
+ * headline potential-savings figure and a chip per fired detector.
+ */
+function AvoidableExpensesSection({ query, enabled }: ReportQuerySectionProps) {
   const { t, i18n } = useTranslation();
   const report = useQuery({
-    queryKey: ["reports", "ant-expenses", query],
-    queryFn: () => fetchAntExpenses(query),
+    queryKey: ["reports", "avoidable-expenses", query],
+    queryFn: () => fetchAvoidableExpenses(query),
     enabled,
   });
   const money = (decimal: string) =>
     formatReportAmount(decimal, query.currency, i18n.language);
-  const view: AntExpensesView | undefined = report.data;
+  const view: AvoidableExpensesView | undefined = report.data;
   return (
     <ReportSection
-      title={t("reports.ant.title")}
+      title={t("reports.avoidable.title")}
       period={view?.period}
       loading={enabled && report.isLoading}
       error={report.isError ? errorMessage(report.error, t) : null}
@@ -450,16 +460,24 @@ function AntExpensesSection({ query, enabled }: ReportQuerySectionProps) {
     >
       {view ? (
         view.groups.length === 0 ? (
-          <EmptyState text={t("reports.ant.empty")} />
+          <EmptyState text={t("reports.avoidable.empty")} />
         ) : (
           <>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ display: "block", mb: 1 }}
-            >
-              {`${t("reports.ant.totalDiscretionary")}: ${money(view.totalDiscretionary)}`}
-            </Typography>
+            <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", mb: 1 }}>
+              <Typography
+                variant="body2"
+                sx={{ fontWeight: 700 }}
+              >
+                {`${t("reports.avoidable.potentialSavings")}: ${money(view.potentialSavings)}`}
+              </Typography>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ alignSelf: "center" }}
+              >
+                {`${t("reports.avoidable.totalDiscretionary")}: ${money(view.totalDiscretionary)}`}
+              </Typography>
+            </Box>
             <TableContainer
               component={Paper}
               variant="outlined"
@@ -468,26 +486,41 @@ function AntExpensesSection({ query, enabled }: ReportQuerySectionProps) {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>{t("reports.ant.label")}</TableCell>
+                    <TableCell>{t("reports.avoidable.label")}</TableCell>
+                    <TableCell>{t("reports.avoidable.detectors")}</TableCell>
                     <TableCell align="right">
-                      {t("reports.ant.operations")}
+                      {t("reports.avoidable.operations")}
                     </TableCell>
                     <TableCell align="right">
-                      {t("reports.ant.total")}
+                      {t("reports.avoidable.total")}
                     </TableCell>
                     <TableCell align="right">
-                      {t("reports.ant.average")}
+                      {t("reports.avoidable.average")}
                     </TableCell>
                     <TableCell align="right">
-                      {t("reports.ant.percentDiscretionary")}
+                      {t("reports.avoidable.percentDiscretionary")}
                     </TableCell>
-                    <TableCell>{t("reports.ant.confidence")}</TableCell>
+                    <TableCell>{t("reports.avoidable.confidence")}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {view.groups.map((group) => (
                     <TableRow key={group.key}>
                       <TableCell>{group.label}</TableCell>
+                      <TableCell>
+                        <Box
+                          sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}
+                        >
+                          {group.detectors.map((detector) => (
+                            <Chip
+                              key={detector}
+                              size="small"
+                              variant="outlined"
+                              label={detectorLabel(detector, t)}
+                            />
+                          ))}
+                        </Box>
+                      </TableCell>
                       <TableCell sx={amountCellSx}>
                         {group.operationCount}
                       </TableCell>
@@ -512,8 +545,8 @@ function AntExpensesSection({ query, enabled }: ReportQuerySectionProps) {
                           variant="outlined"
                           label={t(
                             group.confidence === "high"
-                              ? "reports.ant.confidenceHigh"
-                              : "reports.ant.confidenceLow",
+                              ? "reports.avoidable.confidenceHigh"
+                              : "reports.avoidable.confidenceLow",
                           )}
                         />
                       </TableCell>
@@ -975,7 +1008,7 @@ export function ReportsPage() {
         >
           <CashFlowSection query={query} enabled={enabled} />
           <ExpensesByCategorySection query={query} enabled={enabled} />
-          <AntExpensesSection query={query} enabled={enabled} />
+          <AvoidableExpensesSection query={query} enabled={enabled} />
           <MonthlySavingsSection query={query} enabled={enabled} />
         </Box>
       </Box>

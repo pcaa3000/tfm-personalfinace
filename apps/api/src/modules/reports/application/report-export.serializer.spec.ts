@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ReportPeriod } from "../domain/report-period.js";
-import type { AntExpensesView } from "./ant-expenses.view.js";
+import type { AvoidableExpensesView } from "./avoidable-expenses.view.js";
 import type { CashFlowReportView } from "./cash-flow.view.js";
 import type { ExpensesByCategoryView } from "./expenses-by-category.view.js";
 import type { MonthlySavingsView } from "./monthly-savings.view.js";
@@ -76,11 +76,13 @@ const EXPENSES: ExpensesByCategoryView = {
   ],
 };
 
-const ANT: AntExpensesView = {
+const AVOIDABLE: AvoidableExpensesView = {
   period: PERIOD,
   totalDiscretionary: "15.00",
+  potentialSavings: "15.00",
   groups: [
     {
+      detectors: ["ant", "recurring_charge"],
       groupKind: "merchant",
       key: "cafe central",
       label: "cafe central",
@@ -111,7 +113,7 @@ function bundle(
     metadata: METADATA,
     cashFlow: CASH_FLOW,
     expensesByCategory: EXPENSES,
-    antExpenses: ANT,
+    avoidableExpenses: AVOIDABLE,
     monthlySavings: SAVINGS,
     ...overrides,
   };
@@ -125,13 +127,13 @@ describe("reportExportTables", () => {
       "metadata",
       "cash-flow",
       "expenses-by-category",
-      "ant-expenses",
+      "avoidable-expenses",
       "monthly-savings",
     ]);
   });
 
   it("carries the metadata keys and the contract column headers per section", () => {
-    const [meta, cashFlow, byCategory, ant, savings] = reportExportTables(
+    const [meta, cashFlow, byCategory, avoidable, savings] = reportExportTables(
       bundle(),
     );
 
@@ -159,9 +161,10 @@ describe("reportExportTables", () => {
       "percent",
       "count",
     ]);
-    expect(ant?.columns).toEqual([
+    expect(avoidable?.columns).toEqual([
       "group",
       "kind",
+      "detectors",
       "ops",
       "total",
       "average",
@@ -229,9 +232,9 @@ describe("serializeReportCsv", () => {
         "category,nature,total,percent,count",
         "Food,essential,300.00,75,2",
         "",
-        "## ant-expenses",
-        "group,kind,ops,total,average,percentOfDiscretionary,confidence",
-        "cafe central,merchant,3,15.00,5.00,100,high",
+        "## avoidable-expenses",
+        "group,kind,detectors,ops,total,average,percentOfDiscretionary,confidence",
+        "cafe central,merchant,ant|recurring_charge,3,15.00,5.00,100,high",
         "",
         "## monthly-savings",
         "income,expense,saved,observedRate,deficit,note",
@@ -320,7 +323,7 @@ describe("serializeReportCsv", () => {
     const csv = serializeReportCsv(
       bundle({
         cashFlow: { period: PERIOD, accounts: [] },
-        antExpenses: { ...ANT, groups: [] },
+        avoidableExpenses: { ...AVOIDABLE, groups: [] },
       }),
     );
 
@@ -328,7 +331,7 @@ describe("serializeReportCsv", () => {
       "## cash-flow\naccount,income,expense,transfersIn,transfersOut,netFlow\n\n## expenses-by-category",
     );
     expect(csv).toContain(
-      "## ant-expenses\ngroup,kind,ops,total,average,percentOfDiscretionary,confidence\n\n## monthly-savings",
+      "## avoidable-expenses\ngroup,kind,detectors,ops,total,average,percentOfDiscretionary,confidence\n\n## monthly-savings",
     );
   });
 });

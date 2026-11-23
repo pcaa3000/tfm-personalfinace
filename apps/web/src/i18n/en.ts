@@ -477,9 +477,16 @@ export const en: TranslationShape = {
       byNature: "By nature",
       empty: "No confirmed expenses in the period.",
     },
-    ant: {
-      title: "Ant expenses",
+    avoidable: {
+      title: "Avoidable expenses",
       label: "Merchant / category",
+      detectors: "Detectors",
+      detector: {
+        ant: "Ant",
+        recurring_charge: "Recurring",
+        concentration: "Concentration",
+        growth: "Growth",
+      },
       operations: "Ops.",
       total: "Total",
       average: "Average",
@@ -488,7 +495,8 @@ export const en: TranslationShape = {
       confidenceHigh: "High",
       confidenceLow: "Low",
       totalDiscretionary: "Discretionary spend",
-      empty: "No ant expenses detected in the period.",
+      potentialSavings: "Potential monthly savings",
+      empty: "No avoidable expenses detected in the period.",
     },
     savings: {
       title: "Monthly savings",

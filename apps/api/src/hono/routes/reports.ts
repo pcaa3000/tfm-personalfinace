@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import type {
   ExportMonthlyReportUseCase,
-  GetAntExpensesUseCase,
+  GetAvoidableExpensesUseCase,
   GetCashFlowReportUseCase,
   GetExpensesByCategoryUseCase,
   GetMonthlySavingsUseCase,
@@ -47,7 +47,10 @@ export interface ReportsRouteDeps extends AuthDeps {
     GetExpensesByCategoryUseCase,
     "execute"
   >;
-  readonly antExpenses?: Pick<GetAntExpensesUseCase, "execute">;
+  readonly avoidableExpenses?: Pick<
+    GetAvoidableExpensesUseCase,
+    "execute"
+  >;
   readonly monthlySavings?: Pick<GetMonthlySavingsUseCase, "execute">;
   readonly exportReport?: Pick<ExportMonthlyReportUseCase, "execute">;
 }
@@ -81,9 +84,9 @@ function parseExportQuery(c: {
 }
 
 /**
- * Registers the `/api/v1/reports/*` surface (reports-monthly T3–T6):
- * GET /cash-flow (S1), GET /expenses-by-category (S2),
- * GET /ant-expenses (S3) and GET /monthly-savings (S4). All share the
+ * Registers the `/api/v1/reports/*` surface (reports-monthly T3–T6,
+ * T12): GET /cash-flow (S1), GET /expenses-by-category (S2),
+ * GET /avoidable-expenses (S3+S11) and GET /monthly-savings (S4). All share the
  * same query — `?currency=X&year=Y&month=M` — and the workspace
  * timezone comes from the auth context, never from the client.
  *
@@ -97,12 +100,12 @@ export function registerReportsRoutes(
 ): void {
   const cashFlowReport = deps.cashFlowReport;
   const expensesByCategory = deps.expensesByCategory;
-  const antExpenses = deps.antExpenses;
+  const avoidableExpenses = deps.avoidableExpenses;
   const monthlySavings = deps.monthlySavings;
   if (
     !cashFlowReport ||
     !expensesByCategory ||
-    !antExpenses ||
+    !avoidableExpenses ||
     !monthlySavings
   ) {
     return;
@@ -141,10 +144,10 @@ export function registerReportsRoutes(
     return c.json(result.value);
   });
 
-  app.get("/api/v1/reports/ant-expenses", auth, async (c) => {
+  app.get("/api/v1/reports/avoidable-expenses", auth, async (c) => {
     const query = parsePeriodQuery(c);
     const { workspace } = authContext(c);
-    const result = await antExpenses.execute({
+    const result = await avoidableExpenses.execute({
       workspaceId: workspace.workspaceId,
       currency: query.currency,
       year: query.year,

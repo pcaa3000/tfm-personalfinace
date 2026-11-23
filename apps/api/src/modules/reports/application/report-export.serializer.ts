@@ -1,5 +1,5 @@
 import type { ReportPeriodStatus } from "../domain/report-period.js";
-import type { AntExpensesView } from "./ant-expenses.view.js";
+import type { AvoidableExpensesView } from "./avoidable-expenses.view.js";
 import type { CashFlowReportView } from "./cash-flow.view.js";
 import type { ExpensesByCategoryView } from "./expenses-by-category.view.js";
 import type { MonthlySavingsView } from "./monthly-savings.view.js";
@@ -24,7 +24,7 @@ export interface MonthlyReportBundle {
   readonly metadata: ReportExportMetadata;
   readonly cashFlow: CashFlowReportView;
   readonly expensesByCategory: ExpensesByCategoryView;
-  readonly antExpenses: AntExpensesView;
+  readonly avoidableExpenses: AvoidableExpensesView;
   readonly monthlySavings: MonthlySavingsView;
 }
 
@@ -44,9 +44,9 @@ const UNASSIGNED_ACCOUNT = "(unassigned)";
 
 /**
  * Flattens the bundle into the five contract tables, in fixed order:
- * metadata first, then cash-flow, expenses-by-category, ant-expenses
- * and monthly-savings. Amounts pass through verbatim — the views
- * already produce decimal strings (INV-DIN-03).
+ * metadata first, then cash-flow, expenses-by-category,
+ * avoidable-expenses and monthly-savings. Amounts pass through
+ * verbatim — the views already produce decimal strings (INV-DIN-03).
  */
 export function reportExportTables(
   bundle: MonthlyReportBundle,
@@ -96,19 +96,23 @@ export function reportExportTables(
       ]),
     },
     {
-      name: "ant-expenses",
+      // T12 (S11): renamed from ant-expenses; `detectors` joins every
+      // fired detector key so the export mirrors the report's union.
+      name: "avoidable-expenses",
       columns: [
         "group",
         "kind",
+        "detectors",
         "ops",
         "total",
         "average",
         "percentOfDiscretionary",
         "confidence",
       ],
-      rows: bundle.antExpenses.groups.map((group) => [
+      rows: bundle.avoidableExpenses.groups.map((group) => [
         group.label,
         group.groupKind,
+        group.detectors.join("|"),
         group.operationCount,
         group.total,
         group.average,

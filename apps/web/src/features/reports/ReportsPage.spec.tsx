@@ -12,7 +12,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import i18n from "../../i18n";
 import { ThemeModeProvider } from "../../theme-mode";
 import type {
-  AntExpensesView,
+  AvoidableExpensesView,
   CashFlowReportView,
   ExpensesByCategoryView,
   MonthlySavingsView,
@@ -48,7 +48,7 @@ vi.mock("../ledger/api", async (importOriginal) => {
 const mocks = vi.hoisted(() => ({
   fetchCashFlowReport: vi.fn(),
   fetchExpensesByCategory: vi.fn(),
-  fetchAntExpenses: vi.fn(),
+  fetchAvoidableExpenses: vi.fn(),
   fetchMonthlySavings: vi.fn(),
   listPeriodCloses: vi.fn(),
   closePeriod: vi.fn(),
@@ -114,11 +114,15 @@ const categories: ExpensesByCategoryView = {
   ],
 };
 
-const ant: AntExpensesView = {
+
+
+const avoidable: AvoidableExpensesView = {
   period: PERIOD,
   totalDiscretionary: "450.00",
+  potentialSavings: "130.00",
   groups: [
     {
+      detectors: ["ant", "recurring_charge"],
       groupKind: "merchant",
       key: "starbucks",
       label: "starbucks",
@@ -128,6 +132,18 @@ const ant: AntExpensesView = {
       percentOfDiscretionary: 17.78,
       confidence: "high",
       transactionIds: ["t1", "t2", "t3", "t4", "t5"],
+    },
+    {
+      detectors: ["concentration"],
+      groupKind: "merchant",
+      key: "vuelos lima",
+      label: "vuelos lima",
+      operationCount: 1,
+      total: "50.00",
+      average: "50.00",
+      percentOfDiscretionary: 11.11,
+      confidence: "high",
+      transactionIds: ["t6"],
     },
   ],
 };
@@ -145,7 +161,7 @@ const savings: MonthlySavingsView = {
 interface ReportViews {
   cashFlow: CashFlowReportView;
   categories: ExpensesByCategoryView;
-  ant: AntExpensesView;
+  avoidable: AvoidableExpensesView;
   savings: MonthlySavingsView;
 }
 
@@ -153,13 +169,13 @@ function mockReports(overrides: Partial<ReportViews> = {}) {
   const data: ReportViews = {
     cashFlow,
     categories,
-    ant,
+    avoidable,
     savings,
     ...overrides,
   };
   mocks.fetchCashFlowReport.mockResolvedValue(data.cashFlow);
   mocks.fetchExpensesByCategory.mockResolvedValue(data.categories);
-  mocks.fetchAntExpenses.mockResolvedValue(data.ant);
+  mocks.fetchAvoidableExpenses.mockResolvedValue(data.avoidable);
   mocks.fetchMonthlySavings.mockResolvedValue(data.savings);
   mocks.listPeriodCloses.mockResolvedValue([]);
 }
@@ -237,7 +253,7 @@ describe("ReportsPage (reports-monthly T7, S7, CA-013)", () => {
 
     expect(await screen.findByText("Flujo de caja por cuenta")).toBeTruthy();
     expect(screen.getByText("Gastos por categoría")).toBeTruthy();
-    expect(screen.getByText("Gastos hormiga")).toBeTruthy();
+    expect(screen.getByText("Gastos evitables")).toBeTruthy();
     expect(screen.getByText("Ahorro del mes")).toBeTruthy();
   });
 
@@ -260,10 +276,25 @@ describe("ReportsPage (reports-monthly T7, S7, CA-013)", () => {
     expect(await screen.findAllByText("Cerrado")).not.toHaveLength(0);
   });
 
+  it("shows the potential monthly savings and a detector chip per group", async () => {
+    mockReports();
+    renderPage();
+
+    // T12 (S11): the headline figure is the sum of every admitted
+    // group's total — what the user could avoid.
+    expect(
+      await screen.findByText(/Ahorro potencial mensual: 130,00 PEN/),
+    ).toBeTruthy();
+    // Detectors render as translated chips on each group row.
+    expect(screen.getByText("Hormiga")).toBeTruthy();
+    expect(screen.getByText("Recurrente")).toBeTruthy();
+    expect(screen.getByText("Concentración")).toBeTruthy();
+  });
+
   it("shows the empty state when a section has no rows", async () => {
     mockReports({
       categories: { ...categories, categories: [], totalExpenses: "0.00" },
-      ant: { ...ant, groups: [] },
+      avoidable: { ...avoidable, groups: [] },
     });
     renderPage();
 
@@ -271,7 +302,7 @@ describe("ReportsPage (reports-monthly T7, S7, CA-013)", () => {
       await screen.findByText("Sin gastos confirmados en el período."),
     ).toBeTruthy();
     expect(
-      screen.getByText("Sin gastos hormiga detectados en el período."),
+      screen.getByText("Sin gastos evitables detectados en el período."),
     ).toBeTruthy();
   });
 

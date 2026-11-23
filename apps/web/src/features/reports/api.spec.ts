@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   closePeriod,
-  fetchAntExpenses,
+  fetchAvoidableExpenses,
   fetchCashFlowReport,
   fetchExpensesByCategory,
   fetchMonthlySavings,
@@ -49,11 +49,11 @@ describe("reports api (reports-monthly T7, S7)", () => {
     );
   });
 
-  it("fetches the ant-expenses report with the same period query", async () => {
-    await fetchAntExpenses(periodQuery);
+  it("fetches the avoidable-expenses report with the same period query", async () => {
+    await fetchAvoidableExpenses(periodQuery);
 
     expect(calledUrl()).toBe(
-      "/api/v1/reports/ant-expenses?currency=PEN&year=2026&month=11",
+      "/api/v1/reports/avoidable-expenses?currency=PEN&year=2026&month=11",
     );
   });
 

@@ -60,9 +60,17 @@ export interface ExpensesByCategoryView {
   readonly categories: ExpenseCategoryView[];
 }
 
-// --- GET /reports/ant-expenses (S3) ----------------------------------
+// --- GET /reports/avoidable-expenses (S3+S11, T12) --------------------
 
-export interface AntExpenseGroupView {
+/** Detector keys the API reports on each admitted group (S11). */
+export type AvoidableExpenseDetector =
+  | "ant"
+  | "recurring_charge"
+  | "concentration"
+  | "growth";
+
+export interface AvoidableExpenseGroupView {
+  readonly detectors: AvoidableExpenseDetector[];
   readonly groupKind: "merchant" | "category";
   readonly key: string;
   readonly label: string;
@@ -74,10 +82,12 @@ export interface AntExpenseGroupView {
   readonly transactionIds: string[];
 }
 
-export interface AntExpensesView {
+export interface AvoidableExpensesView {
   readonly period: ReportPeriod;
   readonly totalDiscretionary: string;
-  readonly groups: AntExpenseGroupView[];
+  /** Sum of every admitted group's total — the monthly avoidable spend. */
+  readonly potentialSavings: string;
+  readonly groups: AvoidableExpenseGroupView[];
 }
 
 // --- GET /reports/monthly-savings (S4) -------------------------------
@@ -120,12 +130,12 @@ export function fetchExpensesByCategory(
   );
 }
 
-/** `GET /api/v1/reports/ant-expenses?currency&year&month` (S3). */
-export function fetchAntExpenses(
+/** `GET /api/v1/reports/avoidable-expenses?currency&year&month` (S3+S11). */
+export function fetchAvoidableExpenses(
   query: ReportPeriodQuery,
-): Promise<AntExpensesView> {
-  return request<AntExpensesView>(
-    `/reports/ant-expenses${periodQuery(query)}`,
+): Promise<AvoidableExpensesView> {
+  return request<AvoidableExpensesView>(
+    `/reports/avoidable-expenses${periodQuery(query)}`,
   );
 }
 

@@ -58,9 +58,10 @@ vi.mock("./features/reports/api", () => {
       natureTotals: {},
       categories: [],
     })),
-    fetchAntExpenses: vi.fn(async () => ({
+    fetchAvoidableExpenses: vi.fn(async () => ({
       period,
       totalDiscretionary: "0.00",
+      potentialSavings: "0.00",
       groups: [],
     })),
     fetchMonthlySavings: vi.fn(async () => ({
@@ -195,7 +196,7 @@ describe("App auth gate (T6-web)", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("Gastos hormiga")).toBeTruthy();
+    expect(await screen.findByText("Gastos evitables")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Iniciar sesión" })).toBeNull();
   });
 
@@ -216,6 +217,6 @@ describe("App auth gate (T6-web)", () => {
     await waitFor(() => {
       expect(screen.getAllByText("Movimientos").length).toBeGreaterThan(0);
     });
-    expect(screen.queryByText("Gastos hormiga")).toBeNull();
+    expect(screen.queryByText("Gastos evitables")).toBeNull();
   });
 });

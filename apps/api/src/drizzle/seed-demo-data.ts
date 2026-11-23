@@ -38,7 +38,7 @@ export interface DemoTransactionSeed {
   readonly categoryKey?: string;
   /**
    * Optional explicit merchant (reports-monthly T11, S10): forwarded to
-   * RecordManualTransactionUseCase so recurring ant expenses group under
+   * RecordManualTransactionUseCase so recurring avoidable expenses group under
    * one normalized merchant instead of scattering across concepts.
    */
   readonly merchant?: string;
@@ -405,7 +405,7 @@ export function buildDemoPlan(
   // "Gasto hormiga": near-daily small transport fares (S/ 5–20).
   // reports-monthly T11 (S10): the fares live on the discretionary
   // `minor_transport` category and share one explicit merchant so the
-  // ant-expenses report can group them (>=3 operations, mean far below
+  // avoidable-expenses report can group them (>=3 operations, mean far below
   // the 1%-of-income threshold).
   for (let offset = 0; offset < WINDOW_DAYS; offset += 1) {
     const iso = shiftDay(end, -offset);

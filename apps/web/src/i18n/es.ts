@@ -473,9 +473,16 @@ export const es = {
       byNature: "Por naturaleza",
       empty: "Sin gastos confirmados en el período.",
     },
-    ant: {
-      title: "Gastos hormiga",
+    avoidable: {
+      title: "Gastos evitables",
       label: "Comercio / categoría",
+      detectors: "Detectores",
+      detector: {
+        ant: "Hormiga",
+        recurring_charge: "Recurrente",
+        concentration: "Concentración",
+        growth: "Crecimiento",
+      },
       operations: "Ops.",
       total: "Total",
       average: "Promedio",
@@ -484,7 +491,8 @@ export const es = {
       confidenceHigh: "Alta",
       confidenceLow: "Baja",
       totalDiscretionary: "Gasto discrecional",
-      empty: "Sin gastos hormiga detectados en el período.",
+      potentialSavings: "Ahorro potencial mensual",
+      empty: "Sin gastos evitables detectados en el período.",
     },
     savings: {
       title: "Ahorro del mes",

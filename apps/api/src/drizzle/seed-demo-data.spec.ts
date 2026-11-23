@@ -4,8 +4,8 @@ import { buildDemoPlan } from "./seed-demo-data.js";
 
 /**
  * reports-monthly T11 (S10): the demo seed must materialize detectable
- * ant-expense groups — discretionary categories (minor transport,
- * subscriptions) plus shared explicit merchants — so the ant-expenses
+ * avoidable-expense groups — discretionary categories (minor transport,
+ * subscriptions) plus shared explicit merchants — so the avoidable-expenses
  * report never renders empty on the demo workspace.
  *
  * Pure unit check on the generated plan; no database required.

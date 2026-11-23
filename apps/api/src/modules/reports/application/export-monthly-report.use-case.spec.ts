@@ -8,7 +8,7 @@ import {
   type Result,
 } from "../../shared-kernel/index.js";
 import type { ReportPeriod } from "../domain/report-period.js";
-import type { AntExpensesView } from "./ant-expenses.view.js";
+import type { AvoidableExpensesView } from "./avoidable-expenses.view.js";
 import type { CashFlowReportView } from "./cash-flow.view.js";
 import type { ExpensesByCategoryView } from "./expenses-by-category.view.js";
 import type { MonthlySavingsView } from "./monthly-savings.view.js";
@@ -62,7 +62,7 @@ const EXPENSES: ExpensesByCategoryView = {
   ],
 };
 
-const ANT: AntExpensesView = { period: PERIOD, totalDiscretionary: "0.00", groups: [] };
+const AVOIDABLE: AvoidableExpensesView = { period: PERIOD, totalDiscretionary: "0.00", potentialSavings: "0.00", groups: [] };
 
 const SAVINGS: MonthlySavingsView = {
   period: PERIOD,
@@ -98,9 +98,9 @@ function makeUseCase() {
         ok(EXPENSES),
     ),
   };
-  const antExpenses = {
+  const avoidableExpenses = {
     execute: vi.fn(
-      async (): Promise<Result<AntExpensesView, DomainError>> => ok(ANT),
+      async (): Promise<Result<AvoidableExpensesView, DomainError>> => ok(AVOIDABLE),
     ),
   };
   const monthlySavings = {
@@ -116,17 +116,17 @@ function makeUseCase() {
   const useCase = new ExportMonthlyReportUseCase(
     cashFlow,
     expensesByCategory,
-    antExpenses,
+    avoidableExpenses,
     monthlySavings,
     xlsx,
     clock,
   );
-  return { useCase, cashFlow, expensesByCategory, antExpenses, monthlySavings, xlsx };
+  return { useCase, cashFlow, expensesByCategory, avoidableExpenses, monthlySavings, xlsx };
 }
 
 describe("ExportMonthlyReportUseCase", () => {
   it("forwards the report period input (without the format flag) to the four report use cases", async () => {
-    const { useCase, cashFlow, expensesByCategory, antExpenses, monthlySavings } =
+    const { useCase, cashFlow, expensesByCategory, avoidableExpenses, monthlySavings } =
       makeUseCase();
 
     const result = await useCase.execute(COMMAND);
@@ -141,7 +141,7 @@ describe("ExportMonthlyReportUseCase", () => {
     };
     expect(cashFlow.execute).toHaveBeenCalledWith(input);
     expect(expensesByCategory.execute).toHaveBeenCalledWith(input);
-    expect(antExpenses.execute).toHaveBeenCalledWith(input);
+    expect(avoidableExpenses.execute).toHaveBeenCalledWith(input);
     expect(monthlySavings.execute).toHaveBeenCalledWith(input);
   });
 
@@ -196,7 +196,7 @@ describe("ExportMonthlyReportUseCase", () => {
     });
     expect(bundle.cashFlow).toBe(CASH_FLOW);
     expect(bundle.expensesByCategory).toBe(EXPENSES);
-    expect(bundle.antExpenses).toBe(ANT);
+    expect(bundle.avoidableExpenses).toBe(AVOIDABLE);
     expect(bundle.monthlySavings).toBe(SAVINGS);
   });
 
@@ -211,7 +211,7 @@ describe("ExportMonthlyReportUseCase", () => {
   it.each([
     ["cash-flow", "cashFlow"],
     ["expenses-by-category", "expensesByCategory"],
-    ["ant-expenses", "antExpenses"],
+    ["avoidable-expenses", "avoidableExpenses"],
     ["monthly-savings", "monthlySavings"],
   ] as const)(
     "propagates a domain error from the %s use case",

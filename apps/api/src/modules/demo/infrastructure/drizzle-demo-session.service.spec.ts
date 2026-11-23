@@ -136,7 +136,7 @@ describe("DrizzleDemoSessionService (integration, real Postgres — T6)", () => 
     const counts = await seedCounts(db, session.workspaceId);
     expect(counts.accounts).toBe(4);
     expect(counts.transactions).toBeGreaterThan(0);
-    expect(counts.categories).toBe(12);
+    expect(counts.categories).toBe(14);
     expect(counts.currencies).toBe(1);
   });
 

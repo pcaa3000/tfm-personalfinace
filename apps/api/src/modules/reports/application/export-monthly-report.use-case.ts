@@ -5,7 +5,7 @@ import {
   type DomainError,
   type Result,
 } from "../../shared-kernel/index.js";
-import type { GetAntExpensesUseCase } from "./get-ant-expenses.use-case.js";
+import type { GetAvoidableExpensesUseCase } from "./get-avoidable-expenses.use-case.js";
 import type { GetCashFlowReportUseCase } from "./get-cash-flow-report.use-case.js";
 import type { GetExpensesByCategoryUseCase } from "./get-expenses-by-category.use-case.js";
 import type { GetMonthlySavingsUseCase } from "./get-monthly-savings.use-case.js";
@@ -50,7 +50,10 @@ export class ExportMonthlyReportUseCase {
       GetExpensesByCategoryUseCase,
       "execute"
     >,
-    private readonly antExpenses: Pick<GetAntExpensesUseCase, "execute">,
+    private readonly avoidableExpenses: Pick<
+      GetAvoidableExpensesUseCase,
+      "execute"
+    >,
     private readonly monthlySavings: Pick<
       GetMonthlySavingsUseCase,
       "execute"
@@ -69,16 +72,16 @@ export class ExportMonthlyReportUseCase {
       month: command.month,
       timezone: command.timezone,
     };
-    const [cashFlow, byCategory, ant, savings] = await Promise.all([
+    const [cashFlow, byCategory, avoidable, savings] = await Promise.all([
       this.cashFlow.execute(input),
       this.expensesByCategory.execute(input),
-      this.antExpenses.execute(input),
+      this.avoidableExpenses.execute(input),
       this.monthlySavings.execute(input),
     ]);
     // First failure wins, in fixed section order.
     if (!cashFlow.ok) return err(cashFlow.error);
     if (!byCategory.ok) return err(byCategory.error);
-    if (!ant.ok) return err(ant.error);
+    if (!avoidable.ok) return err(avoidable.error);
     if (!savings.ok) return err(savings.error);
 
     const bundle: MonthlyReportBundle = {
@@ -92,7 +95,7 @@ export class ExportMonthlyReportUseCase {
       },
       cashFlow: cashFlow.value,
       expensesByCategory: byCategory.value,
-      antExpenses: ant.value,
+      avoidableExpenses: avoidable.value,
       monthlySavings: savings.value,
     };
 

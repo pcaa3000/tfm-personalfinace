@@ -5,7 +5,7 @@ import type {
   WorkspaceContext,
 } from "../../modules/identity-workspace/index.js";
 import type {
-  AntExpensesView,
+  AvoidableExpensesView,
   CashFlowReportView,
   ExpensesByCategoryView,
   MonthlySavingsView,
@@ -55,11 +55,13 @@ const CASH_FLOW_VIEW: CashFlowReportView = {
   ],
 };
 
-const ANT_EXPENSES_VIEW: AntExpensesView = {
+const AVOIDABLE_EXPENSES_VIEW: AvoidableExpensesView = {
   period: PERIOD,
   totalDiscretionary: "15.00",
+  potentialSavings: "15.00",
   groups: [
     {
+      detectors: ["ant"],
       groupKind: "merchant",
       key: "cafe central",
       label: "cafe central",
@@ -205,10 +207,10 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
           ok(EXPENSES_VIEW),
       ),
     },
-    antExpenses: {
+    avoidableExpenses: {
       execute: vi.fn(
-        async (): Promise<Result<AntExpensesView, DomainError>> =>
-          ok(ANT_EXPENSES_VIEW),
+        async (): Promise<Result<AvoidableExpensesView, DomainError>> =>
+          ok(AVOIDABLE_EXPENSES_VIEW),
       ),
     },
     monthlySavings: {
@@ -350,17 +352,17 @@ describe("GET /api/v1/reports/expenses-by-category", () => {
   });
 });
 
-describe("GET /api/v1/reports/ant-expenses", () => {
+describe("GET /api/v1/reports/avoidable-expenses", () => {
   it("returns 200 with the report payload", async () => {
     const deps = makeDeps();
     const app = createApp(deps);
 
     const res = await app.request(
-      "/api/v1/reports/ant-expenses?currency=EUR&year=2026&month=9",
+      "/api/v1/reports/avoidable-expenses?currency=EUR&year=2026&month=9",
     );
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(ANT_EXPENSES_VIEW);
+    expect(await res.json()).toEqual(AVOIDABLE_EXPENSES_VIEW);
   });
 
   it("passes the query period and the server-resolved workspace timezone to the use case", async () => {
@@ -368,10 +370,10 @@ describe("GET /api/v1/reports/ant-expenses", () => {
     const app = createApp(deps);
 
     await app.request(
-      "/api/v1/reports/ant-expenses?currency=PEN&year=2026&month=4",
+      "/api/v1/reports/avoidable-expenses?currency=PEN&year=2026&month=4",
     );
 
-    expect(deps.antExpenses.execute).toHaveBeenCalledWith({
+    expect(deps.avoidableExpenses.execute).toHaveBeenCalledWith({
       workspaceId: WS,
       currency: "PEN",
       year: 2026,
@@ -385,24 +387,24 @@ describe("GET /api/v1/reports/ant-expenses", () => {
     const app = createApp(deps);
 
     const res = await app.request(
-      "/api/v1/reports/ant-expenses?currency=EUR&year=2026",
+      "/api/v1/reports/avoidable-expenses?currency=EUR&year=2026",
     );
 
     expect(res.status).toBe(400);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe("INVALID_QUERY");
-    expect(deps.antExpenses.execute).not.toHaveBeenCalled();
+    expect(deps.avoidableExpenses.execute).not.toHaveBeenCalled();
   });
 
   it("maps domain errors to the {code, message} envelope", async () => {
     const deps = makeDeps();
-    deps.antExpenses.execute.mockResolvedValue(
+    deps.avoidableExpenses.execute.mockResolvedValue(
       err(new DomainError("TIMEZONE_INVALID", "bad tz")),
     );
     const app = createApp(deps);
 
     const res = await app.request(
-      "/api/v1/reports/ant-expenses?currency=EUR&year=2026&month=9",
+      "/api/v1/reports/avoidable-expenses?currency=EUR&year=2026&month=9",
     );
 
     expect(res.status).toBe(400);
@@ -579,7 +581,7 @@ describe("reports routes when deps are absent", () => {
     const {
       cashFlowReport: _cf,
       expensesByCategory: _ec,
-      antExpenses: _ae,
+      avoidableExpenses: _ae,
       monthlySavings: _ms,
       exportReport: _ex,
       ...rest
@@ -593,7 +595,7 @@ describe("reports routes when deps are absent", () => {
       "/api/v1/reports/expenses-by-category?currency=EUR&year=2026&month=9",
     );
     const ant = await app.request(
-      "/api/v1/reports/ant-expenses?currency=EUR&year=2026&month=9",
+      "/api/v1/reports/avoidable-expenses?currency=EUR&year=2026&month=9",
     );
     const savings = await app.request(
       "/api/v1/reports/monthly-savings?currency=EUR&year=2026&month=9",

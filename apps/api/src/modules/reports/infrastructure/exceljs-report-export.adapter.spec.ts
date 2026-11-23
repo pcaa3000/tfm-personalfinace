@@ -52,11 +52,13 @@ const BUNDLE: MonthlyReportBundle = {
       },
     ],
   },
-  antExpenses: {
+  avoidableExpenses: {
     period: PERIOD,
     totalDiscretionary: "15.00",
+    potentialSavings: "15.00",
     groups: [
       {
+        detectors: ["ant", "recurring_charge"],
         groupKind: "merchant",
         key: "cafe central",
         label: "cafe central",
@@ -105,7 +107,7 @@ describe("ExcelJsReportExportAdapter", () => {
       "Metadata",
       "Cash flow",
       "Expenses by category",
-      "Ant expenses",
+      "Avoidable expenses",
       "Monthly savings",
     ]);
   });
@@ -171,17 +173,29 @@ describe("ExcelJsReportExportAdapter", () => {
       ["category", "nature", "total", "percent", "count"],
       ["Food", "essential", "400.00", 100, 2],
     ]);
-    expect(sheetValues(workbook.getWorksheet("Ant expenses")!)).toEqual([
+    expect(
+      sheetValues(workbook.getWorksheet("Avoidable expenses")!),
+    ).toEqual([
       [
         "group",
         "kind",
+        "detectors",
         "ops",
         "total",
         "average",
         "percentOfDiscretionary",
         "confidence",
       ],
-      ["cafe central", "merchant", 3, "15.00", "5.00", 100, "high"],
+      [
+        "cafe central",
+        "merchant",
+        "ant|recurring_charge",
+        3,
+        "15.00",
+        "5.00",
+        100,
+        "high",
+      ],
     ]);
     expect(sheetValues(workbook.getWorksheet("Monthly savings")!)).toEqual([
       ["income", "expense", "saved", "observedRate", "deficit", "note"],

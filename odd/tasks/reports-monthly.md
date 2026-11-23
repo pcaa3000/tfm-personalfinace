@@ -32,7 +32,7 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 | T9 | UI cierre de mes: botón + dialog integridad + refetch | S5, S7 | web | done | RED remediation 16 fail→GREEN 38; suite web 501 |
 | T10 | Exportación reportes CSV/XLSX (endpoint + botón descarga) | S9 | api+web | done | API: 50 specs foc.; suite 1363; web: botones blob-auth |
 | T11 | Seed demo: categoría "Transporte menor"/suscripciones discretionary + merchants explícitos | S10 | api (seed) | done | RED 3/3→GREEN; drizzle 29/29 DB real; commit 01d791b |
-| T12 | Evolución ant-expenses → reporte "Gastos evitables" con detectores (opción A) | S3, S11 | api+web | pending | |
+| T12 | Evolución ant-expenses → reporte "Gastos evitables" con detectores (opción A) | S3, S11 | api+web | done | API 131/131, web 502, suite api 1372 |
 
 ## Log
 
@@ -54,3 +54,4 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 - **L16** (revisión nativa 3ª ronda): T9+T10 (`0ba98d5`/`a6400d4`) aprobados, 4 advisory → fixes aplicados: neutralización de fórmulas en CSV (`= + - @` → `'`), BOM UTF-8, guardia simplificada, xlsx sin prefijo (shared strings) + spec de cobertura. Fixes `b3a85df`/`c5c839e` aprobados. Backlog: workspaceYearMonth fallback a reloj local del browser (botón Cerrar puede ofrecerse un mes no terminado — el server rechaza igual); export materializa workbook completo en memoria (sin streaming ni bound); labels que legítimamente empiezan con `=` quedan con `'` en CSV.
 - **L17** (usuario): "recategoriza Transporte menor o snacks, y separa suscripciones de servicios — Spotify o Netflix no es un servicio esencial sino parte de Ocio, discrecional". Motivo: el reporte de gastos hormiga queda vacío con datos demo (transport essential excluido + merchants diversos por pick(TRANSPORT_CONCEPTS) + medias discretionary >1% ingreso).
 - **L18** (usuario): "plantea la opción de cambiar el concepto de gastos hormiga, por un reporte que te permita hallar fugas o gastos innecesarios — saber qué puedo evitar para ahorrar". Decisión (ask_user_choice): **Opción A — evolucionar ant-expenses** a reporte "Gastos evitables" con detectores (hormiga queda como un detector). Advisory R3-001 cerrado (spec compara mean vs 1% del ingreso sembrado).
+- **L19** (proceso): T12 implementado — endpoint `GET /reports/avoidable-expenses`; detectores ant/recurring_charge/concentration/growth por unión; `potentialSavings`; export sección avoidable-expenses + columna detectors; web renombrado a "Gastos evitables" con chips y headline de ahorro potencial. Surface extra aprobada: App.spec.tsx + seed comments. Fix residual T11: demo-session.service.spec 12→14 categorías.

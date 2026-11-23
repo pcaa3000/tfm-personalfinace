@@ -4,21 +4,21 @@ import { inArray } from "drizzle-orm";
 import { createDrizzleDb, type DrizzleDb } from "../../../drizzle/db.js";
 import { categories, ledgerTransactions } from "../../../drizzle/schema.js";
 import { WorkspaceId } from "../../shared-kernel/index.js";
-import { DrizzleAntExpensesReportAdapter } from "./drizzle-ant-expenses-report.adapter.js";
+import { DrizzleAvoidableExpensesReportAdapter } from "./drizzle-avoidable-expenses-report.adapter.js";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ??
   "postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance";
 
-const WS_A = "drizzle-ant-spec-a";
-const WS_B = "drizzle-ant-spec-b";
+const WS_A = "drizzle-av-spec-a";
+const WS_B = "drizzle-av-spec-b";
 const WORKSPACES = [WS_A, WS_B];
 
 const { db, pool } = createDrizzleDb(DATABASE_URL);
-const adapter = new DrizzleAntExpensesReportAdapter(db);
+const adapter = new DrizzleAvoidableExpensesReportAdapter(db);
 
-const CAT_COFFEE = "cat-ant-coffee";
-const CAT_ESSENTIAL = "cat-ant-essential";
+const CAT_COFFEE = "cat-av-coffee";
+const CAT_ESSENTIAL = "cat-av-essential";
 
 function workspaceId(value: string): WorkspaceId {
   const result = WorkspaceId.create(value);
@@ -39,15 +39,15 @@ function tx(values: {
 }) {
   seq += 1;
   return {
-    id: `tx-ant-${seq}`,
+    id: `tx-av-${seq}`,
     workspaceId: values.workspaceId ?? WS_A,
-    idempotencyKey: `idem-ant-${seq}`,
+    idempotencyKey: `idem-av-${seq}`,
     type: values.type,
     amountMinor: values.amountMinor,
     currency: values.currency ?? "EUR",
     businessDate: new Date(`${values.businessDate}T00:00:00Z`),
     timezone: "UTC",
-    concept: `concept-ant-${seq}`,
+    concept: `concept-av-${seq}`,
     merchant: values.merchant ?? null,
     accountId: null,
     destinationAccountId: null,
@@ -73,21 +73,21 @@ beforeAll(async () => {
   await db.insert(categories).values([
     {
       id: CAT_COFFEE,
-      key: "spec_ant_coffee",
+      key: "spec_av_coffee",
       label: "Spec coffee",
       nature: "discretionary",
       workspaceId: WS_A,
     },
     {
       id: CAT_ESSENTIAL,
-      key: "spec_ant_essential",
+      key: "spec_av_essential",
       label: "Spec essential",
       nature: "essential",
       workspaceId: WS_A,
     },
     {
-      id: "cat-ant-b",
-      key: "spec_ant_b",
+      id: "cat-av-b",
+      key: "spec_av_b",
       label: "Spec other ws",
       nature: "discretionary",
       workspaceId: WS_B,
@@ -105,7 +105,7 @@ beforeAll(async () => {
     tx({ type: "expense", amountMinor: 700n, businessDate: "2026-09-10", categoryId: CAT_COFFEE, merchant: "cafe central", status: "voided" }),
     tx({ type: "expense", amountMinor: 600n, currency: "USD", businessDate: "2026-09-10", categoryId: CAT_COFFEE, merchant: "cafe central" }),
     tx({ type: "expense", amountMinor: 500n, businessDate: "2026-10-01", categoryId: CAT_COFFEE, merchant: "cafe central" }),
-    tx({ type: "expense", amountMinor: 400n, businessDate: "2026-09-10", categoryId: "cat-ant-b", workspaceId: WS_B }),
+    tx({ type: "expense", amountMinor: 400n, businessDate: "2026-09-10", categoryId: "cat-av-b", workspaceId: WS_B }),
     // Income feeding confirmedIncomeMinor.
     tx({ type: "income", amountMinor: 100_000n, businessDate: "2026-09-02" }),
     tx({ type: "income", amountMinor: 50_000n, businessDate: "2026-09-25" }),
@@ -121,7 +121,7 @@ afterAll(async () => {
   await pool.end();
 });
 
-describe("DrizzleAntExpensesReportAdapter", () => {
+describe("DrizzleAvoidableExpensesReportAdapter", () => {
   it("returns only confirmed discretionary expense lines with merchant and category fields", async () => {
     const rows = await adapter.discretionaryExpenseLines(
       workspaceId(WS_A),
@@ -132,15 +132,15 @@ describe("DrizzleAntExpensesReportAdapter", () => {
 
     expect(rows).toHaveLength(3);
     expect(rows.map((r) => r.transactionId)).toEqual([
-      "tx-ant-1",
-      "tx-ant-2",
-      "tx-ant-3",
+      "tx-av-1",
+      "tx-av-2",
+      "tx-av-3",
     ]);
     expect(rows.map((r) => r.amountMinor)).toEqual([300n, 400n, 500n]);
     expect(rows[0]).toMatchObject({
       merchant: "cafe central",
       categoryId: CAT_COFFEE,
-      categoryKey: "spec_ant_coffee",
+      categoryKey: "spec_av_coffee",
       categoryLabel: "Spec coffee",
     });
     expect(rows[2]?.merchant).toBeNull();

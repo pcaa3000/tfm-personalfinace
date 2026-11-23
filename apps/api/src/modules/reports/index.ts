@@ -29,10 +29,10 @@ export {
   type ExpensesByCategoryReportQueryPort,
 } from "./application/ports/expenses-by-category-report.port.js";
 export {
-  ANT_EXPENSES_REPORT_QUERY,
-  type AntExpenseLine,
-  type AntExpensesReportQueryPort,
-} from "./application/ports/ant-expenses-report.port.js";
+  AVOIDABLE_EXPENSES_REPORT_QUERY,
+  type AvoidableExpenseLine,
+  type AvoidableExpensesReportQueryPort,
+} from "./application/ports/avoidable-expenses-report.port.js";
 export {
   MONTHLY_SAVINGS_REPORT_QUERY,
   type MonthlySavingsReportQueryPort,
@@ -57,9 +57,9 @@ export {
   type GetExpensesByCategoryCommand,
 } from "./application/get-expenses-by-category.use-case.js";
 export {
-  GetAntExpensesUseCase,
-  type GetAntExpensesCommand,
-} from "./application/get-ant-expenses.use-case.js";
+  GetAvoidableExpensesUseCase,
+  type GetAvoidableExpensesCommand,
+} from "./application/get-avoidable-expenses.use-case.js";
 export {
   GetMonthlySavingsUseCase,
   type GetMonthlySavingsCommand,
@@ -79,12 +79,18 @@ export {
   type ExpensesByCategoryView,
 } from "./application/expenses-by-category.view.js";
 export {
-  ANT_EXPENSE_ABSOLUTE_CAP_MINOR,
-  ANT_EXPENSE_MIN_OPERATIONS,
-  toAntExpensesView,
-  type AntExpenseGroupView,
-  type AntExpensesView,
-} from "./application/ant-expenses.view.js";
+  ANT_DETECTOR_ABSOLUTE_CAP_MINOR,
+  ANT_DETECTOR_MIN_OPERATIONS,
+  CONCENTRATION_MIN_PERCENT,
+  GROWTH_MIN_RATIO_PERCENT,
+  MIN_SHARE_OF_DISCRETIONARY_PERCENT,
+  RECURRING_CHARGE_MAX_RATIO_PERCENT,
+  RECURRING_CHARGE_MIN_OPERATIONS,
+  toAvoidableExpensesView,
+  type AvoidableExpenseDetector,
+  type AvoidableExpenseGroupView,
+  type AvoidableExpensesView,
+} from "./application/avoidable-expenses.view.js";
 export {
   toMonthlySavingsView,
   type MonthlySavingsView,
