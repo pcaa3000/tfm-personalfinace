@@ -96,6 +96,21 @@ const GLOBAL_CATEGORIES = [
   { key: "taxes", label: "Impuestos y obligaciones", nature: "obligation" },
 ] as const;
 
+// Demo-only discretionary categories (reports-monthly T11, S10),
+// provisioned on top of the global catalog mirror so the seeded dataset
+// materializes detectable ant-expense groups: the near-daily fares are
+// minor transport (not snacks — the concepts are bus/combi/mototaxi
+// fares) and streaming subscriptions move out of `services`, which
+// stays essential for real utility bills.
+const DEMO_CATEGORIES = [
+  {
+    key: "minor_transport",
+    label: "Transporte menor",
+    nature: "discretionary",
+  },
+  { key: "subscriptions", label: "Suscripciones", nature: "discretionary" },
+] as const;
+
 export interface DemoSeedCounts {
   readonly income: number;
   readonly expense: number;
@@ -188,7 +203,7 @@ export async function bootstrapDemoWorkspace(
   // row is RESTORED (un-archived, label/nature reset): a demo visitor
   // archiving a seed category must not break later refreshes
   // (R3-001 — the wipe+re-seed would roll back forever otherwise).
-  for (const category of GLOBAL_CATEGORIES) {
+  for (const category of [...GLOBAL_CATEGORIES, ...DEMO_CATEGORIES]) {
     await tx
       .insert(categories)
       .values({ id: randomUUID(), ...category, workspaceId: workspace.id })
@@ -353,6 +368,9 @@ export async function recordDemoTransactions(
       accountId,
       destinationAccountId,
       categoryId,
+      // S10: an explicit plan merchant reaches the aggregate; absent
+      // falls back to the concept-derived normalization.
+      merchant: transaction.merchant ?? null,
       origin: "manual",
       actor: DEMO_ACTOR,
     });

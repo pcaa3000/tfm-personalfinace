@@ -159,7 +159,9 @@ describe("seedDemoSessionWorkspace (integration, real Postgres — T6)", () => {
       .select()
       .from(categories)
       .where(eq(categories.workspaceId, workspace!.id));
-    expect(categoryRows).toHaveLength(12);
+    // 12 global catalog copies + 2 demo-only discretionary categories
+    // (reports-monthly T11: minor_transport, subscriptions).
+    expect(categoryRows).toHaveLength(14);
     const currencyRows = await db
       .select()
       .from(currencies)

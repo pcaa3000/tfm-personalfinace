@@ -36,6 +36,12 @@ export interface DemoTransactionSeed {
   readonly destinationAccountKey?: DemoAccountKey;
   /** Income/expense only; key of a workspace category copy. */
   readonly categoryKey?: string;
+  /**
+   * Optional explicit merchant (reports-monthly T11, S10): forwarded to
+   * RecordManualTransactionUseCase so recurring ant expenses group under
+   * one normalized merchant instead of scattering across concepts.
+   */
+  readonly merchant?: string;
 }
 
 export interface DemoTransaction extends DemoTransactionSeed {
@@ -206,7 +212,7 @@ const FIXED_MONTHLY: readonly {
     dayOfMonth: 8,
     concept: "Netflix",
     amountMinor: 4_490,
-    categoryKey: "services",
+    categoryKey: "subscriptions",
     accountKey: "credit",
   },
   {
@@ -227,7 +233,7 @@ const FIXED_MONTHLY: readonly {
     dayOfMonth: 15,
     concept: "Spotify",
     amountMinor: 2_190,
-    categoryKey: "services",
+    categoryKey: "subscriptions",
     accountKey: "credit",
   },
   {
@@ -397,6 +403,10 @@ export function buildDemoPlan(
   }
 
   // "Gasto hormiga": near-daily small transport fares (S/ 5–20).
+  // reports-monthly T11 (S10): the fares live on the discretionary
+  // `minor_transport` category and share one explicit merchant so the
+  // ant-expenses report can group them (>=3 operations, mean far below
+  // the 1%-of-income threshold).
   for (let offset = 0; offset < WINDOW_DAYS; offset += 1) {
     const iso = shiftDay(end, -offset);
     const weekday = weekdayOf(iso);
@@ -408,7 +418,24 @@ export function buildDemoPlan(
       businessDate: iso,
       concept: pick(TRANSPORT_CONCEPTS),
       accountKey: rand() < 0.9 ? "cash" : "bank",
-      categoryKey: "transport",
+      categoryKey: "minor_transport",
+      merchant: "combi",
+    });
+  }
+
+  // Second "gasto hormiga" group (S10): a weekly café stop with a
+  // shared explicit merchant so the report can flag two groups.
+  for (let week = 0; week < weeks; week += 1) {
+    const iso = shiftDay(end, -(week * 7 + randInt(0, 6)));
+    if (!inWindow(iso)) continue;
+    seeds.push({
+      type: "expense",
+      amountMinor: randStep(600, 1_800, 50), // S/ 6–18
+      businessDate: iso,
+      concept: "Café",
+      accountKey: rand() < 0.7 ? "cash" : "bank",
+      categoryKey: "restaurants",
+      merchant: "cafe",
     });
   }
 

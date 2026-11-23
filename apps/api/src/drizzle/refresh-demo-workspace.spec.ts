@@ -21,7 +21,7 @@ import type { CallerIdentity } from "../modules/identity-workspace/index.js";
  * demo-maria-session T2 (S2/S3/S4) + S6: the shared single demo
  * workspace is RESTORED — never topped up — by `refreshDemoWorkspace`.
  * On every run: bootstrap if missing (workspace + PEN currency + the
- * 12 catalog categories + the 4 seed accounts), wipe the workspace's
+ * catalog categories + the 4 seed accounts), wipe the workspace's
  * ledger/accounts/outbox/notifications exactly like
  * `seedDemoWorkspaceInTransaction`'s reset, then re-seed the rolling
  * 3-month window through the deterministic plan. A visitor's writes
@@ -125,7 +125,7 @@ describe("refreshDemoWorkspace (integration, real Postgres — T2)", () => {
     await pool.end();
   });
 
-  it("bootstraps a missing workspace (currency + 12 categories + 4 accounts) and generates all 3 window months (S2/S3)", async () => {
+  it("bootstraps a missing workspace (currency + catalog categories + 4 accounts) and generates all 3 window months (S2/S3)", async () => {
     const result = await refresh(db);
 
     expect(result.workspaceCreated).toBe(true);
@@ -154,7 +154,9 @@ describe("refreshDemoWorkspace (integration, real Postgres — T2)", () => {
       .select()
       .from(categories)
       .where(eq(categories.workspaceId, workspace!.id));
-    expect(categoryRows).toHaveLength(12);
+    // 12 global catalog copies + 2 demo-only discretionary categories
+    // (reports-monthly T11: minor_transport, subscriptions).
+    expect(categoryRows).toHaveLength(14);
 
     const accountRows = await db
       .select()
