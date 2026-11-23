@@ -127,6 +127,35 @@ describe("ExcelJsReportExportAdapter", () => {
     ]);
   });
 
+  it("stores formula-leading labels as literal strings (shared strings, no prefix)", async () => {
+    const adapter = new ExcelJsReportExportAdapter();
+    const bundle: MonthlyReportBundle = {
+      ...BUNDLE,
+      cashFlow: {
+        period: PERIOD,
+        accounts: [
+          {
+            accountId: "acc-1",
+            name: "=SUM(1;2)",
+            kind: "bank",
+            income: "100.00",
+            expense: "40.50",
+            transfersIn: "0.00",
+            transfersOut: "38.00",
+            netFlow: "21.50",
+          },
+        ],
+      },
+    };
+
+    const workbook = await loadWorkbook(await adapter.serialize(bundle));
+    const row = sheetValues(workbook.getWorksheet("Cash flow")!)[1]!;
+
+    // ExcelJS writes strings as shared strings — the label lands
+    // verbatim, never as a formula, and without a visible ' prefix.
+    expect(row[0]).toBe("=SUM(1;2)");
+  });
+
   it("writes each section sheet with the contract columns and verbatim amounts", async () => {
     const adapter = new ExcelJsReportExportAdapter();
 
