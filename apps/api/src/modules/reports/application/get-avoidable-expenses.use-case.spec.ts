@@ -244,6 +244,25 @@ describe("GetAvoidableExpensesUseCase", () => {
     expect(result.value.potentialSavings).toBe("0.00");
   });
 
+  it("admits recurring_charge at exactly the 1% discretionary boundary", async () => {
+    // Discretionary total 100_000 -> floor is 1_000; the group hits it.
+    const { useCase } = useCaseWith(
+      [
+        line({ transactionId: "tx-e1", merchant: "sub", amountMinor: 500n }),
+        line({ transactionId: "tx-e2", merchant: "sub", amountMinor: 500n }),
+        ...padding(11, 9_000n), // 99_000 + 1_000 = 100_000 total
+      ],
+      1_000_000n,
+    );
+
+    const result = await useCase.execute(baseCommand);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.groups.map((g) => g.key)).toEqual(["sub"]);
+    expect(result.value.groups[0]?.detectors).toEqual(["recurring_charge"]);
+  });
+
   it("fires concentration when a group reaches 20% of the discretionary spend", async () => {
     const { useCase } = useCaseWith(
       [
