@@ -10,6 +10,7 @@ import {
   outboxEvents,
   notifications,
   periodCloses,
+  receiptScans,
   voiceConsents,
   voiceNotes,
   workspaces,
@@ -28,7 +29,7 @@ import type { CallerIdentity } from "../modules/identity-workspace/index.js";
  * catalog categories + the 4 seed accounts), wipe the workspace's
  * ledger/accounts/outbox/notifications exactly like
  * `seedDemoWorkspaceInTransaction`'s reset, then re-seed the rolling
- * 3-month window through the deterministic plan. A visitor's writes
+ * 6-month window through the deterministic plan. A visitor's writes
  * inside a session are discarded by the NEXT refresh (S6). The same
  * routine backs POST /api/v1/demo/refresh and
  * `pnpm db:seed:demo:refresh`.
@@ -86,6 +87,7 @@ async function cleanup(db: DrizzleDb): Promise<void> {
       .delete(voiceConsents)
       .where(eq(voiceConsents.workspaceId, id));
     await db.delete(periodCloses).where(eq(periodCloses.workspaceId, id));
+    await db.delete(receiptScans).where(eq(receiptScans.workspaceId, id));
     await db.delete(categories).where(eq(categories.workspaceId, id));
     await db.delete(currencies).where(eq(currencies.workspaceId, id));
     await db.delete(workspaces).where(eq(workspaces.id, id));
@@ -135,7 +137,7 @@ describe("refreshDemoWorkspace (integration, real Postgres — T2)", () => {
     await pool.end();
   });
 
-  it("bootstraps a missing workspace (currency + catalog categories + 4 accounts) and generates all 3 window months (S2/S3)", async () => {
+  it("bootstraps a missing workspace (currency + catalog categories + 4 accounts) and generates all 6 window months (S2/S3)", async () => {
     const result = await refresh(db);
 
     expect(result.workspaceCreated).toBe(true);
@@ -311,8 +313,18 @@ describe("refreshDemoWorkspace (integration, real Postgres — T2)", () => {
   // demo-seed-six-months T4 (S5): the wipe must also clear the
   // workspace-scoped rows that carry a plain-text workspaceId with no
   // FK — today voice notes, voice consents and period closes leak.
-  it("the reset wipe also deletes voice notes, voice consents and period closes (S5)", async () => {
+  it("the reset wipe also deletes receipt scans, voice notes, voice consents and period closes (S5)", async () => {
     await refresh(db);
+    await db.insert(receiptScans).values({
+      id: "demo-refresh-receipt-scan",
+      workspaceId: WORKSPACE_ID,
+      uploaderSubject: "maria",
+      storageKey: "demo-refresh-scan-key",
+      originalFilename: "boleta.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 100,
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
     await db.insert(voiceNotes).values({
       id: "demo-refresh-voice-note",
       workspaceId: WORKSPACE_ID,
@@ -344,6 +356,7 @@ describe("refreshDemoWorkspace (integration, real Postgres — T2)", () => {
     await refreshDemoWorkspace(db, refreshOptions());
 
     for (const [table, id] of [
+      [receiptScans, "demo-refresh-receipt-scan"],
       [voiceNotes, "demo-refresh-voice-note"],
       [voiceConsents, "demo-refresh-voice-consent"],
       [periodCloses, "demo-refresh-period-close"],

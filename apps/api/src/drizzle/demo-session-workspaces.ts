@@ -287,7 +287,7 @@ export async function seedDemoSessionWorkspace(
   const generatedMonths: string[] = [];
   let insertedTransactions = 0;
   // Spec order (S3): current month first so the web gets data soon,
-  // then -1 and -2. Each month commits independently.
+  // then -1..-5. Each month commits independently.
   for (const month of demoWindowMonths(now)) {
     const inserted = await db.transaction(async (tx) => {
       await tx.execute(advisoryLock);

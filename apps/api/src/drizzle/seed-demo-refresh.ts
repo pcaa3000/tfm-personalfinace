@@ -11,7 +11,7 @@ import {
  * Demo refresh CLI — thin wrapper over {@link refreshDemoWorkspace}
  * (odd/tasks/demo-maria-session T2, S4; S6 restore semantics): wipes
  * the "María" demo workspace's ledger/accounts/outbox/notifications and
- * re-seeds the rolling 3-month window, restoring the original
+ * re-seeds the rolling 6-month window, restoring the original
  * synthetic dataset. Reuses the exact same routine as
  * POST /api/v1/demo/refresh.
  *

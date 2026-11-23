@@ -30,7 +30,7 @@ import { DrizzleDemoSessionService } from "../modules/demo/infrastructure/drizzl
 /**
  * demo-maria-session T6+T7 (L10, modelo por-sid restaurado): per-session
  * ephemeral demo workspaces of kind='demo' (`issuer|subject|sid`) are
- * seeded async month by month — current, -1, -2 in that order — and
+ * seeded async month by month — current, -1..-5 in that order — and
  * orphaned ones (createdAt < now-24h) are removed with all their data
  * by `cleanupDemoWorkspaces`, the routine shared by the async seed
  * job, DELETE /api/v1/demo/session and `pnpm db:demo:cleanup`.
@@ -150,7 +150,7 @@ describe("seedDemoSessionWorkspace (integration, real Postgres — T6)", () => {
     expect(EXPECTED_MONTHS).toEqual([...EXPECTED_MONTHS].sort().reverse());
   });
 
-  it("seeds a kind='demo' workspace month by month in window order: current, -1, -2 (S3)", async () => {
+  it("seeds a kind='demo' workspace month by month in window order: current, -1..-5 (S3)", async () => {
     // POST /demo/session pre-inserts the bare row before kicking the
     // job; the async seed adopts it (R1-001: a missing row aborts).
     await db.insert(workspaces).values({

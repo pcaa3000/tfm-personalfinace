@@ -38,7 +38,7 @@ import type {
  * resolver accepts the new sid the moment POST /demo/session answers —
  * then kicks the seeding fire-and-forget through a per-sid in-process
  * mutex ({@link DemoSessionSeedTrigger}): bootstrap + months
- * current/-1/-2 in order, and finally the >24h orphan sweep, each
+ * current/-1..-5 in order, and finally the >24h orphan sweep, each
  * piece behind a pg advisory lock per sid. A failed job is logged and
  * swallowed; the leftover workspace is collected by the next sweep.
  *

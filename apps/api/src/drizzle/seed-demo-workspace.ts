@@ -13,6 +13,7 @@ import {
   notifications,
   outboxEvents,
   periodCloses,
+  receiptScans,
   voiceConsents,
   voiceNotes,
   workspaces,
@@ -52,7 +53,7 @@ import { WorkspaceId } from "../modules/shared-kernel/index.js";
  *
  * demo-maria-session T2: the bootstrap/account/record helpers below are
  * also the building blocks of `refreshDemoWorkspace` — the rolling
- * 3-month maintenance the shared demo workspace gets on every demo
+ * 6-month maintenance the shared demo workspace gets on every demo
  * sign-in (`db:seed:demo` full-reseed behavior stays unchanged).
  */
 
@@ -417,11 +418,12 @@ export async function recordDemoTransactions(
 
 /**
  * The demo workspace reset (S4/S6): wipes the workspace-scoped ledger,
- * accounts, pending outbox events, notifications, voice notes, voice
- * consents and period closes — in FK-safe order (splits → revisions →
- * transactions → accounts → outbox → notifications → voice/consents/
- * closes; voice notes reference transactions via `set null`, the
- * consent/close tables carry a plain-text workspaceId with no FK).
+ * accounts, pending outbox events, notifications, receipt scans,
+ * voice notes, voice consents and period closes — in FK-safe order
+ * (splits → revisions → transactions → accounts → outbox →
+ * notifications → scans/voice/consents/closes; receipt scans and voice
+ * notes reference transactions via `set null`, the consent/close
+ * tables carry a plain-text workspaceId with no FK).
  * The workspace row, currencies and category copies are deliberately
  * NOT touched. Shared by {@link seedDemoWorkspaceInTransaction}
  * (full re-seed) and `refreshDemoWorkspace` (S6 restore-on-refresh).
@@ -457,7 +459,10 @@ export async function wipeDemoWorkspaceState(
     .delete(notifications)
     .where(eq(notifications.workspaceId, workspaceRowId));
   // S5 (demo-seed-six-months T4): plain-workspaceId tables with no FK
-  // — delete them here or their rows leak across re-seeds.
+  // and scan rows — delete them here or their rows leak across re-seeds.
+  await tx
+    .delete(receiptScans)
+    .where(eq(receiptScans.workspaceId, workspaceRowId));
   await tx
     .delete(voiceNotes)
     .where(eq(voiceNotes.workspaceId, workspaceRowId));

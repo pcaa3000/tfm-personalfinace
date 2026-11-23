@@ -19,7 +19,7 @@ import { DrizzleDemoSessionService } from "./drizzle-demo-session.service.js";
  * demo-maria-session T6 (S2/S3/S5/S8; L10 final model): POST
  * /demo/session mints an ephemeral `issuer|subject|sid` workspace of
  * kind `demo` and answers immediately — the María dataset is seeded
- * asynchronously (bootstrap, then months current/-1/-2) while the
+ * asynchronously (bootstrap, then months current/-1..-5) while the
  * fail-closed resolver already accepts the new sid. DELETE
  * /demo/session removes that session's workspace with its data and
  * every run also sweeps kind='demo' workspaces older than 24h.
@@ -116,7 +116,7 @@ describe("DrizzleDemoSessionService (integration, real Postgres — T6)", () => 
     await pool.end();
   });
 
-  it("returns {sessionId, workspaceId} with the kind='demo' row already resolvable, then seeds the 3-month dataset async (S2/S8)", async () => {
+  it("returns {sessionId, workspaceId} with the kind='demo' row already resolvable, then seeds the 6-month dataset async (S2/S8)", async () => {
     const session = await service.createSession(caller(SUBJECT_A));
 
     expect(session.sessionId).toMatch(

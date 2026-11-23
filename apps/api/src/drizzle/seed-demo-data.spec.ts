@@ -125,7 +125,7 @@ describe("buildDemoPlan six-month window (demo-seed-six-months T1, S1/S2)", () =
   });
 
   it("roughly doubles the absolute volume of the former 90-day plan (S2)", () => {
-    // The 3-month plan produced ~167 rows for this NOW.
+    // The old 3-month plan produced ~167 rows for this NOW.
     expect(plan.transactions.length).toBeGreaterThanOrEqual(300);
   });
 

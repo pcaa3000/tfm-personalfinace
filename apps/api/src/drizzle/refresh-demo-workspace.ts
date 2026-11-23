@@ -14,7 +14,7 @@ import {
 import type { CallerIdentity } from "../modules/identity-workspace/index.js";
 
 /**
- * Rolling 3-month refresh for the shared "María" demo workspace
+ * Rolling 6-month refresh for the shared "María" demo workspace
  * (odd/tasks/demo-maria-session T2, S2/S3/S4; S6 restore semantics):
  * the demo subject keeps ONE workspace `<issuer>|<demo-sub>` —
  * `oidc: <OIDC_ISSUER>|<demo-uid>`, `dev: local|demo-maria` — and every
