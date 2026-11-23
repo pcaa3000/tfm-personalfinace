@@ -1,16 +1,17 @@
 /**
  * Deterministic dataset generator for the "María" demo workspace
- * (odd/tasks/demo-maria-seed T1, S1/S2/S3/S5).
+ * (odd/tasks/demo-maria-seed T1, S1/S2/S3/S5; the window was extended to
+ * six months by odd/tasks/demo-seed-six-months T1, S1/S2).
  *
  * Pure module — no DB access. Every value comes from a mulberry32 PRNG
  * with a FIXED seed (S5): the only input that varies between runs is the
- * `now` instant used to anchor the rolling 90-day window (S1). Business
+ * `now` instant used to anchor the rolling 180-day window (S1). Business
  * dates are YYYY-MM-DD strings interpreted in the workspace timezone
  * (America/Lima) by the use case that persists them.
  */
 
 const PRNG_SEED = 0x5eed_0001;
-const WINDOW_DAYS = 90;
+const WINDOW_DAYS = 180;
 export const DEMO_TIMEZONE = "America/Lima";
 export const DEMO_CURRENCY = "PEN";
 
@@ -257,7 +258,8 @@ const PAYDAY_SAVINGS_MINOR = 50_000; // S/ 500 moved to "Ahorros" on payday.
 
 /**
  * demo-maria-session T2 (S3): the rolling maintenance window — the
- * current calendar month and the two before it, in the demo timezone.
+ * current calendar month and the ones before it, in the demo timezone.
+ * demo-seed-six-months T1 (S1): five months back, not two.
  */
 export interface DemoWindowMonth {
   /** "YYYY-MM" — matches `businessDate.slice(0, 7)`. */
@@ -268,13 +270,13 @@ export interface DemoWindowMonth {
   readonly end: string;
 }
 
-/** Window months ordered as the spec lists them: current, -1, -2. */
+/** Window months ordered as the spec lists them: current, -1 … -5. */
 export function demoWindowMonths(
   now: Date = new Date(),
 ): readonly DemoWindowMonth[] {
   const [year, month] = parseIso(timezoneToday(now));
   const months: DemoWindowMonth[] = [];
-  for (let back = 0; back <= 2; back += 1) {
+  for (let back = 0; back <= 5; back += 1) {
     const first = new Date(Date.UTC(year, month - 1 - back, 1));
     const next = new Date(Date.UTC(year, month - back, 1));
     months.push({
@@ -320,6 +322,36 @@ export function buildDemoPlan(
   const inWindow = (iso: string): boolean => iso >= start && iso <= end;
   const randomDate = (): string => shiftDay(end, -randInt(0, WINDOW_DAYS - 1));
 
+  const daysBetween = (from: string, to: string): number => {
+    const [fromYear, fromMonth, fromDay] = parseIso(from);
+    const [toYear, toMonth, toDay] = parseIso(to);
+    return Math.round(
+      (Date.UTC(toYear, toMonth - 1, toDay) -
+        Date.UTC(fromYear, fromMonth - 1, fromDay)) /
+        86_400_000,
+    );
+  };
+  /** Random date inside [lo, hi] — scatters per-month rows (S2). */
+  const randomDateBetween = (lo: string, hi: string): string =>
+    shiftDay(lo, randInt(0, daysBetween(lo, hi)));
+  /**
+   * The slice of a calendar month that intersects the window — per-month
+   * generation (S2) clamps to it so the partial edge months stay covered.
+   */
+  const monthRangeInWindow = (
+    year: number,
+    month: number,
+  ): { readonly lo: string; readonly hi: string } | null => {
+    const first = isoOf(year, month, 1);
+    const last = shiftDay(
+      new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10),
+      -1,
+    );
+    const lo = first > start ? first : start;
+    const hi = last < end ? last : end;
+    return lo <= hi ? { lo, hi } : null;
+  };
+
   const months = monthsInWindow(start, end);
   const seeds: DemoTransactionSeed[] = [];
   const salaryDates: string[] = [];
@@ -340,17 +372,23 @@ export function buildDemoPlan(
     }
   }
 
-  // 1–3 freelance/ventas income per month on average (S3 variable part).
-  const freelanceCount = randInt(7, 9);
-  for (let i = 0; i < freelanceCount; i += 1) {
-    seeds.push({
-      type: "income",
-      amountMinor: randStep(20_000, 80_000, 500), // S/ 200–800
-      businessDate: randomDate(),
-      concept: pick(FREELANCE_CONCEPTS),
-      accountKey: rand() < 0.8 ? "bank" : "cash",
-      categoryKey: "other_income",
-    });
+  // 2–3 freelance/ventas income per month (S3 variable part;
+  // demo-seed-six-months T1 S2: per-month so the doubled window keeps
+  // the same income density in every calendar month).
+  for (const { year, month } of months) {
+    const range = monthRangeInWindow(year, month);
+    if (!range) continue;
+    const freelanceCount = randInt(2, 3);
+    for (let i = 0; i < freelanceCount; i += 1) {
+      seeds.push({
+        type: "income",
+        amountMinor: randStep(20_000, 80_000, 500), // S/ 200–800
+        businessDate: randomDateBetween(range.lo, range.hi),
+        concept: pick(FREELANCE_CONCEPTS),
+        accountKey: rand() < 0.8 ? "bank" : "cash",
+        categoryKey: "other_income",
+      });
+    }
   }
 
   // ── Fixed monthly expenses ──────────────────────────────────────
@@ -439,8 +477,12 @@ export function buildDemoPlan(
     });
   }
 
+  // Variable expense groups, generated per month (demo-seed-six-months
+  // T1, S2): the ranges below keep the 90-day-window density instead of
+  // thinning the dataset across 180 days.
   const variableExpenses: readonly {
-    readonly count: number;
+    readonly minCount: number;
+    readonly maxCount: number;
     readonly minMinor: number;
     readonly maxMinor: number;
     readonly step: number;
@@ -450,7 +492,8 @@ export function buildDemoPlan(
   }[] = [
     {
       // 3–5 per month.
-      count: randInt(10, 14),
+      minCount: 3,
+      maxCount: 5,
       minMinor: 2_500,
       maxMinor: 9_000,
       step: 50,
@@ -459,7 +502,9 @@ export function buildDemoPlan(
       accounts: ["bank", "cash", "credit"],
     },
     {
-      count: randInt(5, 7),
+      // 1–3 per month.
+      minCount: 1,
+      maxCount: 3,
       minMinor: 1_800,
       maxMinor: 8_000,
       step: 50,
@@ -468,7 +513,9 @@ export function buildDemoPlan(
       accounts: ["cash", "bank", "credit"],
     },
     {
-      count: randInt(5, 7),
+      // 1–3 per month.
+      minCount: 1,
+      maxCount: 3,
       minMinor: 6_000,
       maxMinor: 30_000,
       step: 100,
@@ -477,7 +524,9 @@ export function buildDemoPlan(
       accounts: ["credit", "bank"],
     },
     {
-      count: randInt(2, 4),
+      // 0–2 per month — occasional pharmacy/consult.
+      minCount: 0,
+      maxCount: 2,
       minMinor: 1_500,
       maxMinor: 8_000,
       step: 50,
@@ -486,7 +535,9 @@ export function buildDemoPlan(
       accounts: ["cash", "bank"],
     },
     {
-      count: randInt(2, 3),
+      // 0–1 per month — the odd course or book.
+      minCount: 0,
+      maxCount: 1,
       minMinor: 6_000,
       maxMinor: 15_000,
       step: 100,
@@ -495,16 +546,21 @@ export function buildDemoPlan(
       accounts: ["bank", "credit"],
     },
   ];
-  for (const group of variableExpenses) {
-    for (let i = 0; i < group.count; i += 1) {
-      seeds.push({
-        type: "expense",
-        amountMinor: randStep(group.minMinor, group.maxMinor, group.step),
-        businessDate: randomDate(),
-        concept: pick(group.concepts),
-        accountKey: pick(group.accounts),
-        categoryKey: group.categoryKey,
-      });
+  for (const { year, month } of months) {
+    const range = monthRangeInWindow(year, month);
+    if (!range) continue;
+    for (const group of variableExpenses) {
+      const count = randInt(group.minCount, group.maxCount);
+      for (let i = 0; i < count; i += 1) {
+        seeds.push({
+          type: "expense",
+          amountMinor: randStep(group.minMinor, group.maxMinor, group.step),
+          businessDate: randomDateBetween(range.lo, range.hi),
+          concept: pick(group.concepts),
+          accountKey: pick(group.accounts),
+          categoryKey: group.categoryKey,
+        });
+      }
     }
   }
 
@@ -534,18 +590,24 @@ export function buildDemoPlan(
       });
     }
   }
-  // Occasional card payment, bank → credit_card.
-  seeds.push({
-    type: "transfer",
-    amountMinor: randStep(20_000, 50_000, 1_000),
-    businessDate: randomDate(),
-    concept: "Pago tarjeta de crédito",
-    accountKey: "bank",
-    destinationAccountKey: "credit",
-  });
+  // Monthly card payment, bank → credit_card (demo-seed-six-months T1,
+  // S2: one per month instead of a single payment per window).
+  for (const { year, month } of months) {
+    const range = monthRangeInWindow(year, month);
+    if (!range) continue;
+    seeds.push({
+      type: "transfer",
+      amountMinor: randStep(20_000, 50_000, 1_000),
+      businessDate: randomDateBetween(range.lo, range.hi),
+      concept: "Pago tarjeta de crédito",
+      accountKey: "bank",
+      destinationAccountKey: "credit",
+    });
+  }
 
   // Deterministic order + idempotency keys (S5): sort by business date,
-  // then assign the stable `demo-maria-<seq>` sequence.
+  // then assign the stable `demo-maria-<seq>` sequence — padStart keeps
+  // four digits and larger counts simply grow past them.
   const ordered = [...seeds].sort((a, b) =>
     a.businessDate === b.businessDate
       ? a.concept.localeCompare(b.concept)
