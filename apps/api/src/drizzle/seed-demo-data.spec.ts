@@ -26,11 +26,15 @@ describe("buildDemoPlan ant-expense materialization (reports-monthly T11, S10)",
     expect(
       fares.every((transaction) => transaction.merchant === "combi"),
     ).toBe(true);
-    // Mean stays well under the 1%-of-income threshold (S/ 5–20 fares).
+    // Ant-expense policy: group mean must stay <= 1% of the period's
+    // confirmed income — compare against the plan's actual seeded income.
+    const incomeMinor = plan.transactions
+      .filter((transaction) => transaction.type === "income")
+      .reduce((sum, transaction) => sum + transaction.amountMinor, 0);
     const mean =
       fares.reduce((sum, transaction) => sum + transaction.amountMinor, 0) /
       fares.length;
-    expect(mean).toBeLessThanOrEqual(2_000);
+    expect(mean).toBeLessThanOrEqual(incomeMinor / 100);
   });
 
   it("moves streaming subscriptions out of the essential services category", () => {
