@@ -21,6 +21,8 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 
 - **S13** (L24): ReportsPage muestra primero un resumen ejecutivo siempre visible (ahorro observado, ahorro potencial de evitables + cantidad de grupos, cash flow neto total, top categoría discrecional) y debajo las 4 secciones como panels colapsables; la sección de Gastos evitables abre automáticamente cuando tiene grupos; el resto cerrado por default. Contenido interno de las secciones sin cambios.
 
+- **S14** (L27): Nuevo detector `monthly_recurring`: el mismo merchant (o categoryId) aparece en la ventana actual Y en la ventana anterior equivalente con montos similares (±15%, max ≤1.15·min) → suscripciones mensuales como Spotify/Netflix (1 op por ventana) quedan detectadas como evitables. Se suma a la unión de detectores con el piso de ruido del 1% discrecional.
+
 ## Tasks
 
 | ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
@@ -39,6 +41,7 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 | T12 | Evolución ant-expenses → reporte "Gastos evitables" con detectores (opción A) | S3, S11 | api+web | done | API 131/131, web 502, suite api 1372 |
 | T13 | UX móvil en ReportsPage: tablas responsive (stacked rows o scroll indicado) | S12 | web | done | RED 3→GREEN 23/23; web 507 |
 | T14 | Resumen ejecutivo + secciones colapsables con auto-apertura | S13 | web | done | RED 5/5→GREEN 28/28; web 512 |
+| T15 | Detector monthly_recurring inter-ventana para suscripciones mensuales | S14 | api+web | pending | |
 
 ## Log
 
@@ -68,3 +71,4 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 - **L24** (usuario): "sí" — acepta la propuesta de resumen ejecutivo + secciones colapsables con auto-apertura por hallazgos (gráficos/tabs postergados: sin histórico multi-mes aún).
 - **L25** (proceso): T14 — ExecutiveSummary con 4 KPI (useQuery observers sobre mismas keys, 0 fetch nuevo); ReportSection → ButtonBase+Collapse con línea resumen en header colapsado; errores fuera del collapse; desvío: KPI "Ahorro potencial" (no "Gastos evitables") por colisión de textos — aceptado (exacto semánticamente).
 - **L26** (revisión nativa 6ª ronda): T14 aprobado (readability+reliability), 8 advisory — el rango incluyó commits del demo-seed paralelo. Cerrado R3-005: reset de toggles manuales al cambiar período/moneda (`3912115`, `aa1823e` aprobados) — guardia de hidratación solo conserva toggles cuando ""→moneda real con mismo año+mes; spec de reset añadido. Backlog nuevo: KPI duplicado vs headers (R2-001), monthRangeInWindow duplica límites de mes (R2-002), cleanup CLI scan+DELETE no transaccional (R3-001), ensureGlobalCategory→ensureE2eCategory migración parcial (R3-002), filtro global de categorías test no cubre workspaces pre-existentes (R3-003), cleanup CLI fallback hardcodeado sin DATABASE_URL/dry-run (R3-004), hydration key parse acoplado a formato (R3-hydration-key-parse), spec usa wall-clock (R3-test-wallclock).
+- **L27** (usuario): "sí" — acepta el detector inter-ventana. Brecha confirmada: una suscripción mensual = 1 op por ventana, invisible para recurring_charge (≥2 ops intra-ventana) y growth (ratio 1.0×).
