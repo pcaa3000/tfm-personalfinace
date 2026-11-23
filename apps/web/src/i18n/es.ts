@@ -480,6 +480,7 @@ export const es = {
       detector: {
         ant: "Hormiga",
         recurring_charge: "Recurrente",
+        monthly_recurring: "Suscripción mensual",
         concentration: "Concentración",
         growth: "Crecimiento",
       },

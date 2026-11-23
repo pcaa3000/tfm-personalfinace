@@ -66,6 +66,7 @@ export interface ExpensesByCategoryView {
 export type AvoidableExpenseDetector =
   | "ant"
   | "recurring_charge"
+  | "monthly_recurring"
   | "concentration"
   | "growth";
 

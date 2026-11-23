@@ -394,6 +394,166 @@ describe("GetAvoidableExpensesUseCase", () => {
     expect(result.value.groups).toEqual([]);
   });
 
+  it("fires monthly_recurring when the same key reappears in the previous window with a similar total (S14)", async () => {
+    const { useCase } = useCaseWith(
+      [
+        // One charge per window — invisible to ant and recurring_charge
+        // (intra-window counts): exactly the monthly-subscription gap.
+        line({ transactionId: "tx-m1", merchant: "spotify", amountMinor: 999n }),
+        ...padding(6, 2_000n),
+      ],
+      1_000_000n,
+      [
+        line({ transactionId: "tx-pm1", merchant: "spotify", amountMinor: 999n }),
+      ],
+    );
+
+    const result = await useCase.execute(baseCommand);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.groups).toEqual([
+      expect.objectContaining({
+        detectors: ["monthly_recurring"],
+        key: "spotify",
+        operationCount: 1,
+        total: "9.99",
+        confidence: "high",
+      }),
+    ]);
+  });
+
+  it("fires monthly_recurring at exactly the ±15% totals boundary and not beyond it", async () => {
+    const { useCase } = useCaseWith(
+      [
+        // 1150 vs 1000 is exactly 1.15x (fires); 1151 is one minor unit
+        // past the boundary. The decreasing direction is symmetric:
+        // 1000 vs 870 fires (100_000 <= 115·870), 869 does not.
+        line({ transactionId: "tx-b1", merchant: "gym", amountMinor: 1_150n }),
+        line({ transactionId: "tx-b2", merchant: "studio", amountMinor: 1_151n }),
+        line({ transactionId: "tx-b3", merchant: "drop", amountMinor: 870n }),
+        line({ transactionId: "tx-b4", merchant: "dip", amountMinor: 869n }),
+        ...padding(8, 3_000n),
+      ],
+      1_000_000n,
+      [
+        line({ transactionId: "tx-pb1", merchant: "gym", amountMinor: 1_000n }),
+        line({ transactionId: "tx-pb2", merchant: "studio", amountMinor: 1_000n }),
+        line({ transactionId: "tx-pb3", merchant: "drop", amountMinor: 1_000n }),
+        line({ transactionId: "tx-pb4", merchant: "dip", amountMinor: 1_000n }),
+      ],
+    );
+
+    const result = await useCase.execute(baseCommand);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.groups.map((g) => g.key)).toEqual(["gym", "drop"]);
+    expect(
+      result.value.groups.every((g) =>
+        g.detectors.includes("monthly_recurring"),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not fire monthly_recurring for a key absent in the previous window", async () => {
+    const { useCase } = useCaseWith(
+      [
+        // Admitted via ant (3 varied ops); with no previous-window
+        // total the inter-window detector must stay out.
+        line({ transactionId: "tx-1", amountMinor: 400n }),
+        line({ transactionId: "tx-2", amountMinor: 500n }),
+        line({ transactionId: "tx-3", amountMinor: 600n }),
+        ...padding(6, 2_000n),
+      ],
+      1_000_000n,
+      [],
+    );
+
+    const result = await useCase.execute(baseCommand);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.groups).toEqual([
+      expect.objectContaining({
+        key: "cafe central",
+        detectors: ["ant"],
+      }),
+    ]);
+  });
+
+  it("applies the 1%-of-discretionary noise floor to monthly_recurring", async () => {
+    const { useCase } = useCaseWith(
+      [
+        // 0.01 in both windows — recurring across windows but trivial.
+        line({ transactionId: "tx-t1", merchant: "fee", amountMinor: 1n }),
+        ...padding(10, 20_000n),
+      ],
+      1_000_000n,
+      [
+        line({ transactionId: "tx-pt1", merchant: "fee", amountMinor: 1n }),
+      ],
+    );
+
+    const result = await useCase.execute(baseCommand);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.groups).toEqual([]);
+    expect(result.value.potentialSavings).toBe("0.00");
+  });
+
+  it("carries recurring_charge and monthly_recurring together on the same group (S14)", async () => {
+    const { useCase } = useCaseWith(
+      [
+        // Two equal intra-window charges (recurring_charge) whose
+        // 19.98 group total also matches last window's 20.00 within
+        // ±15% — both detectors fire on the same group.
+        line({ transactionId: "tx-s1", merchant: "spotify", amountMinor: 999n }),
+        line({ transactionId: "tx-s2", merchant: "spotify", amountMinor: 999n }),
+        ...padding(6, 2_000n),
+      ],
+      1_000_000n,
+      [
+        line({ transactionId: "tx-ps1", merchant: "spotify", amountMinor: 2_000n }),
+      ],
+    );
+
+    const result = await useCase.execute(baseCommand);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.groups).toEqual([
+      expect.objectContaining({
+        key: "spotify",
+        detectors: ["recurring_charge", "monthly_recurring"],
+      }),
+    ]);
+  });
+
+  it("sums the group once in potentialSavings even when monthly_recurring joins other detectors", async () => {
+    const { useCase } = useCaseWith(
+      [
+        line({ transactionId: "tx-s1", merchant: "spotify", amountMinor: 999n }),
+        line({ transactionId: "tx-s2", merchant: "spotify", amountMinor: 999n }),
+        ...padding(6, 2_000n),
+      ],
+      1_000_000n,
+      [
+        line({ transactionId: "tx-ps1", merchant: "spotify", amountMinor: 2_000n }),
+      ],
+    );
+
+    const result = await useCase.execute(baseCommand);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Same group, not double-counted by its two detector hits.
+    expect(result.value.groups).toHaveLength(1);
+    expect(result.value.potentialSavings).toBe("19.98");
+    expect(result.value.totalDiscretionary).toBe("139.98");
+  });
+
   it("lists every detector that fired on the same group", async () => {
     const { useCase } = useCaseWith(
       [

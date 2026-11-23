@@ -484,6 +484,7 @@ export const en: TranslationShape = {
       detector: {
         ant: "Ant",
         recurring_charge: "Recurring",
+        monthly_recurring: "Monthly recurring",
         concentration: "Concentration",
         growth: "Growth",
       },

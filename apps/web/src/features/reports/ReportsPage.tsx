@@ -696,7 +696,8 @@ function detectorLabel(detector: AvoidableExpenseDetector, t: TFunction) {
 
 /**
  * S3+S11 (T12) — avoidable expenses: every group admitted by at least
- * one detector (ant, recurring_charge, concentration, growth), with the
+ * one detector (ant, recurring_charge, monthly_recurring, concentration,
+ * growth), with the
  * headline potential-savings figure and a chip per fired detector.
  */
 function AvoidableExpensesSection({

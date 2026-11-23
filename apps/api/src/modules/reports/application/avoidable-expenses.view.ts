@@ -8,12 +8,14 @@ import type { AvoidableExpenseLine } from "./ports/avoidable-expenses-report.por
  * surfaces subscriptions and fixed charges; `concentration` flags a
  * single merchant/category dominating the discretionary spend;
  * `growth` compares the group against the preceding equal-length
- * window. A group is admitted when ANY detector fires and reports every
- * key that did, in this fixed order.
+ * window; `monthly_recurring` fires when the same key reappears in
+ * that window with a similar total. A group is admitted when ANY
+ * detector fires and reports every key that did, in this fixed order.
  */
 export type AvoidableExpenseDetector =
   | "ant"
   | "recurring_charge"
+  | "monthly_recurring"
   | "concentration"
   | "growth";
 
@@ -55,6 +57,11 @@ export const CONCENTRATION_MIN_PERCENT = 20;
 /** `growth` threshold: the current-window total must reach 1.5x the
  * previous window's, expressed as the integer test 2·current >= 3·prev. */
 export const GROWTH_MIN_RATIO_PERCENT = 150;
+
+/** `monthly_recurring` similarity: the two window totals count as equal
+ * when max <= 1.15 x min, expressed as the integer test
+ * 100·max <= 115·min. */
+export const MONTHLY_RECURRING_MAX_RATIO_PERCENT = 115;
 
 /**
  * Shared noise floor: `ant` and `growth` additionally require the group
@@ -168,11 +175,11 @@ function groupLines(lines: readonly AvoidableExpenseLine[]): Group[] {
 
 /**
  * Builds the avoidable-expenses view (T12, S3+S11): same grouping as the
- * former ant report, but admission is a union of four detectors —
- * `ant` (unchanged policy), `recurring_charge`, `concentration` and
- * `growth` against the preceding equal-length window. `previousLines`
- * is the eligible universe re-read over that shifted window; only its
- * per-key totals matter.
+ * former ant report, but admission is a union of five detectors —
+ * `ant` (unchanged policy), `recurring_charge`, `monthly_recurring`,
+ * `concentration` and `growth` against the preceding equal-length
+ * window. `previousLines` is the eligible universe re-read over that
+ * shifted window; only its per-key totals matter.
  */
 export function toAvoidableExpensesView(
   period: ReportPeriod,
@@ -233,6 +240,27 @@ export function toAvoidableExpensesView(
         detectors.push("recurring_charge");
       }
 
+      // monthly_recurring (S14): the same key appears in BOTH windows
+      // with similar totals — each window's group total within ±15%,
+      // the integer test 100·max <= 115·min — and the shared 1% noise
+      // floor. Inter-window, so a single charge per window (Spotify,
+      // Netflix) qualifies where recurring_charge cannot.
+      const previousMinor = previousTotals.get(group.key) ?? 0n;
+      const windowMax =
+        group.totalMinor > previousMinor ? group.totalMinor : previousMinor;
+      const windowMin =
+        group.totalMinor > previousMinor ? previousMinor : group.totalMinor;
+      if (
+        previousMinor > 0n &&
+        windowMax * 100n <=
+          windowMin * BigInt(MONTHLY_RECURRING_MAX_RATIO_PERCENT) &&
+        group.totalMinor * 100n >=
+          totalDiscretionaryMinor *
+            BigInt(MIN_SHARE_OF_DISCRETIONARY_PERCENT)
+      ) {
+        detectors.push("monthly_recurring");
+      }
+
       // concentration (S11): the group alone reaches N% of the
       // discretionary spend — total·100 >= spend·N keeps the constant
       // exact for any threshold (a pre-divided 100/N only holds when
@@ -247,7 +275,6 @@ export function toAvoidableExpensesView(
       // growth (S11): current total >= 1.5x the same key's previous-
       // window total (100·cur >= 150·prev), previous > 0, and the group
       // is still at least 1% of the spend — the noise floor.
-      const previousMinor = previousTotals.get(group.key) ?? 0n;
       if (
         previousMinor > 0n &&
         group.totalMinor * 100n >=
