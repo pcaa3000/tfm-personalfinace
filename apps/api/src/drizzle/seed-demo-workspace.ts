@@ -12,6 +12,9 @@ import {
   ledgerTransactionSplits,
   notifications,
   outboxEvents,
+  periodCloses,
+  voiceConsents,
+  voiceNotes,
   workspaces,
 } from "./schema.js";
 import type { DrizzleDb, DrizzleSchema } from "./db.js";
@@ -414,10 +417,13 @@ export async function recordDemoTransactions(
 
 /**
  * The demo workspace reset (S4/S6): wipes the workspace-scoped ledger,
- * accounts, pending outbox events and notifications — in FK-safe order
- * (splits → revisions → transactions → accounts → outbox →
- * notifications). The workspace row, currencies and category copies are
- * deliberately NOT touched. Shared by {@link seedDemoWorkspaceInTransaction}
+ * accounts, pending outbox events, notifications, voice notes, voice
+ * consents and period closes — in FK-safe order (splits → revisions →
+ * transactions → accounts → outbox → notifications → voice/consents/
+ * closes; voice notes reference transactions via `set null`, the
+ * consent/close tables carry a plain-text workspaceId with no FK).
+ * The workspace row, currencies and category copies are deliberately
+ * NOT touched. Shared by {@link seedDemoWorkspaceInTransaction}
  * (full re-seed) and `refreshDemoWorkspace` (S6 restore-on-refresh).
  * Returns the number of ledger transactions deleted.
  */
@@ -450,6 +456,17 @@ export async function wipeDemoWorkspaceState(
   await tx
     .delete(notifications)
     .where(eq(notifications.workspaceId, workspaceRowId));
+  // S5 (demo-seed-six-months T4): plain-workspaceId tables with no FK
+  // — delete them here or their rows leak across re-seeds.
+  await tx
+    .delete(voiceNotes)
+    .where(eq(voiceNotes.workspaceId, workspaceRowId));
+  await tx
+    .delete(voiceConsents)
+    .where(eq(voiceConsents.workspaceId, workspaceRowId));
+  await tx
+    .delete(periodCloses)
+    .where(eq(periodCloses.workspaceId, workspaceRowId));
   return wipedIds.length;
 }
 
@@ -486,15 +503,20 @@ export async function seedDemoWorkspaceInTransaction(
   target: DemoWorkspaceTarget,
   now: Date,
 ): Promise<DemoSeedResult> {
-  const { workspace, workspaceId } = await bootstrapDemoWorkspace(tx, target);
+  const { workspace, workspaceId, created } =
+    await bootstrapDemoWorkspace(tx, target);
 
   // ── Reset (S4): wipe the demo workspace's ledger + accounts so a
   // re-seed restores the original synthetic dataset. Splits and
   // revisions go first (FK children); the ledger repository also wrote
   // outbox rows for these transactions, so pending events and their
   // notifications are cleaned too — the workspace, currencies and
-  // categories are deliberately NOT touched.
-  await wipeDemoWorkspaceState(tx, workspace.id);
+  // categories are deliberately NOT touched. A workspace bootstrap
+  // just created has nothing to wipe (S4: sin wipe innecesario en
+  // workspace nuevo).
+  if (!created) {
+    await wipeDemoWorkspaceState(tx, workspace.id);
+  }
 
   const categoryIdByKey = await demoCategoryIdByKey(tx, workspace.id);
   const { accountIdByKey } = await ensureDemoAccounts(tx, workspaceId);

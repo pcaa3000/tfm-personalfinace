@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { and, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, like, lt } from "drizzle-orm";
 
 import { createDrizzleDb, type DrizzleDb } from "./db.js";
 import {
@@ -9,9 +9,13 @@ import {
   ledgerTransactions,
   notifications,
   outboxEvents,
+  periodCloses,
   receiptScans,
+  voiceConsents,
+  voiceNotes,
   workspaces,
 } from "./schema.js";
+import { demoWindowMonths } from "./seed-demo-data.js";
 import {
   cleanupDemoWorkspaces,
   deleteWorkspacesCascade,
@@ -21,6 +25,7 @@ import {
   seedDemoSessionWorkspace,
   type SeedDemoSessionWorkspaceResult,
 } from "./demo-session-workspaces.js";
+import { DrizzleDemoSessionService } from "../modules/demo/infrastructure/drizzle-demo-session.service.js";
 
 /**
  * demo-maria-session T6+T7 (L10, modelo por-sid restaurado): per-session
@@ -40,8 +45,10 @@ const DATABASE_URL =
 const ISSUER = "demo-session-ws-spec";
 // Midday UTC keeps the America/Lima "today" identical to the UTC date.
 const NOW = new Date("2026-03-15T12:00:00Z");
-// Window months for NOW in generation order: current, -1, -2.
-const EXPECTED_MONTHS = ["2026-03", "2026-02", "2026-01"];
+// Window months for NOW in generation order — derived from
+// `demoWindowMonths` so the expectations track the shared window
+// (current month first, then -1 … -5).
+const EXPECTED_MONTHS = demoWindowMonths(NOW).map((month) => month.key);
 
 async function cleanupSpecWorkspaces(db: DrizzleDb): Promise<void> {
   const owned = await db
@@ -118,6 +125,29 @@ describe("seedDemoSessionWorkspace (integration, real Postgres — T6)", () => {
   afterAll(async () => {
     await cleanupSpecWorkspaces(db);
     await pool.end();
+  });
+
+  it("emits the window months current-first and oldest-last (demo-seed-six-months S4/T2)", async () => {
+    await db.insert(workspaces).values({
+      id: WORKSPACE_ID,
+      identityKey: IDENTITY_KEY,
+      kind: "demo",
+      timezone: "America/Lima",
+      defaultCurrency: "PEN",
+    });
+
+    const result = await seedSessionWorkspace(db, {
+      identityKey: IDENTITY_KEY,
+      workspaceId: WORKSPACE_ID,
+      now: NOW,
+    });
+
+    // S4: the month 0 commit lands first so the web gets data soon,
+    // then the older months in order (the >24h orphan sweep runs after
+    // the whole seed — covered by the session-service spec below).
+    expect(result.generatedMonths[0]).toBe("2026-03");
+    expect(result.generatedMonths).toEqual(EXPECTED_MONTHS);
+    expect(EXPECTED_MONTHS).toEqual([...EXPECTED_MONTHS].sort().reverse());
   });
 
   it("seeds a kind='demo' workspace month by month in window order: current, -1, -2 (S3)", async () => {
@@ -205,6 +235,70 @@ describe("seedDemoSessionWorkspace (integration, real Postgres — T6)", () => {
     );
   });
 
+  // S4/T2: the wipe is re-seed semantics — a second run over a
+  // pre-existing workspace must still drop leftover state.
+  it("re-seeding a pre-existing session workspace wipes its leftover ledger/account state", async () => {
+    await db.insert(workspaces).values({
+      id: WORKSPACE_ID,
+      identityKey: IDENTITY_KEY,
+      kind: "demo",
+      timezone: "America/Lima",
+      defaultCurrency: "PEN",
+    });
+    await seedSessionWorkspace(db, {
+      identityKey: IDENTITY_KEY,
+      workspaceId: WORKSPACE_ID,
+      now: NOW,
+    });
+    // Leftover state a crashed job or a visitor could have written.
+    await db.insert(accounts).values({
+      id: `${WORKSPACE_ID}-stray-acc`,
+      workspaceId: WORKSPACE_ID,
+      name: "Cuenta extra",
+      currency: "PEN",
+      kind: "cash",
+    });
+    await db.insert(ledgerTransactions).values({
+      id: `${WORKSPACE_ID}-stray-tx`,
+      workspaceId: WORKSPACE_ID,
+      idempotencyKey: `${WORKSPACE_ID}-stray-tx`,
+      type: "expense",
+      amountMinor: 1_000n,
+      currency: "PEN",
+      businessDate: new Date("2026-03-10T00:00:00Z"),
+      timezone: "America/Lima",
+      concept: "Gasto suelto",
+      status: "confirmed",
+      origin: "manual",
+      confirmedAt: new Date("2026-03-10T00:00:00Z"),
+      confirmedBy: "demo-session-ws-spec",
+    });
+
+    const again = await seedSessionWorkspace(db, {
+      identityKey: IDENTITY_KEY,
+      workspaceId: WORKSPACE_ID,
+      now: NOW,
+    });
+
+    expect(again.workspaceCreated).toBe(false);
+    expect(again.generatedMonths).toEqual(EXPECTED_MONTHS);
+    const strayTx = await db
+      .select({ id: ledgerTransactions.id })
+      .from(ledgerTransactions)
+      .where(eq(ledgerTransactions.id, `${WORKSPACE_ID}-stray-tx`));
+    expect(strayTx).toHaveLength(0);
+    const strayAccount = await db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(eq(accounts.id, `${WORKSPACE_ID}-stray-acc`));
+    expect(strayAccount).toHaveLength(0);
+    const accountRows = await db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(eq(accounts.workspaceId, WORKSPACE_ID));
+    expect(accountRows).toHaveLength(4);
+  });
+
   // R1-001: a missing pre-inserted row means the session was ended — abort, never resurrect it.
   it("aborts without resurrecting the workspace when the session row is already gone (R1-001)", async () => {
     const result = await seedSessionWorkspace(db, {
@@ -280,6 +374,35 @@ describe("cleanupDemoWorkspaces (integration, real Postgres — T6/T7)", () => {
       sizeBytes: 10,
       expiresAt: new Date(Date.now() + 86_400_000),
     });
+    // S5 (demo-seed-six-months T4): plain-workspaceId rows the cascade
+    // used to leak.
+    await db.insert(voiceNotes).values({
+      id: `vn-${workspaceId}`,
+      workspaceId,
+      uploaderSubject: "maria",
+      storageKey: `vk-${workspaceId}`,
+      originalFilename: "nota.webm",
+      mimeType: "audio/webm",
+      sizeBytes: 20,
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+    await db.insert(voiceConsents).values({
+      id: `vc-${workspaceId}`,
+      workspaceId,
+      subject: "maria",
+      provider: "whisper",
+      grantedAt: new Date(),
+    });
+    await db.insert(periodCloses).values({
+      id: `pc-${workspaceId}`,
+      workspaceId,
+      currency: "PEN",
+      periodStart: new Date("2026-02-01T00:00:00Z"),
+      periodEnd: new Date("2026-02-28T00:00:00Z"),
+      timezone: "America/Lima",
+      integrityDeclared: true,
+      closedAt: new Date(),
+    });
   }
 
   async function workspaceExists(id: string): Promise<boolean> {
@@ -334,6 +457,24 @@ describe("cleanupDemoWorkspaces (integration, real Postgres — T6/T7)", () => {
           .from(receiptScans)
           .where(eq(receiptScans.workspaceId, workspaceId)),
       ),
+      voiceNotes: await count(
+        db
+          .select({ id: voiceNotes.id })
+          .from(voiceNotes)
+          .where(eq(voiceNotes.workspaceId, workspaceId)),
+      ),
+      voiceConsents: await count(
+        db
+          .select({ id: voiceConsents.id })
+          .from(voiceConsents)
+          .where(eq(voiceConsents.workspaceId, workspaceId)),
+      ),
+      periodCloses: await count(
+        db
+          .select({ id: periodCloses.id })
+          .from(periodCloses)
+          .where(eq(periodCloses.workspaceId, workspaceId)),
+      ),
     };
   }
 
@@ -386,6 +527,9 @@ describe("cleanupDemoWorkspaces (integration, real Postgres — T6/T7)", () => {
       outboxEvents: 0,
       notifications: 0,
       receiptScans: 0,
+      voiceNotes: 0,
+      voiceConsents: 0,
+      periodCloses: 0,
     });
     // Fresh demo and old non-demo workspaces are untouched.
     expect(await workspaceExists("ws-cleanup-fresh")).toBe(true);
@@ -407,6 +551,83 @@ describe("cleanupDemoWorkspaces (integration, real Postgres — T6/T7)", () => {
 
     expect(result.deletedWorkspaceIds).toEqual([]);
     expect(await workspaceExists("ws-cleanup-fresh")).toBe(true);
+  });
+});
+
+/**
+ * demo-seed-six-months T2 (S4): the >24h orphan sweep is the LAST step
+ * of the async session-seed job — it runs once the whole dataset
+ * committed, so a concurrent createSession depura the orphans left by
+ * older sessions without delaying the new workspace's first month.
+ */
+describe("DrizzleDemoSessionService seed→sweep order (integration — S4/T2)", () => {
+  const { db, pool } = createDrizzleDb(DATABASE_URL);
+  const service = new DrizzleDemoSessionService(db);
+  const SERVICE_ISSUER = "demo-session-order-spec";
+
+  beforeEach(async () => {
+    const owned = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(like(workspaces.identityKey, `${SERVICE_ISSUER}|%`));
+    const ids = owned.map((row) => row.id);
+    if (ids.length > 0) {
+      await deleteWorkspacesCascade(db, ids);
+    }
+  });
+
+  afterAll(async () => {
+    await service.idle();
+    const owned = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(like(workspaces.identityKey, `${SERVICE_ISSUER}|%`));
+    const ids = owned.map((row) => row.id);
+    if (ids.length > 0) {
+      await deleteWorkspacesCascade(db, ids);
+    }
+    await pool.end();
+  });
+
+  it("the async seed depura a >24h orphan after the new session workspace is seeded", async () => {
+    const orphanIdentityKey = `${SERVICE_ISSUER}|maria|stale-orphan`;
+    const [orphan] = await db
+      .insert(workspaces)
+      .values({
+        id: "ws-demo-order-orphan",
+        identityKey: orphanIdentityKey,
+        kind: "demo",
+        timezone: "America/Lima",
+        defaultCurrency: "PEN",
+      })
+      .returning();
+    await db
+      .update(workspaces)
+      .set({ createdAt: new Date(Date.now() - 2 * DEMO_ORPHAN_MAX_AGE_MS) })
+      .where(eq(workspaces.id, orphan!.id));
+
+    const session = await service.createSession({
+      issuer: SERVICE_ISSUER,
+      subject: "maria",
+    });
+    await service.idle();
+
+    // The session workspace is fully seeded…
+    const sessionRows = await db
+      .select({ id: ledgerTransactions.id })
+      .from(ledgerTransactions)
+      .where(eq(ledgerTransactions.workspaceId, session.workspaceId));
+    expect(sessionRows.length).toBeGreaterThan(0);
+    // …and the job's final depuración removed the stale orphan.
+    const [orphanRow] = await db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.identityKey, orphanIdentityKey));
+    expect(orphanRow).toBeUndefined();
+    // Hygiene: drop the pending outbox rows the seed just wrote.
+    await db
+      .delete(outboxEvents)
+      .where(eq(outboxEvents.workspaceId, session.workspaceId));
   });
 });
 

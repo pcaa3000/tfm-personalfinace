@@ -32,7 +32,7 @@ import type { CallerIdentity } from "../modules/identity-workspace/index.js";
  *    accumulate.
  * 3. Re-seed — recreate the four seed accounts and record the
  *    deterministic plan filtered to the rolling window (current month,
- *    -1, -2) through RecordManualTransactionUseCase, so the dataset
+ *    -1..-5) through RecordManualTransactionUseCase, so the dataset
  *    stays inside the window and every INV-* invariant is enforced by
  *    construction.
  *
@@ -57,7 +57,7 @@ export interface RefreshDemoWorkspaceResult {
   readonly accountsCreated: number;
   /** Ledger transactions wiped before the re-seed (S6 restore). */
   readonly purgedTransactions: number;
-  /** "YYYY-MM" keys (current, -1, -2 order) that were generated. */
+  /** "YYYY-MM" keys (current, -1..-5 order) that were generated. */
   readonly generatedMonths: readonly string[];
   readonly insertedTransactions: number;
 }
@@ -97,8 +97,8 @@ export async function refreshDemoWorkspace(
       await ensureDemoAccounts(tx, workspaceId);
 
     // ── Re-seed: the deterministic plan filtered to the rolling window
-    // (current, -1, -2) keeps the dataset inside the 3 months even when
-    // the plan's 90-day horizon reaches into a fourth calendar month.
+    // (current, -1..-5) keeps the dataset inside the 6 months even when
+    // the plan's 180-day horizon reaches into a seventh calendar month.
     const plan = buildDemoPlan(now, {
       months: months.map((month) => month.key),
     });

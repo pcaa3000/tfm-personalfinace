@@ -11,7 +11,10 @@ import {
   ledgerTransactionSplits,
   notifications,
   outboxEvents,
+  periodCloses,
   receiptScans,
+  voiceConsents,
+  voiceNotes,
   workspaces,
 } from "./schema.js";
 import { buildDemoPlan, demoWindowMonths } from "./seed-demo-data.js";
@@ -30,7 +33,7 @@ import {
  * workspace of kind `demo`, seeded asynchronously so POST
  * /demo/session answers immediately while the web still gets data
  * soon — the workspace row exists before the response and each month
- * commits separately, in spec order (current, -1, -2).
+ * commits separately, in spec order (current, then -1 … -5).
  *
  * The file carries the three pieces the model shares:
  *
@@ -63,11 +66,13 @@ export function demoOrphanCutoff(now: Date = new Date()): Date {
 
 /**
  * Cascade-safe wipe of whole workspaces (FK children first —
- * splits/revisions reference transactions, scans reference
- * transactions (set null), splits reference categories (restrict) —
- * then the workspace rows themselves). Mirrors the reset order in
- * `wipeDemoWorkspaceState` plus the tables the reset keeps
- * (categories, currencies, the workspace row).
+ * splits/revisions reference transactions, scans and voice notes
+ * reference transactions (set null), splits reference categories
+ * (restrict) — then the workspace rows themselves). Mirrors the reset
+ * order in `wipeDemoWorkspaceState` plus the tables the reset keeps
+ * (categories, currencies, the workspace row). Voice notes, voice
+ * consents and period closes carry a plain-text workspaceId with no
+ * FK, so the delete is what keeps them from leaking (S5).
  */
 export async function deleteWorkspacesCascade(
   tx: DrizzleDb,
@@ -88,6 +93,7 @@ export async function deleteWorkspacesCascade(
       inArray(ledgerTransactionRevisions.transactionId, transactionIds),
     );
   await tx.delete(receiptScans).where(inArray(receiptScans.workspaceId, ids));
+  await tx.delete(voiceNotes).where(inArray(voiceNotes.workspaceId, ids));
   await tx
     .delete(ledgerTransactions)
     .where(inArray(ledgerTransactions.workspaceId, ids));
@@ -96,6 +102,12 @@ export async function deleteWorkspacesCascade(
   await tx
     .delete(notifications)
     .where(inArray(notifications.workspaceId, ids));
+  await tx
+    .delete(voiceConsents)
+    .where(inArray(voiceConsents.workspaceId, ids));
+  await tx
+    .delete(periodCloses)
+    .where(inArray(periodCloses.workspaceId, ids));
   await tx.delete(categories).where(inArray(categories.workspaceId, ids));
   await tx.delete(currencies).where(inArray(currencies.workspaceId, ids));
   await tx.delete(workspaces).where(inArray(workspaces.id, ids));
@@ -167,7 +179,7 @@ export interface SeedDemoSessionWorkspaceResult {
   readonly workspaceId: string;
   readonly workspaceCreated: boolean;
   readonly accountsCreated: number;
-  /** "YYYY-MM" keys generated, in spec order (current, -1, -2). */
+  /** "YYYY-MM" keys generated, in spec order (current, -1..-5). */
   readonly generatedMonths: readonly string[];
   readonly insertedTransactions: number;
   /**
@@ -195,7 +207,7 @@ export function demoSessionAdvisoryLock(identityKey: string) {
  * adopts it and adds the PEN currency + catalog copies), wipe any
  * partial state so a retried job stays idempotent, ensure the four
  * seed accounts, then generate transactions month by month in the
- * spec's order — current, -1, -2 — each in its own committed
+ * spec's order — current, -1..-5 — each in its own committed
  * transaction so the current month's data is visible to the web while
  * the older months are still generating.
  *
@@ -240,9 +252,13 @@ export async function seedDemoSessionWorkspace(
     if (!sessionRow) return null;
     const { workspace, workspaceId, created } =
       await bootstrapDemoWorkspace(tx, target);
-    // Idempotent retry: a previous crashed job may have left partial
-    // ledger/account state — wipe it exactly like the refresh does.
-    await wipeDemoWorkspaceState(tx, workspace.id);
+    // Re-seed semantics (S4): the wipe only makes sense when the
+    // workspace pre-existed — a previous crashed job may have left
+    // partial ledger/account state. A workspace bootstrap just created
+    // has nothing to wipe, so the deletes are skipped entirely.
+    if (!created) {
+      await wipeDemoWorkspaceState(tx, workspace.id);
+    }
     const categoryIdByKey = await demoCategoryIdByKey(tx, workspace.id);
     const { accountIdByKey, created: accountsCreated } =
       await ensureDemoAccounts(tx, workspaceId);

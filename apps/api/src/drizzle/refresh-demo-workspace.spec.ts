@@ -9,8 +9,12 @@ import {
   ledgerTransactions,
   outboxEvents,
   notifications,
+  periodCloses,
+  voiceConsents,
+  voiceNotes,
   workspaces,
 } from "./schema.js";
+import { demoWindowMonths } from "./seed-demo-data.js";
 import {
   DemoRefreshTrigger,
   refreshDemoWorkspace,
@@ -38,8 +42,9 @@ const IDENTITY_KEY = "demo-refresh-spec|maria";
 const WORKSPACE_ID = "ws-demo-refresh-spec";
 // Midday UTC keeps the America/Lima "today" identical to the UTC date.
 const NOW = new Date("2026-03-15T12:00:00Z");
-// Window months for NOW: current, -1, -2 (in that order).
-const EXPECTED_MONTHS = ["2026-03", "2026-02", "2026-01"];
+// Window months for NOW — derived from `demoWindowMonths` so the
+// expectations track the shared rolling window (current first).
+const EXPECTED_MONTHS = demoWindowMonths(NOW).map((month) => month.key);
 
 function refreshOptions() {
   return { identityKey: IDENTITY_KEY, workspaceId: WORKSPACE_ID, now: NOW };
@@ -76,6 +81,11 @@ async function cleanup(db: DrizzleDb): Promise<void> {
     await db
       .delete(notifications)
       .where(eq(notifications.workspaceId, id));
+    await db.delete(voiceNotes).where(eq(voiceNotes.workspaceId, id));
+    await db
+      .delete(voiceConsents)
+      .where(eq(voiceConsents.workspaceId, id));
+    await db.delete(periodCloses).where(eq(periodCloses.workspaceId, id));
     await db.delete(categories).where(eq(categories.workspaceId, id));
     await db.delete(currencies).where(eq(currencies.workspaceId, id));
     await db.delete(workspaces).where(eq(workspaces.id, id));
@@ -242,6 +252,25 @@ describe("refreshDemoWorkspace (integration, real Postgres — T2)", () => {
     expect(after.every((row) => row.id !== "demo-refresh-stale-1")).toBe(true);
   });
 
+  // demo-seed-six-months T2 (S4): the wipe is re-seed semantics — it
+  // keeps running on a pre-existing workspace, and a freshly
+  // bootstrapped one still seeds fully (skip is a no-op).
+  it("a fresh workspace seeds fully and a re-run still wipes prior state", async () => {
+    const first = await refresh(db);
+    expect(first.workspaceCreated).toBe(true);
+    expect(first.insertedTransactions).toBeGreaterThan(0);
+    expect(first.purgedTransactions).toBe(0);
+
+    const again = await refresh(db);
+    expect(again.workspaceCreated).toBe(false);
+    expect(again.purgedTransactions).toBe(first.insertedTransactions);
+    expect(again.generatedMonths).toEqual(EXPECTED_MONTHS);
+    // And the re-seeded dataset is exactly the deterministic window
+    // plan — no duplicates survived the wipe.
+    const rows = await transactionRows(db, WORKSPACE_ID);
+    expect(rows.length).toBe(again.insertedTransactions);
+  });
+
   it("purges outbox events and notifications left behind by previous runs (S6)", async () => {
     await refresh(db);
     await db.insert(outboxEvents).values({
@@ -273,6 +302,58 @@ describe("refreshDemoWorkspace (integration, real Postgres — T2)", () => {
       .from(notifications)
       .where(eq(notifications.workspaceId, WORKSPACE_ID));
     expect(leftover).toHaveLength(0);
+    // Hygiene: drop the pending outbox rows the re-seed just wrote.
+    await db
+      .delete(outboxEvents)
+      .where(eq(outboxEvents.workspaceId, WORKSPACE_ID));
+  });
+
+  // demo-seed-six-months T4 (S5): the wipe must also clear the
+  // workspace-scoped rows that carry a plain-text workspaceId with no
+  // FK — today voice notes, voice consents and period closes leak.
+  it("the reset wipe also deletes voice notes, voice consents and period closes (S5)", async () => {
+    await refresh(db);
+    await db.insert(voiceNotes).values({
+      id: "demo-refresh-voice-note",
+      workspaceId: WORKSPACE_ID,
+      uploaderSubject: "maria",
+      storageKey: "demo-refresh-voice-key",
+      originalFilename: "nota.webm",
+      mimeType: "audio/webm",
+      sizeBytes: 20,
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+    await db.insert(voiceConsents).values({
+      id: "demo-refresh-voice-consent",
+      workspaceId: WORKSPACE_ID,
+      subject: "maria",
+      provider: "whisper",
+      grantedAt: new Date(),
+    });
+    await db.insert(periodCloses).values({
+      id: "demo-refresh-period-close",
+      workspaceId: WORKSPACE_ID,
+      currency: "PEN",
+      periodStart: new Date("2026-02-01T00:00:00Z"),
+      periodEnd: new Date("2026-02-28T00:00:00Z"),
+      timezone: "America/Lima",
+      integrityDeclared: true,
+      closedAt: new Date(),
+    });
+
+    await refreshDemoWorkspace(db, refreshOptions());
+
+    for (const [table, id] of [
+      [voiceNotes, "demo-refresh-voice-note"],
+      [voiceConsents, "demo-refresh-voice-consent"],
+      [periodCloses, "demo-refresh-period-close"],
+    ] as const) {
+      const rows = await db
+        .select({ id: table.id })
+        .from(table)
+        .where(eq(table.id, id));
+      expect(rows).toHaveLength(0);
+    }
     // Hygiene: drop the pending outbox rows the re-seed just wrote.
     await db
       .delete(outboxEvents)
