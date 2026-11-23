@@ -16,6 +16,7 @@
     "db:seed:demo": "tsx src/drizzle/seed-demo.ts",
     "db:seed:demo:refresh": "tsx src/drizzle/seed-demo-refresh.ts",
     "db:demo:cleanup": "tsx src/drizzle/demo-cleanup.ts",
+    "db:cleanup:test-data": "tsx src/drizzle/cleanup-test-data.ts",
     "typecheck": "tsc --noEmit",
     "dev:worker": "DATABASE_URL=postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance tsx watch --env-file=.env src/worker.ts",
     "worker": "DATABASE_URL=postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance tsx src/worker.ts"

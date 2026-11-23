@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
 
 import { serve } from "@hono/node-server";
-import { and, eq, inArray, isNull, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 
 import { createDrizzleDb } from "../src/drizzle/db.js";
 import {
@@ -190,11 +190,34 @@ export async function cleanE2eData(marker: string): Promise<void> {
   }
 }
 
-export async function ensureGlobalCategory(): Promise<string> {
+/**
+ * Seeds the `e2e-food` category scoped to the CALLER's workspace
+ * (demo-seed-six-months T3, S3): a global `e2e-food` row used to leak
+ * into every workspace's category list. Any authenticated call
+ * resolves (and lazily creates) the workspace, so we read its id back
+ * from GET /api/v1/workspace and insert the fixture as an owned row.
+ * Idempotent per workspace — call again after cleanE2eData wiped the
+ * workspace row.
+ */
+export async function ensureE2eCategory(
+  headers: Record<string, string>,
+): Promise<string> {
+  const ws = await api<{ workspaceId: string }>("/api/v1/workspace", {
+    headers,
+  });
+  if (ws.status !== 200 || !ws.body.workspaceId) {
+    throw new Error(`failed to resolve e2e workspace: ${ws.status}`);
+  }
+  const workspaceId = ws.body.workspaceId;
   const [existing] = await db
     .select()
     .from(categories)
-    .where(and(eq(categories.key, "e2e-food"), isNull(categories.workspaceId)))
+    .where(
+      and(
+        eq(categories.key, "e2e-food"),
+        eq(categories.workspaceId, workspaceId),
+      ),
+    )
     .limit(1);
   if (existing) {
     return existing.id;
@@ -206,11 +229,11 @@ export async function ensureGlobalCategory(): Promise<string> {
       key: "e2e-food",
       label: "E2E Food",
       nature: "essential",
-      workspaceId: null,
+      workspaceId,
     })
     .returning();
   if (!created) {
-    throw new Error("failed to seed e2e global category");
+    throw new Error("failed to seed e2e workspace category");
   }
   return created.id;
 }

@@ -120,7 +120,7 @@ describe("DrizzleCategoryValidationAdapter (integration, real Postgres)", () => 
   describe("listForWorkspace", () => {
     it("lists active owned rows as custom and unshadowed globals as catalog", async () => {
       const globalId = await insertCategory(db, {
-        key: "spec_val_list_global",
+        key: "catval_list_global",
         workspace: null,
         label: "Global list",
       });
@@ -133,7 +133,7 @@ describe("DrizzleCategoryValidationAdapter (integration, real Postgres)", () => 
       const global = list.find((c) => c.id === globalId);
       const owned = list.find((c) => c.id === ownedId);
       expect(global).toMatchObject({
-        key: "spec_val_list_global",
+        key: "catval_list_global",
         custom: false,
       });
       expect(owned).toMatchObject({
@@ -143,15 +143,49 @@ describe("DrizzleCategoryValidationAdapter (integration, real Postgres)", () => 
       });
     });
 
-    it("hides a global shadowed by an active workspace copy with the same key", async () => {
-      const globalId = await insertCategory(db, {
-        key: "spec_val_shadow",
+    it("hides test-seeded globals (e2e-*, spec_*, spec-*) but never owned rows (demo-seed-six-months T3, S3)", async () => {
+      // Keys are unique to this spec: drizzle-category.repository.spec
+      // runs ensureSeedCategories in parallel over the same DB and any
+      // shared global key would be copied into its workspaces.
+      await insertCategory(db, { key: "e2e-catval-leak", workspace: null });
+      await insertCategory(db, { key: "spec_catval_leak", workspace: null });
+      await insertCategory(db, { key: "spec-catval-leak", workspace: null });
+      // Workspace-owned rows with the same prefixes are NEVER filtered.
+      const ownedE2e = await insertCategory(db, { key: "e2e-owned" });
+      const ownedSpec = await insertCategory(db, { key: "spec_owned" });
+      const normalGlobal = await insertCategory(db, {
+        key: "catval_visible_global",
         workspace: null,
       });
-      const ownedId = await insertCategory(db, { key: "spec_val_shadow" });
 
       const list = await adapter.listForWorkspace(workspaceId(WS_A));
-      const rows = list.filter((c) => c.key === "spec_val_shadow");
+      const keys = list.map((c) => c.key);
+      expect(keys).not.toContain("e2e-catval-leak");
+      expect(keys).not.toContain("spec_catval_leak");
+      expect(keys).not.toContain("spec-catval-leak");
+      expect(list.find((c) => c.id === ownedE2e)).toMatchObject({
+        key: "e2e-owned",
+        custom: true,
+      });
+      expect(list.find((c) => c.id === ownedSpec)).toMatchObject({
+        key: "spec_owned",
+        custom: true,
+      });
+      expect(list.find((c) => c.id === normalGlobal)).toMatchObject({
+        key: "catval_visible_global",
+        custom: false,
+      });
+    });
+
+    it("hides a global shadowed by an active workspace copy with the same key", async () => {
+      const globalId = await insertCategory(db, {
+        key: "catval_shadow",
+        workspace: null,
+      });
+      const ownedId = await insertCategory(db, { key: "catval_shadow" });
+
+      const list = await adapter.listForWorkspace(workspaceId(WS_A));
+      const rows = list.filter((c) => c.key === "catval_shadow");
       expect(rows).toHaveLength(1);
       expect(rows[0]!.id).toBe(ownedId);
       expect(rows[0]!.custom).toBe(true);
@@ -160,18 +194,18 @@ describe("DrizzleCategoryValidationAdapter (integration, real Postgres)", () => 
 
     it("hides a global even when the shadowing workspace copy is archived", async () => {
       const globalId = await insertCategory(db, {
-        key: "spec_val_shadow_arch",
+        key: "catval_shadow_arch",
         workspace: null,
       });
       await insertCategory(db, {
-        key: "spec_val_shadow_arch",
+        key: "catval_shadow_arch",
         archivedAt: new Date(),
       });
 
       const list = await adapter.listForWorkspace(workspaceId(WS_A));
       // The archived copy still shadows: neither row is listed.
       expect(list.some((c) => c.id === globalId)).toBe(false);
-      expect(list.some((c) => c.key === "spec_val_shadow_arch")).toBe(false);
+      expect(list.some((c) => c.key === "catval_shadow_arch")).toBe(false);
     });
 
     it("does not list categories owned by other workspaces and sorts by key", async () => {

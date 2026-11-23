@@ -10,6 +10,19 @@ import { categories } from "../../../drizzle/schema.js";
 import type { DrizzleDb } from "../../../drizzle/db.js";
 
 /**
+ * Keys that mark global catalog rows seeded by specs/e2e helpers
+ * (demo-seed-six-months T3, S3 — L5: "Comida E2E", "Semilla uno/dos",
+ * `spec_global_key` visible in the transaction form): `e2e-*` and
+ * `spec_*`/`spec-*` prefixes. `listForWorkspace` hides matching GLOBAL
+ * rows from every workspace; workspace-owned rows are never filtered.
+ * `src/drizzle/cleanup-test-data.ts` reuses this predicate so the
+ * leaked-row sweep matches exactly what the read path hides.
+ */
+export function isTestSeededGlobalCategoryKey(key: string): boolean {
+  return key.startsWith("e2e-") || /^spec[-_]/.test(key);
+}
+
+/**
  * Drizzle implementation of the ledger-owned CategoryValidationPort and
  * the read-side CategoryCatalogPort: a category is usable when it is an
  * active global entry or belongs to the caller's workspace. Mirrors
@@ -64,6 +77,15 @@ export class DrizzleCategoryValidationAdapter
     return rows
       .filter(
         (row) => row.workspaceId !== null || !shadowedKeys.has(row.key),
+      )
+      // demo-seed-six-months T3 (S3): global rows seeded by tests
+      // (`e2e-*`, `spec_*`, `spec-*`) leak into every workspace's
+      // dropdown — hide them in the read path too, not only via
+      // fixture cleanup. Owned rows are never filtered.
+      .filter(
+        (row) =>
+          row.workspaceId !== null ||
+          !isTestSeededGlobalCategoryKey(row.key),
       )
       .map((row) => ({
         id: row.id,

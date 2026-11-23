@@ -8,6 +8,7 @@ import type { CategoryRepositoryPort } from "../application/ports/category-repos
 import type { SystemCategoryPort } from "../application/ports/system-category.port.js";
 import type { CategoryView } from "../application/category-catalog.port.js";
 import { Category } from "../domain/category.js";
+import { isTestSeededGlobalCategoryKey } from "./drizzle-category-validation.adapter.js";
 import { categories } from "../../../drizzle/schema.js";
 import type { DrizzleDb } from "../../../drizzle/db.js";
 
@@ -173,9 +174,13 @@ export class DrizzleCategoryRepository
       .where(
         and(isNull(categories.workspaceId), isNull(categories.archivedAt)),
       );
+    // demo-seed-six-months T3 (S3): test-seeded globals (e2e-*, spec_*)
+    // must never be provisioned into real/demo workspaces either.
     const seeds = globals.filter(
       (row) =>
-        row.key !== UNCATEGORIZED_KEY && row.nature !== UNCATEGORIZED_KEY,
+        row.key !== UNCATEGORIZED_KEY &&
+        row.nature !== UNCATEGORIZED_KEY &&
+        !isTestSeededGlobalCategoryKey(row.key),
     );
     if (seeds.length === 0) {
       return;

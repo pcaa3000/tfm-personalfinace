@@ -222,32 +222,32 @@ describe("DrizzleCategoryRepository (integration, real Postgres)", () => {
 
   it("ensureSeedCategories copies active globals preserving key/label/nature", async () => {
     const g1 = await insertGlobal(db, {
-      key: "spec_seed_one",
+      key: "cat_seed_one",
       label: "Semilla uno",
       nature: "income",
     });
     const g2 = await insertGlobal(db, {
-      key: "spec_seed_two",
+      key: "cat_seed_two",
       label: "Semilla dos",
       nature: "discretionary",
     });
 
     await repository.ensureSeedCategories(workspaceId(WS_A));
 
-    const one = await ownedRows(db, WS_A, "spec_seed_one");
+    const one = await ownedRows(db, WS_A, "cat_seed_one");
     expect(one).toHaveLength(1);
     expect(one[0]!.label).toBe("Semilla uno");
     expect(one[0]!.nature).toBe("income");
     expect(one[0]!.workspaceId).toBe(WS_A);
     expect(one[0]!.archivedAt).toBeNull();
 
-    const two = await ownedRows(db, WS_A, "spec_seed_two");
+    const two = await ownedRows(db, WS_A, "cat_seed_two");
     expect(two).toHaveLength(1);
     expect(two[0]!.label).toBe("Semilla dos");
     expect(two[0]!.nature).toBe("discretionary");
 
     // Copies land only in the target workspace; globals stay global.
-    expect(await ownedRows(db, WS_B, "spec_seed_one")).toHaveLength(0);
+    expect(await ownedRows(db, WS_B, "cat_seed_one")).toHaveLength(0);
     const [globalRow] = await db
       .select()
       .from(categories)
@@ -266,41 +266,55 @@ describe("DrizzleCategoryRepository (integration, real Postgres)", () => {
       label: "Sin categorizar",
       nature: "essential",
     });
-    await insertGlobal(db, { key: "spec_seed_nature", nature: "uncategorized" });
+    await insertGlobal(db, { key: "cat_seed_nature", nature: "uncategorized" });
     await insertGlobal(db, {
-      key: "spec_seed_archived",
+      key: "cat_seed_archived",
       archivedAt: new Date(),
     });
 
     await repository.ensureSeedCategories(workspaceId(WS_A));
 
     expect(await ownedRows(db, WS_A, "uncategorized")).toHaveLength(0);
-    expect(await ownedRows(db, WS_A, "spec_seed_nature")).toHaveLength(0);
-    expect(await ownedRows(db, WS_A, "spec_seed_archived")).toHaveLength(0);
+    expect(await ownedRows(db, WS_A, "cat_seed_nature")).toHaveLength(0);
+    expect(await ownedRows(db, WS_A, "cat_seed_archived")).toHaveLength(0);
   });
 
   it("ensureSeedCategories skips keys the workspace already owns", async () => {
-    await insertGlobal(db, { key: "spec_seed_dup", label: "Global dup" });
+    await insertGlobal(db, { key: "cat_seed_dup", label: "Global dup" });
     const owned = makeCategory({
-      id: "cat-spec-seeddup",
-      key: "spec_seed_dup",
+      id: "cat-seeddup",
+      key: "cat_seed_dup",
     });
     await repository.save(owned);
 
     await repository.ensureSeedCategories(workspaceId(WS_A));
 
-    const rows = await ownedRows(db, WS_A, "spec_seed_dup");
+    const rows = await ownedRows(db, WS_A, "cat_seed_dup");
     expect(rows).toHaveLength(1);
     expect(rows[0]!.id).toBe(owned.id);
   });
 
+  // demo-seed-six-months T3 (S3): test-seeded globals must never be
+  // provisioned into real/demo workspaces.
+  it("ensureSeedCategories skips test-seeded globals (e2e-*, spec_*)", async () => {
+    await insertGlobal(db, { key: "e2e-food" });
+    await insertGlobal(db, { key: "spec_global_key" });
+    await insertGlobal(db, { key: "spec-seed-x" });
+
+    await repository.ensureSeedCategories(workspaceId(WS_A));
+
+    expect(await ownedRows(db, WS_A, "e2e-food")).toHaveLength(0);
+    expect(await ownedRows(db, WS_A, "spec_global_key")).toHaveLength(0);
+    expect(await ownedRows(db, WS_A, "spec-seed-x")).toHaveLength(0);
+  });
+
   it("ensureSeedCategories is idempotent", async () => {
-    await insertGlobal(db, { key: "spec_seed_idem" });
+    await insertGlobal(db, { key: "cat_seed_idem" });
 
     await repository.ensureSeedCategories(workspaceId(WS_A));
     await repository.ensureSeedCategories(workspaceId(WS_A));
 
-    expect(await ownedRows(db, WS_A, "spec_seed_idem")).toHaveLength(1);
+    expect(await ownedRows(db, WS_A, "cat_seed_idem")).toHaveLength(1);
   });
 
   it("ensureUncategorized returns a single protected global fallback (T6)", async () => {

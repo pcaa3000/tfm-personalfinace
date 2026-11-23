@@ -15,7 +15,7 @@ import {
   bootApp,
   cleanE2eData,
   db,
-  ensureGlobalCategory,
+  ensureE2eCategory,
   closeTestDb,
   type AccountView,
   type ApiError,
@@ -89,11 +89,14 @@ async function createTx(
 beforeAll(async () => {
   app = await bootApp();
   await cleanE2eData(MARKER);
-  categoryId = await ensureGlobalCategory();
 }, 30_000);
 
 beforeEach(async () => {
   await cleanE2eData(MARKER);
+  // demo-seed-six-months T3 (S3): `e2e-food` is seeded into ALICE's own
+  // workspace, not the global catalog — and cleanE2eData wipes it with
+  // the workspace, so it is re-seeded for every test.
+  categoryId = await ensureE2eCategory(ALICE);
   // INV-MON-03: a non-default currency must be enabled in the workspace
   // catalog before accounts can hold it.
   await api("/api/v1/currencies", {
@@ -766,11 +769,30 @@ describe("custom categories (RF-040, RF-041, RF-044)", () => {
   });
 
   it("protects global and foreign categories from edits and archive", async () => {
-    const globalPatch = await api<ApiError>(
-      `/api/v1/categories/${categoryId}`,
-      { method: "PATCH", headers: ALICE, body: { label: "hijack" } },
-    );
-    expect(globalPatch.status).toBe(404);
+    // demo-seed-six-months T3 (S3): `e2e-food` is now workspace-owned,
+    // so the read-only-global case gets its own throwaway global row.
+    const [global] = await db
+      .insert(categories)
+      .values({
+        id: randomUUID(),
+        key: "e2e-readonly-global",
+        label: "E2E readonly global",
+        nature: "essential",
+        workspaceId: null,
+      })
+      .returning();
+    if (!global) {
+      throw new Error("failed to seed protected global");
+    }
+    try {
+      const globalPatch = await api<ApiError>(
+        `/api/v1/categories/${global.id}`,
+        { method: "PATCH", headers: ALICE, body: { label: "hijack" } },
+      );
+      expect(globalPatch.status).toBe(404);
+    } finally {
+      await db.delete(categories).where(eq(categories.id, global.id));
+    }
 
     const mine = await api<CategoryView>("/api/v1/categories", {
       method: "POST",
@@ -796,20 +818,20 @@ describe("custom categories (RF-040, RF-041, RF-044)", () => {
 });
 
 describe("seed category provisioning (T19, L24)", () => {
-  it("lists the seed catalog as editable workspace copies (custom)", async () => {
+  it("lists the seeded category as an editable workspace copy (custom)", async () => {
     const list = await api<CategoryView[]>("/api/v1/categories", {
       headers: ALICE,
     });
     expect(list.status).toBe(200);
 
-    // The freshly-resolved workspace owns a copy of each global seed;
-    // the global row is shadowed, so the key appears exactly once.
+    // demo-seed-six-months T3 (S3): `e2e-food` is seeded directly as a
+    // workspace-owned row — the key appears exactly once, as custom.
     const copies = list.body.filter((c) => c.key === "e2e-food");
     expect(copies).toHaveLength(1);
     expect(copies[0]?.custom).toBe(true);
   });
 
-  it("edits and archives a provisioned seed copy, which shadows the global", async () => {
+  it("edits and archives the provisioned seed copy", async () => {
     const list = await api<CategoryView[]>("/api/v1/categories", {
       headers: ALICE,
     });
@@ -833,8 +855,8 @@ describe("seed category provisioning (T19, L24)", () => {
     );
     expect(archived.status).toBe(201);
 
-    // The archived copy still shadows the global "e2e-food": it must
-    // not reappear from the catalog.
+    // The archived copy is no longer listed and — since T3 there is
+    // no global `e2e-food` — nothing reappears from the catalog.
     const after = await api<CategoryView[]>("/api/v1/categories", {
       headers: ALICE,
     });
