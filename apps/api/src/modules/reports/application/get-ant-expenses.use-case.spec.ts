@@ -216,13 +216,13 @@ describe("GetAntExpensesUseCase", () => {
   it("uses the per-currency absolute cap with confidence low when income is absent", async () => {
     const { useCase } = useCaseWith(
       [
-        // EUR absolute cap = 100.00: mean 90.00 passes, mean 200.00 fails.
-        line({ transactionId: "tx-c1", merchant: "cap ok", amountMinor: 9_000n }),
-        line({ transactionId: "tx-c2", merchant: "cap ok", amountMinor: 9_000n }),
-        line({ transactionId: "tx-c3", merchant: "cap ok", amountMinor: 9_000n }),
-        line({ transactionId: "tx-x1", merchant: "cap fail", amountMinor: 20_000n }),
-        line({ transactionId: "tx-x2", merchant: "cap fail", amountMinor: 20_000n }),
-        line({ transactionId: "tx-x3", merchant: "cap fail", amountMinor: 20_000n }),
+        // EUR absolute cap = 10.00: mean 9.00 passes, mean 20.00 fails.
+        line({ transactionId: "tx-c1", merchant: "cap ok", amountMinor: 900n }),
+        line({ transactionId: "tx-c2", merchant: "cap ok", amountMinor: 900n }),
+        line({ transactionId: "tx-c3", merchant: "cap ok", amountMinor: 900n }),
+        line({ transactionId: "tx-x1", merchant: "cap fail", amountMinor: 2_000n }),
+        line({ transactionId: "tx-x2", merchant: "cap fail", amountMinor: 2_000n }),
+        line({ transactionId: "tx-x3", merchant: "cap fail", amountMinor: 2_000n }),
       ],
       0n,
     );
@@ -236,7 +236,7 @@ describe("GetAntExpensesUseCase", () => {
         key: "cap ok",
         confidence: "low",
         operationCount: 3,
-        total: "270.00",
+        total: "27.00",
       }),
     ]);
   });

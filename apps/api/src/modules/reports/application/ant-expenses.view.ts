@@ -21,9 +21,9 @@ export const ANT_EXPENSE_MIN_OPERATIONS = 3;
 export const ANT_EXPENSE_ABSOLUTE_CAP_MINOR: Readonly<
   Record<string, bigint>
 > = {
-  PEN: 30_000n,
-  USD: 10_000n,
-  EUR: 10_000n,
+  PEN: 3_000n,
+  USD: 1_000n,
+  EUR: 1_000n,
 };
 
 export interface AntExpenseGroupView {
