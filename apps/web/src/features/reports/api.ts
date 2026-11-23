@@ -1,4 +1,4 @@
-import { request } from "../ledger/api";
+import { request, requestBlob } from "../ledger/api";
 
 /**
  * Client for the `GET /api/v1/reports/*` surface (reports-monthly
@@ -136,4 +136,69 @@ export function fetchMonthlySavings(
   return request<MonthlySavingsView>(
     `/reports/monthly-savings${periodQuery(query)}`,
   );
+}
+
+// --- /period-closes (S5, T9) ------------------------------------------
+
+/** Mirrors the API's `PeriodCloseView` (`stale` = invalidated, never
+ * rewritten; a stale close may be re-closed and gets superseded). */
+export interface PeriodCloseView {
+  readonly id: string;
+  readonly currency: string;
+  readonly periodStart: string; // YYYY-MM-DD
+  readonly periodEnd: string; // YYYY-MM-DD
+  readonly timezone: string;
+  readonly integrityDeclared: boolean;
+  readonly closedAt: string;
+  readonly invalidatedAt: string | null;
+  readonly supersededAt: string | null;
+  readonly stale: boolean;
+}
+
+/** `GET /api/v1/period-closes?currency=` — active closes, newest first. */
+export function listPeriodCloses(
+  currency?: string,
+): Promise<PeriodCloseView[]> {
+  const query = currency
+    ? `?${new URLSearchParams({ currency }).toString()}`
+    : "";
+  return request<PeriodCloseView[]>(`/period-closes${query}`);
+}
+
+/**
+ * `POST /api/v1/period-closes` — the user-declared monthly close (S5).
+ * `integrityConfirmed` is a literal `true`: the dialog collects the
+ * declaration, the client always posts it. The API answers 201, or 409
+ * `PERIOD_ALREADY_CLOSED` when a fresh (non-stale) close already exists.
+ */
+export function closePeriod(
+  currency: string,
+  year: number,
+  month: number,
+): Promise<PeriodCloseView> {
+  return request<PeriodCloseView>("/period-closes", {
+    method: "POST",
+    body: JSON.stringify({ currency, year, month, integrityConfirmed: true }),
+  });
+}
+
+// --- GET /reports/export (T10) ----------------------------------------
+
+export type ReportExportFormat = "csv" | "xlsx";
+
+/**
+ * `GET /api/v1/reports/export?currency&year&month&format` — the monthly
+ * report bundle as a downloadable attachment (binary, not JSON).
+ */
+export function fetchReportExport(
+  query: ReportPeriodQuery,
+  format: ReportExportFormat,
+): Promise<Blob> {
+  const params = new URLSearchParams({
+    currency: query.currency,
+    year: String(query.year),
+    month: String(query.month),
+    format,
+  });
+  return requestBlob(`/reports/export?${params.toString()}`);
 }

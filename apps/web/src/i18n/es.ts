@@ -437,6 +437,20 @@ export const es = {
     loading: "Cargando reporte…",
     loadError: "No se pudo cargar el reporte.",
     retry: "Reintentar",
+    closeMonth: "Cerrar mes",
+    closeDialog: {
+      title: "Cerrar el período",
+      body: "Al confirmar declaras que todos los movimientos de {{month}} de {{year}} en {{currency}} están registrados y son correctos. El período quedará cerrado: si después corriges o anulas un movimiento, el cierre se marcará como desactualizado.",
+      cancel: "Cancelar",
+      confirm: "Confirmar cierre",
+      closing: "Cerrando…",
+    },
+    export: {
+      label: "Descargar",
+      csv: "CSV",
+      xlsx: "Excel (.xlsx)",
+      error: "No se pudo descargar el reporte.",
+    },
     cashFlow: {
       title: "Flujo de caja por cuenta",
       account: "Cuenta",

@@ -171,6 +171,23 @@ async function requestMultipart<T>(
  * sign-in; the API answers 201 `{sessionId, workspaceId}`
  * immediately and seeds the workspace async server-side.
  */
+/**
+ * Binary GET through the same auth path as `request()` (reports-monthly
+ * T10): the response is an attachment read with `res.blob()`, while API
+ * failures keep the JSON error envelope so `ApiError` retains
+ * status/code — same convention as `getReceiptFile`/`getVoiceFile`.
+ */
+export async function requestBlob(path: string): Promise<Blob> {
+  const response = await fetch(`${BASE}${path}`, {
+    headers: await authHeaders(),
+  });
+  if (!response.ok) {
+    // Always throws the ApiError for non-OK responses.
+    await parseResponse<never>(response);
+  }
+  return response.blob();
+}
+
 export async function createDemoSession(): Promise<{
   sessionId: string;
   workspaceId: string;

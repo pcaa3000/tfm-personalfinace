@@ -441,6 +441,20 @@ export const en: TranslationShape = {
     loading: "Loading report…",
     loadError: "The report could not be loaded.",
     retry: "Retry",
+    closeMonth: "Close month",
+    closeDialog: {
+      title: "Close the period",
+      body: "By confirming you declare that every movement of {{month}} {{year}} in {{currency}} is recorded and correct. The period will be closed: if you later revise or void a movement, the close will be marked as outdated.",
+      cancel: "Cancel",
+      confirm: "Confirm close",
+      closing: "Closing…",
+    },
+    export: {
+      label: "Download",
+      csv: "CSV",
+      xlsx: "Excel (.xlsx)",
+      error: "The report could not be downloaded.",
+    },
     cashFlow: {
       title: "Cash flow by account",
       account: "Account",

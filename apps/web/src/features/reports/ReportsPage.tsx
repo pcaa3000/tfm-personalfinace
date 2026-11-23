@@ -1,9 +1,18 @@
-import { useQuery } from "@tanstack/react-query";
+import {
+  useIsFetching,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   Alert,
   Box,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   MenuItem,
   Paper,
@@ -24,7 +33,7 @@ import { useTranslation } from "react-i18next";
 
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import { useThemeMode } from "../../theme-mode";
-import { getWorkspace, listCurrencies } from "../ledger/api";
+import { ApiError, getWorkspace, listCurrencies } from "../ledger/api";
 import { errorMessage } from "../ledger/errors";
 import { formatBusinessDate } from "../ledger/format";
 import { BrandMark } from "../ledger/BrandMark";
@@ -37,14 +46,18 @@ import {
   storedRailCollapsed,
 } from "../ledger/Sidebar";
 import {
+  closePeriod,
   fetchAntExpenses,
   fetchCashFlowReport,
   fetchExpensesByCategory,
   fetchMonthlySavings,
+  fetchReportExport,
+  listPeriodCloses,
   type AntExpensesView,
   type CashFlowReportView,
   type ExpensesByCategoryView,
   type MonthlySavingsView,
+  type ReportExportFormat,
   type ReportPeriod,
   type ReportPeriodQuery,
   type ReportPeriodStatus,
@@ -67,6 +80,42 @@ function yearOptions(now: Date): number[] {
   const years: number[] = [];
   for (let y = current; y >= current - 5; y -= 1) years.push(y);
   return years;
+}
+
+/** "YYYY-MM" key the close's `periodStart` shares for a year+month. */
+function periodKey(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+/**
+ * Current year/month on the workspace timezone's calendar (S5): only a
+ * month fully ended there may be closed. Falls back to the local clock
+ * while the workspace is loading — the POST fails closed server-side
+ * (PERIOD_NOT_FINISHED) if the UI ever offers it too early.
+ */
+function workspaceYearMonth(
+  timezone: string | undefined,
+  now: Date,
+): { year: number; month: number } {
+  if (timezone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+      }).formatToParts(now);
+      const value = (type: string) =>
+        Number(parts.find((part) => part.type === type)?.value);
+      const year = value("year");
+      const month = value("month");
+      if (Number.isFinite(year) && Number.isFinite(month)) {
+        return { year, month };
+      }
+    } catch {
+      // Unparseable timezone — fall through to the local clock.
+    }
+  }
+  return { year: now.getFullYear(), month: now.getMonth() + 1 };
 }
 
 const KNOWN_NATURES = new Set([
@@ -600,6 +649,73 @@ export function ReportsPage() {
   const query: ReportPeriodQuery = { currency, year, month };
   const enabled = currency !== "";
 
+  const queryClient = useQueryClient();
+  const reportsFetching = useIsFetching({ queryKey: ["reports"] }) > 0;
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+
+  const closesQuery = useQuery({
+    queryKey: ["reports", "period-closes", currency],
+    queryFn: () => listPeriodCloses(currency),
+    enabled,
+  });
+
+  // S5/T9: the close action exists only for a calendar month fully
+  // ended in the workspace timezone, and only while no fresh close
+  // covers it — a stale close may be re-closed (it gets superseded).
+  const wsNow = workspaceYearMonth(workspace?.timezone, now);
+  const monthFinished =
+    year < wsNow.year || (year === wsNow.year && month < wsNow.month);
+  const key = periodKey(year, month);
+  const hasActiveClose = (closesQuery.data ?? []).some(
+    (close) =>
+      close.currency === currency &&
+      close.periodStart.slice(0, 7) === key &&
+      !close.stale,
+  );
+  const canCloseMonth =
+    enabled && monthFinished && closesQuery.isFetched && !hasActiveClose;
+
+  const invalidateReports = () =>
+    queryClient.invalidateQueries({ queryKey: ["reports"] });
+
+  const closeMutation = useMutation({
+    mutationFn: () => closePeriod(currency, year, month),
+    onSuccess: async () => {
+      await invalidateReports();
+      setCloseDialogOpen(false);
+    },
+    onError: async (error) => {
+      // A 409 just means a fresher close already exists — refetch and
+      // let the sections settle into "Cerrado" instead of an error.
+      if (
+        error instanceof ApiError &&
+        error.code === "PERIOD_ALREADY_CLOSED"
+      ) {
+        await invalidateReports();
+        setCloseDialogOpen(false);
+      }
+    },
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: async (format: ReportExportFormat) => {
+      const blob = await fetchReportExport(query, format);
+      const url = URL.createObjectURL(blob);
+      try {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `reportes-${currency}-${key}.${format}`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    },
+  });
+  const exportDisabled =
+    !enabled || reportsFetching || exportMutation.isPending;
+
   const toggleRail = () => {
     const next = !effectiveRailCollapsed;
     persistRailCollapsed(next);
@@ -785,6 +901,46 @@ export function ReportsPage() {
                 </MenuItem>
               ))}
             </TextField>
+            <Box
+              sx={{
+                display: "flex",
+                gap: 0.75,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <Typography variant="caption" color="text.secondary">
+                {`${t("reports.export.label")}:`}
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={exportDisabled}
+                onClick={() => exportMutation.mutate("csv")}
+              >
+                {t("reports.export.csv")}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                disabled={exportDisabled}
+                onClick={() => exportMutation.mutate("xlsx")}
+              >
+                {t("reports.export.xlsx")}
+              </Button>
+            </Box>
+            {canCloseMonth ? (
+              <Button
+                size="small"
+                variant="contained"
+                onClick={() => {
+                  closeMutation.reset();
+                  setCloseDialogOpen(true);
+                }}
+              >
+                {t("reports.closeMonth")}
+              </Button>
+            ) : null}
           </Box>
           {!enabled ? (
             <Typography
@@ -794,6 +950,16 @@ export function ReportsPage() {
             >
               {t("reports.noCurrency")}
             </Typography>
+          ) : null}
+          {exportMutation.isError ? (
+            <Alert
+              severity="error"
+              sx={{ mt: 1 }}
+              onClose={() => exportMutation.reset()}
+            >
+              {t("reports.export.error")}{" "}
+              {errorMessage(exportMutation.error, t)}
+            </Alert>
           ) : null}
         </Box>
 
@@ -821,6 +987,48 @@ export function ReportsPage() {
           active="reports"
         />
       )}
+
+      <Dialog
+        open={closeDialogOpen}
+        onClose={() => {
+          if (!closeMutation.isPending) setCloseDialogOpen(false);
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>{t("reports.closeDialog.title")}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary">
+            {t("reports.closeDialog.body", {
+              month: monthName(month, i18n.language),
+              year,
+              currency,
+            })}
+          </Typography>
+          {closeMutation.isError ? (
+            <Alert severity="error" sx={{ mt: 1.5 }}>
+              {errorMessage(closeMutation.error, t)}
+            </Alert>
+          ) : null}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setCloseDialogOpen(false)}
+            disabled={closeMutation.isPending}
+          >
+            {t("reports.closeDialog.cancel")}
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => closeMutation.mutate()}
+            disabled={closeMutation.isPending}
+          >
+            {closeMutation.isPending
+              ? t("reports.closeDialog.closing")
+              : t("reports.closeDialog.confirm")}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

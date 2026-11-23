@@ -25,8 +25,8 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 | T6 | Endpoint ahorro del mes por moneda (observado, déficit 0%) | S4, S8 | api | done | RED→GREEN; CA-008 deficit+no_income cubiertos |
 | T7 | Página web de reportes (4 secciones, tablas, react-query, i18n) | S7 | web | done | RED→GREEN 68 foc.; suite web 485; hash routing #/reports |
 | T8 | e2e + sync espejo Engram + cierre doc | todos | api+docs | done | reports specs 89/89 en estado commiteado; espejo Engram ok |
-| T9 | UI cierre de mes: botón + dialog integridad + refetch | S5, S7 | web | pending | |
-| T10 | Exportación reportes CSV/XLSX (endpoint + botón descarga) | S9 | api+web | pending | |
+| T9 | UI cierre de mes: botón + dialog integridad + refetch | S5, S7 | web | done | RED remediation 16 fail→GREEN 38; suite web 501 |
+| T10 | Exportación reportes CSV/XLSX (endpoint + botón descarga) | S9 | api+web | done | API: 50 specs foc.; suite 1363; web: botones blob-auth |
 
 ## Log
 
@@ -44,3 +44,4 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 - **L12** (revisión nativa): por candidatos chicos en worktrees /tmp/rw-t*. T1 `d357553` aprobado (risk+reliability, 6 advisory). T2 `9ed4d92` → 3 CRITICAL (atomicidad invalidación/supersede) → corrección commiteada y validada → aprobado. T3-T4 `ed05a65` aprobado (6 advisory). T5-T6 `544078e` aprobado (3 advisory; R3-001 destapó cap ×10 → fix PEN 3_000/USD·EUR 1_000). T7 `cdd5025` aprobado (8 advisory). Commit docs `fa27941` sin revisar (docs-only). Advisory follow-ups: merchant override perdido en revise; backfill locale [[:alpha:]]/draft merchant; R2-1 chrome duplicado ReportsPage; R3-future-month window; sort comparator antisym; log de invalidateCovering count.
 - **L13** (revisión nativa 2ª ronda): fixes `19a3c48`+`90f54da` aprobados (resilience+reliability, 5 advisory). Advisory atendido inline: `isUniqueViolation` ahora inspecciona `cause` anidado (Drizzle envuelve pg) — fix `isUniqueViolation` + spec. Advisory restantes a backlog: comentario sobre invariante de atomicidad exagerado (ventana check-close persiste), falta logging del conteo de invalidaciones y del save fallido.
 - **L14** (usuario): "En la UI, no veo la opcion para realizar el cierre de mes" + "asi mismo agregar la opcion para descargar los reportes en xlsx, csv".
+- **L15** (proceso): T9+T10-web un worker (surface ampliada a ledger/api.ts → requestBlob); T10-api worker relanzado (1er intento cancelado por aborto de tool call — completaba ~95%). exceljs ^4.4.0 añadido (dep nueva — item 5; ASSESS medium, sin verifier). Nota: workers reportaron S9 ausente de Specs — sí existe (entre S7 y S8).
