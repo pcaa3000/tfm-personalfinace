@@ -225,6 +225,25 @@ describe("GetAvoidableExpensesUseCase", () => {
     expect(result.value.groups[0]?.detectors).toEqual(["recurring_charge"]);
   });
 
+  it("rejects recurring_charge micro-charges below the 1% discretionary noise floor", async () => {
+    const { useCase } = useCaseWith(
+      [
+        // Two equal EUR 0.01 charges — recurring by ratio but trivial.
+        line({ transactionId: "tx-f1", merchant: "fee", amountMinor: 1n }),
+        line({ transactionId: "tx-f2", merchant: "fee", amountMinor: 1n }),
+        ...padding(6, 20_000n),
+      ],
+      1_000_000n,
+    );
+
+    const result = await useCase.execute(baseCommand);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.groups).toEqual([]);
+    expect(result.value.potentialSavings).toBe("0.00");
+  });
+
   it("fires concentration when a group reaches 20% of the discretionary spend", async () => {
     const { useCase } = useCaseWith(
       [

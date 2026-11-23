@@ -219,20 +219,27 @@ export function toAvoidableExpensesView(
       }
 
       // recurring_charge (S11): >=2 ops with nearly-equal amounts —
-      // max <= 1.30 x min as the integer test 100·max <= 130·min.
+      // max <= 1.30 x min as the integer test 100·max <= 130·min — and
+      // the same 1%-of-discretionary noise floor as ant/growth so a
+      // couple of equal micro-charges never surface as avoidable.
       if (
         count >= RECURRING_CHARGE_MIN_OPERATIONS &&
         group.maxMinor * 100n <=
-          group.minMinor * BigInt(RECURRING_CHARGE_MAX_RATIO_PERCENT)
+          group.minMinor * BigInt(RECURRING_CHARGE_MAX_RATIO_PERCENT) &&
+        group.totalMinor * 100n >=
+          totalDiscretionaryMinor *
+            BigInt(MIN_SHARE_OF_DISCRETIONARY_PERCENT)
       ) {
         detectors.push("recurring_charge");
       }
 
-      // concentration (S11): the group alone reaches 20% of the
-      // discretionary spend — 5·total >= spend is total >= 20%.
+      // concentration (S11): the group alone reaches N% of the
+      // discretionary spend — total·100 >= spend·N keeps the constant
+      // exact for any threshold (a pre-divided 100/N only holds when
+      // N divides 100).
       if (
-        group.totalMinor * (100n / BigInt(CONCENTRATION_MIN_PERCENT)) >=
-        totalDiscretionaryMinor
+        group.totalMinor * 100n >=
+        totalDiscretionaryMinor * BigInt(CONCENTRATION_MIN_PERCENT)
       ) {
         detectors.push("concentration");
       }
