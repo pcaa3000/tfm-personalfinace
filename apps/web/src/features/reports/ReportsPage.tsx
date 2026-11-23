@@ -30,7 +30,7 @@ import {
   useMediaQuery,
 } from "@mui/material";
 import type { TFunction } from "i18next";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
@@ -1253,9 +1253,24 @@ export function ReportsPage() {
   // S13/T14: every section starts collapsed except avoidable expenses,
   // which auto-opens once it detects groups — until the user overrides
   // either way (a recorded toggle always wins).
+  // Manual toggles reset when the selected period+currency changes —
+  // a hidden section for one month must not stay hidden for the next
+  // (render-time reset, currency resolves async: "" then real code).
   const [sectionToggles, setSectionToggles] = useState<
     Partial<Record<ReportSectionKey, boolean>>
   >({});
+  const togglesKey = `${query.currency}:${query.year}:${query.month}`;
+  const togglesKeyRef = useRef(togglesKey);
+  if (togglesKeyRef.current !== togglesKey) {
+    const previousKey = togglesKeyRef.current;
+    togglesKeyRef.current = togglesKey;
+    // "" -> real currency while the workspace resolves is hydration,
+    // not a selector change — keep the toggles in that case.
+    if (!previousKey.startsWith(":")) {
+      setSectionToggles({});
+    }
+  }
+  const queryToggles = sectionToggles;
   const avoidablePeek = useQuery({
     queryKey: ["reports", "avoidable-expenses", query],
     queryFn: () => fetchAvoidableExpenses(query),
@@ -1266,7 +1281,7 @@ export function ReportsPage() {
   const autoExpanded = (key: ReportSectionKey) =>
     key === "avoidable" ? avoidableHasGroups : false;
   const sectionExpanded = (key: ReportSectionKey) =>
-    sectionToggles[key] ?? autoExpanded(key);
+    queryToggles[key] ?? autoExpanded(key);
   const toggleSection = (key: ReportSectionKey) =>
     setSectionToggles((previous) => ({
       ...previous,
