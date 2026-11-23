@@ -1264,13 +1264,18 @@ export function ReportsPage() {
   if (togglesKeyRef.current !== togglesKey) {
     const previousKey = togglesKeyRef.current;
     togglesKeyRef.current = togglesKey;
-    // "" -> real currency while the workspace resolves is hydration,
-    // not a selector change — keep the toggles in that case.
-    if (!previousKey.startsWith(":")) {
+    // "" -> real currency for the SAME year+month while the workspace
+    // resolves is hydration, not a selector change — keep the toggles
+    // only in that case; every other transition resets them.
+    const [prevCurrency, prevYear, prevMonth] = previousKey.split(":");
+    const isHydration =
+      prevCurrency === "" &&
+      prevYear === String(query.year) &&
+      prevMonth === String(query.month);
+    if (!isHydration) {
       setSectionToggles({});
     }
   }
-  const queryToggles = sectionToggles;
   const avoidablePeek = useQuery({
     queryKey: ["reports", "avoidable-expenses", query],
     queryFn: () => fetchAvoidableExpenses(query),
@@ -1281,7 +1286,7 @@ export function ReportsPage() {
   const autoExpanded = (key: ReportSectionKey) =>
     key === "avoidable" ? avoidableHasGroups : false;
   const sectionExpanded = (key: ReportSectionKey) =>
-    queryToggles[key] ?? autoExpanded(key);
+    sectionToggles[key] ?? autoExpanded(key);
   const toggleSection = (key: ReportSectionKey) =>
     setSectionToggles((previous) => ({
       ...previous,

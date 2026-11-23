@@ -781,6 +781,33 @@ describe("ReportsPage executive summary + collapsible sections (reports-monthly 
     fireEvent.click(avoidableHeader);
     expect(avoidableHeader.getAttribute("aria-expanded")).toBe("false");
   });
+
+  it("resets manual toggles when the selected period changes", async () => {
+    mockReports();
+    renderPage();
+
+    const categoriesSection = await screen.findByRole("region", {
+      name: "Gastos por categoría",
+    });
+    const categoriesHeader = within(categoriesSection).getByRole("button", {
+      name: /Gastos por categoría/,
+    });
+    fireEvent.click(categoriesHeader);
+    expect(categoriesHeader.getAttribute("aria-expanded")).toBe("true");
+
+    // Selecting another month returns every section to its auto
+    // default (collapsed) — a hidden section must not stay hidden.
+    const current = new Date();
+    const previous = current.getMonth() === 0 ? 12 : current.getMonth();
+    const previousYear =
+      current.getMonth() === 0
+        ? current.getFullYear() - 1
+        : current.getFullYear();
+    await selectPeriod(previousYear, previous);
+    await waitFor(() =>
+      expect(categoriesHeader.getAttribute("aria-expanded")).toBe("false"),
+    );
+  });
 });
 
 describe("ReportsPage mobile layout (reports-monthly T13, S12)", () => {
