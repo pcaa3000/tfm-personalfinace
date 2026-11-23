@@ -9,6 +9,7 @@ import type {
   CashFlowReportView,
   ExpensesByCategoryView,
   MonthlySavingsView,
+  ReportExportFile,
   ReportPeriod,
 } from "../../modules/reports/index.js";
 import {
@@ -80,6 +81,19 @@ const MONTHLY_SAVINGS_VIEW: MonthlySavingsView = {
   observedRate: "60.00",
   note: null,
   deficit: null,
+};
+
+const EXPORT_CSV_FILE: ReportExportFile = {
+  filename: "report-EUR-2026-09.csv",
+  contentType: "text/csv; charset=utf-8",
+  body: "## metadata\nkey,value\ntimezone,UTC\n",
+};
+
+const EXPORT_XLSX_FILE: ReportExportFile = {
+  filename: "report-EUR-2026-09.xlsx",
+  contentType:
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  body: new Uint8Array([0x50, 0x4b, 0x03, 0x04]),
 };
 
 const EXPENSES_VIEW: ExpensesByCategoryView = {
@@ -201,6 +215,12 @@ function makeDeps(options: { authenticated?: boolean } = {}) {
       execute: vi.fn(
         async (): Promise<Result<MonthlySavingsView, DomainError>> =>
           ok(MONTHLY_SAVINGS_VIEW),
+      ),
+    },
+    exportReport: {
+      execute: vi.fn(
+        async (): Promise<Result<ReportExportFile, DomainError>> =>
+          ok(EXPORT_CSV_FILE),
       ),
     },
   };
@@ -450,6 +470,109 @@ describe("GET /api/v1/reports/monthly-savings", () => {
   });
 });
 
+describe("GET /api/v1/reports/export", () => {
+  it("returns 200 with a CSV attachment", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+
+    const res = await app.request(
+      "/api/v1/reports/export?currency=EUR&year=2026&month=9&format=csv",
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/csv");
+    expect(res.headers.get("content-disposition")).toBe(
+      'attachment; filename="report-EUR-2026-09.csv"',
+    );
+    expect(await res.text()).toBe(EXPORT_CSV_FILE.body);
+  });
+
+  it("returns 200 with an XLSX attachment", async () => {
+    const deps = makeDeps();
+    deps.exportReport.execute.mockResolvedValue(ok(EXPORT_XLSX_FILE));
+    const app = createApp(deps);
+
+    const res = await app.request(
+      "/api/v1/reports/export?currency=EUR&year=2026&month=9&format=xlsx",
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe(
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    expect(res.headers.get("content-disposition")).toBe(
+      'attachment; filename="report-EUR-2026-09.xlsx"',
+    );
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(
+      EXPORT_XLSX_FILE.body,
+    );
+  });
+
+  it("passes the query period, format and workspace timezone to the use case", async () => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+
+    await app.request(
+      "/api/v1/reports/export?currency=EUR&year=2026&month=9&format=csv",
+    );
+
+    expect(deps.exportReport.execute).toHaveBeenCalledWith({
+      workspaceId: WS,
+      currency: "EUR",
+      year: 2026,
+      month: 9,
+      timezone: "UTC",
+      format: "csv",
+    });
+  });
+
+  it.each([
+    ["invalid format", "currency=EUR&year=2026&month=9&format=pdf"],
+    ["missing format", "currency=EUR&year=2026&month=9"],
+    ["missing currency", "year=2026&month=9&format=csv"],
+  ])("responds 400 INVALID_QUERY when %s", async (_label, query) => {
+    const deps = makeDeps();
+    const app = createApp(deps);
+
+    const res = await app.request(`/api/v1/reports/export?${query}`);
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("INVALID_QUERY");
+    expect(deps.exportReport.execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects requests without an authenticated caller", async () => {
+    const deps = makeDeps({ authenticated: false });
+    const app = createApp(deps);
+
+    const res = await app.request(
+      "/api/v1/reports/export?currency=EUR&year=2026&month=9&format=csv",
+    );
+
+    expect(res.status).toBe(401);
+    expect(deps.exportReport.execute).not.toHaveBeenCalled();
+  });
+
+  it("maps domain errors to the {code, message} envelope", async () => {
+    const deps = makeDeps();
+    deps.exportReport.execute.mockResolvedValue(
+      err(new DomainError("PERIOD_INVALID", "bad period")),
+    );
+    const app = createApp(deps);
+
+    const res = await app.request(
+      "/api/v1/reports/export?currency=EUR&year=2026&month=9&format=csv",
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      code: "PERIOD_INVALID",
+      message: "bad period",
+    });
+  });
+});
+
 describe("reports routes when deps are absent", () => {
   it("does not mount the endpoints (fail-closed 404)", async () => {
     const deps = makeDeps();
@@ -458,6 +581,7 @@ describe("reports routes when deps are absent", () => {
       expensesByCategory: _ec,
       antExpenses: _ae,
       monthlySavings: _ms,
+      exportReport: _ex,
       ...rest
     } = deps;
     const app = createApp(rest);
@@ -474,10 +598,30 @@ describe("reports routes when deps are absent", () => {
     const savings = await app.request(
       "/api/v1/reports/monthly-savings?currency=EUR&year=2026&month=9",
     );
+    const exportRes = await app.request(
+      "/api/v1/reports/export?currency=EUR&year=2026&month=9&format=csv",
+    );
 
     expect(cash.status).toBe(404);
     expect(cat.status).toBe(404);
     expect(ant.status).toBe(404);
     expect(savings.status).toBe(404);
+    expect(exportRes.status).toBe(404);
+  });
+
+  it("does not mount /export when only the export dep is absent", async () => {
+    const deps = makeDeps();
+    const { exportReport: _ex, ...rest } = deps;
+    const app = createApp(rest);
+
+    const exportRes = await app.request(
+      "/api/v1/reports/export?currency=EUR&year=2026&month=9&format=csv",
+    );
+    const cash = await app.request(
+      "/api/v1/reports/cash-flow?currency=EUR&year=2026&month=9",
+    );
+
+    expect(exportRes.status).toBe(404);
+    expect(cash.status).toBe(200);
   });
 });

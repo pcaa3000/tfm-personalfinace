@@ -62,6 +62,8 @@ import { GetCashFlowReportUseCase } from "../modules/reports/application/get-cas
 import { GetExpensesByCategoryUseCase } from "../modules/reports/application/get-expenses-by-category.use-case.js";
 import { GetAntExpensesUseCase } from "../modules/reports/application/get-ant-expenses.use-case.js";
 import { GetMonthlySavingsUseCase } from "../modules/reports/application/get-monthly-savings.use-case.js";
+import { ExportMonthlyReportUseCase } from "../modules/reports/application/export-monthly-report.use-case.js";
+import { ExcelJsReportExportAdapter } from "../modules/reports/infrastructure/exceljs-report-export.adapter.js";
 import { DrizzleReceiptScanRepository } from "../modules/receipts/infrastructure/drizzle-receipt-scan.repository.js";
 import { DrizzleTransactionDuplicatesAdapter } from "../modules/receipts/infrastructure/drizzle-transaction-duplicates.adapter.js";
 import { CryptoFileHasher } from "../modules/receipts/infrastructure/crypto-file-hasher.adapter.js";
@@ -303,6 +305,29 @@ export function buildApp(env: AppEnv): BuiltApp {
   );
   const createCategory = new CreateCategoryUseCase(categories, ids);
 
+  // reports-monthly T3–T6 (S1–S4): one instance per report use case,
+  // shared by the JSON endpoints and the T10 export orchestrator.
+  const cashFlowReport = new GetCashFlowReportUseCase(
+    periodCloses,
+    new DrizzleCashFlowReportAdapter(db),
+    clock,
+  );
+  const expensesByCategory = new GetExpensesByCategoryUseCase(
+    periodCloses,
+    new DrizzleExpensesByCategoryReportAdapter(db),
+    clock,
+  );
+  const antExpenses = new GetAntExpensesUseCase(
+    periodCloses,
+    new DrizzleAntExpensesReportAdapter(db),
+    clock,
+  );
+  const monthlySavings = new GetMonthlySavingsUseCase(
+    periodCloses,
+    new DrizzleMonthlySavingsReportAdapter(db),
+    clock,
+  );
+
   const deps: HonoDeps = {
     callerResolver,
     workspaceContext: workspaceResolver,
@@ -377,26 +402,20 @@ export function buildApp(env: AppEnv): BuiltApp {
     // reports-monthly T3+T4 (S1/S2): monthly reports share the period
     // resolution (closed vs provisional 30-day window) over the same
     // closes repository.
-    cashFlowReport: new GetCashFlowReportUseCase(
-      periodCloses,
-      new DrizzleCashFlowReportAdapter(db),
-      clock,
-    ),
-    expensesByCategory: new GetExpensesByCategoryUseCase(
-      periodCloses,
-      new DrizzleExpensesByCategoryReportAdapter(db),
-      clock,
-    ),
+    cashFlowReport,
+    expensesByCategory,
     // reports-monthly T5+T6 (S3/S4): ant-expenses detection and the
     // monthly savings report over the same shared period resolution.
-    antExpenses: new GetAntExpensesUseCase(
-      periodCloses,
-      new DrizzleAntExpensesReportAdapter(db),
-      clock,
-    ),
-    monthlySavings: new GetMonthlySavingsUseCase(
-      periodCloses,
-      new DrizzleMonthlySavingsReportAdapter(db),
+    antExpenses,
+    monthlySavings,
+    // reports-monthly T10 (S9): the export orchestrates the four
+    // reports; exceljs stays behind the XLSX serializer port.
+    exportReport: new ExportMonthlyReportUseCase(
+      cashFlowReport,
+      expensesByCategory,
+      antExpenses,
+      monthlySavings,
+      new ExcelJsReportExportAdapter(),
       clock,
     ),
     // receipts (receipt-scan-drafts T3: upload + quarantine + polling)

@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { z } from "zod";
 
 import type {
+  ExportMonthlyReportUseCase,
   GetAntExpensesUseCase,
   GetCashFlowReportUseCase,
   GetExpensesByCategoryUseCase,
@@ -27,6 +28,11 @@ const reportPeriodQuerySchema = z.object({
   month: z.coerce.number().int().min(1).max(12),
 });
 
+/** T10 (S9): the export endpoint adds a required `format` discriminator. */
+const reportExportQuerySchema = reportPeriodQuerySchema.extend({
+  format: z.enum(["csv", "xlsx"]),
+});
+
 /** Report validation failures (period, currency, timezone) are all 400s. */
 function toHttpError(error: DomainError): HttpError {
   return new HttpError(400, {
@@ -43,12 +49,27 @@ export interface ReportsRouteDeps extends AuthDeps {
   >;
   readonly antExpenses?: Pick<GetAntExpensesUseCase, "execute">;
   readonly monthlySavings?: Pick<GetMonthlySavingsUseCase, "execute">;
+  readonly exportReport?: Pick<ExportMonthlyReportUseCase, "execute">;
 }
 
 function parsePeriodQuery(c: {
   req: { query: () => Record<string, string | undefined> };
 }) {
   const parsed = reportPeriodQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) {
+    throw new HttpError(400, {
+      code: "INVALID_QUERY",
+      message: "Invalid report filters",
+      details: sanitizeZodIssues(parsed.error.issues),
+    });
+  }
+  return parsed.data;
+}
+
+function parseExportQuery(c: {
+  req: { query: () => Record<string, string | undefined> };
+}) {
+  const parsed = reportExportQuerySchema.safeParse(c.req.query());
   if (!parsed.success) {
     throw new HttpError(400, {
       code: "INVALID_QUERY",
@@ -151,4 +172,31 @@ export function registerReportsRoutes(
     }
     return c.json(result.value);
   });
+
+  // T10 (S9): GET /export streams the four sections as one attachment.
+  // The dep stays optional — a shell wired without it keeps the read
+  // endpoints mounted and answers 404 here (fail-closed).
+  const exportReport = deps.exportReport;
+  if (exportReport) {
+    app.get("/api/v1/reports/export", auth, async (c) => {
+      const query = parseExportQuery(c);
+      const { workspace } = authContext(c);
+      const result = await exportReport.execute({
+        workspaceId: workspace.workspaceId,
+        currency: query.currency,
+        year: query.year,
+        month: query.month,
+        timezone: workspace.timezone,
+        format: query.format,
+      });
+      if (!result.ok) {
+        throw toHttpError(result.error);
+      }
+      const file = result.value;
+      return c.body(file.body, 200, {
+        "Content-Type": file.contentType,
+        "Content-Disposition": `attachment; filename="${file.filename}"`,
+      });
+    });
+  }
 }

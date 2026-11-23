@@ -89,3 +89,20 @@ export {
   toMonthlySavingsView,
   type MonthlySavingsView,
 } from "./application/monthly-savings.view.js";
+export {
+  XLSX_REPORT_SERIALIZER,
+  type XlsxReportSerializerPort,
+} from "./application/ports/xlsx-report-export.port.js";
+export {
+  reportExportTables,
+  serializeReportCsv,
+  type MonthlyReportBundle,
+  type ReportExportMetadata,
+  type ReportExportTable,
+} from "./application/report-export.serializer.js";
+export {
+  ExportMonthlyReportUseCase,
+  type ExportMonthlyReportCommand,
+  type ReportExportFile,
+  type ReportExportFormat,
+} from "./application/export-monthly-report.use-case.js";
