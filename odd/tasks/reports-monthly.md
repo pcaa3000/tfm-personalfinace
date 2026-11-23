@@ -17,6 +17,8 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 
 - **S11** (L18): El reporte de gastos hormiga evoluciona a "Gastos evitables" (avoidable expenses): un reporte con detectores — hormiga (actual), suscripciones recurrentes, concentración discrecional top, crecimiento vs ventana anterior — con total de ahorro potencial mensual. El universo sigue siendo discretionary.
 
+- **S12** (L21): La página de reportes debe ser usable en móvil: tablas apiladas (campos clave + comparación principal) o scroll horizontal indicado, targets táctiles ~44px, sin ocultar datos de decisión.
+
 ## Tasks
 
 | ID | Corte | S# | Ruta | Estado | Commit / Evidencia |
@@ -33,6 +35,7 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 | T10 | Exportación reportes CSV/XLSX (endpoint + botón descarga) | S9 | api+web | done | API: 50 specs foc.; suite 1363; web: botones blob-auth |
 | T11 | Seed demo: categoría "Transporte menor"/suscripciones discretionary + merchants explícitos | S10 | api (seed) | done | RED 3/3→GREEN; drizzle 29/29 DB real; commit 01d791b |
 | T12 | Evolución ant-expenses → reporte "Gastos evitables" con detectores (opción A) | S3, S11 | api+web | done | API 131/131, web 502, suite api 1372 |
+| T13 | UX móvil en ReportsPage: tablas responsive (stacked rows o scroll indicado) | S12 | web | pending | |
 
 ## Log
 
@@ -56,3 +59,4 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 - **L18** (usuario): "plantea la opción de cambiar el concepto de gastos hormiga, por un reporte que te permita hallar fugas o gastos innecesarios — saber qué puedo evitar para ahorrar". Decisión (ask_user_choice): **Opción A — evolucionar ant-expenses** a reporte "Gastos evitables" con detectores (hormiga queda como un detector). Advisory R3-001 cerrado (spec compara mean vs 1% del ingreso sembrado).
 - **L19** (proceso): T12 implementado — endpoint `GET /reports/avoidable-expenses`; detectores ant/recurring_charge/concentration/growth por unión; `potentialSavings`; export sección avoidable-expenses + columna detectors; web renombrado a "Gastos evitables" con chips y headline de ahorro potencial. Surface extra aprobada: App.spec.tsx + seed comments. Fix residual T11: demo-session.service.spec 12→14 categorías.
 - **L20** (revisión nativa 4ª ronda): T12 aprobado con 3 advisory → fixes `80340b5` (noise floor 1% para recurring_charge + concentración en forma exacta total·100≥spend·N) aprobados; spec de boundary exacto añadido. Backlog: detector growth compara por key merchant??categoryId — mismatch merchant/NULL entre ventanas puede esconder crecimiento real; sin test de ese caso.
+- **L21** (usuario): "Puedes mejorar la UI/UX en los reportes, ya que en móvil no se ve bien". Guideline aplicado: gentle-ui-design references/adaptive-interfaces.md.
