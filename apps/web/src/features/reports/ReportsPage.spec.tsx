@@ -51,6 +51,11 @@ vi.mock("../ledger/api", async (importOriginal) => {
       timezone: "UTC",
       defaultCurrency: "PEN",
     })),
+    // Shared-chrome queries (T16): the movement dialog and the
+    // management dialogs read these; empty data is enough.
+    listAccounts: vi.fn(async () => []),
+    listCategories: vi.fn(async () => []),
+    listCurrencyCatalog: vi.fn(async () => []),
   };
 });
 
@@ -912,5 +917,98 @@ describe("ReportsPage mobile layout (reports-monthly T13, S12)", () => {
     expect(
       section.querySelector('[data-part="report-stacked-rows"]'),
     ).toBeNull();
+  });
+});
+
+describe("ReportsPage shared chrome (reports-monthly T16, S15)", () => {
+  it("navigates back to the ledger list from the mobile bottom nav", async () => {
+    mockViewportWidth(390);
+    mockReports();
+    renderPage();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Navegación principal",
+    });
+    fireEvent.click(
+      within(nav).getByRole("button", { name: "Movimientos" }),
+    );
+    expect(window.location.hash).toBe("#/");
+  });
+
+  it("opens the shared new-movement dialog from the mobile nav FAB", async () => {
+    mockViewportWidth(390);
+    mockReports();
+    const { container } = renderPage();
+
+    const fab = container.querySelector(".MuiFab-root");
+    expect(fab).toBeTruthy();
+    fireEvent.click(fab as Element);
+
+    // The shared NewMovementDialog opens on its type-picker step.
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText("Mover importe entre cuentas de la misma moneda"),
+    ).toBeTruthy();
+  });
+
+  it("shows the reports crumb in the shared desktop topbar", async () => {
+    mockViewportWidth(1400);
+    mockReports();
+    renderPage();
+
+    // The crumb names the active page, not the ledger panel.
+    await screen.findByText(/·\s*Reportes/);
+  });
+
+  it("opens the shared new-movement dialog from the desktop topbar action", async () => {
+    mockViewportWidth(1400);
+    mockReports();
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Nuevo movimiento" }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText("Mover importe entre cuentas de la misma moneda"),
+    ).toBeTruthy();
+  });
+
+  it("wires the sidebar Gestión group to the shared management dialogs", async () => {
+    mockViewportWidth(1400);
+    mockReports();
+    renderPage();
+
+    const aside = await screen.findByRole("complementary");
+    fireEvent.click(
+      within(aside).getByRole("button", { name: "Cuentas" }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Cuentas")).toBeTruthy();
+  });
+
+  it("navigates back to the ledger list from the desktop sidebar", async () => {
+    mockViewportWidth(1400);
+    mockReports();
+    renderPage();
+
+    const aside = await screen.findByRole("complementary");
+    fireEvent.click(
+      within(aside).getByRole("button", { name: "Movimientos" }),
+    );
+    expect(window.location.hash).toBe("#/");
+  });
+
+  it("renders a single theme switcher — the shared TopBar carries it", async () => {
+    mockViewportWidth(1400);
+    mockReports();
+    renderPage();
+
+    await screen.findByText("Flujo de caja por cuenta");
+    expect(
+      screen.getAllByRole("button", { name: /Cambiar a modo/ }),
+    ).toHaveLength(1);
   });
 });

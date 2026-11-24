@@ -44,7 +44,7 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 | T13 | UX móvil en ReportsPage: tablas responsive (stacked rows o scroll indicado) | S12 | web | done | RED 3→GREEN 23/23; web 507 |
 | T14 | Resumen ejecutivo + secciones colapsables con auto-apertura | S13 | web | done | RED 5/5→GREEN 28/28; web 512 |
 | T15 | Detector monthly_recurring inter-ventana para suscripciones mensuales | S14 | api+web | done | RED 3→GREEN 26/26; reports 139/139, web 50 |
-| T16 | Chrome compartido en ReportsPage: TopBar + MobileNav + Sidebar callbacks | S15 | web | pending | |
+| T16 | Chrome compartido en ReportsPage: TopBar + MobileNav + Sidebar callbacks | S15 | web | done | RED 3→GREEN 36/36; web 519 |
 
 ## Log
 
@@ -78,3 +78,4 @@ Generación de reportes por moneda y período según docs/04, con cierre mensual
 - **L28** (proceso): T15 — monthly_recurring: misma key en ambas ventanas con totales ±15% (100·max≤115·min, prev>0) + piso 1% discrecional; orden tras recurring_charge; chip "Suscripción mensual"/"Monthly recurring"; union web api.ts espejada (surface extra aprobada).
 - **L29** (revisión nativa 7ª ronda): T15 aprobado, 1 advisory SUGGESTION cerrado en el acto (doc comment del piso ahora lista los 4 detectores que lo usan).
 - **L30** (usuario): "los botones del menú superior al cambiar a reportes desaparecen, ¿es correcto?" → no: ReportsPage construye header propio y no renderiza TopBar ni MobileNav — en móvil el usuario queda sin nav inferior (atrapado). "ok, proceder" autoriza T16.
+- **L31** (proceso): T16 — TopBar/Sidebar/MobileNav compartidos; header ad-hoc eliminado; NewMovementDialog + 5 diálogos de gestión con wiring idéntico a LedgerPage; crumb via prop `crumbKey` (default "nav.panel" — ledger intacto). Diffs residuales aceptados: pendingCount=0 en reportes (badge sync es del ledger); ~120 líneas de wiring duplicadas Ledger↔Reports (extraer ManagementDialogs agregado = backlog).

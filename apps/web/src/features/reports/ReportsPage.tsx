@@ -15,7 +15,6 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  IconButton,
   MenuItem,
   Paper,
   Skeleton,
@@ -33,14 +32,49 @@ import type { TFunction } from "i18next";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
-import { useThemeMode } from "../../theme-mode";
-import { ApiError, getWorkspace, listCurrencies } from "../ledger/api";
+import { AccountsDialog } from "../ledger/AccountsDialog";
+import {
+  addCurrency,
+  ApiError,
+  archiveAccount,
+  archiveCategory,
+  archiveCurrency,
+  createAccount,
+  createCategory,
+  getWorkspace,
+  listAccounts,
+  listCategories,
+  listCurrencies,
+  listCurrencyCatalog,
+  reviseAccount,
+  reviseCategory,
+  reviseCurrency,
+  unarchiveAccount,
+  updateWorkspace,
+} from "../ledger/api";
+import { CategoriesDialog } from "../ledger/CategoriesDialog";
+import { CurrenciesDialog } from "../ledger/CurrenciesDialog";
 import { errorMessage } from "../ledger/errors";
-import { formatBusinessDate } from "../ledger/format";
-import { BrandMark } from "../ledger/BrandMark";
-import { ChevronDownIcon, MoonIcon, SunIcon } from "../ledger/icons";
+import {
+  currencyExponentResolver,
+  formatBusinessDate,
+} from "../ledger/format";
+import { ChevronDownIcon } from "../ledger/icons";
 import { MobileNav } from "../ledger/MobileNav";
+import { NewMovementDialog } from "../ledger/NewMovementDialog";
+import { createTransactionOrQueue } from "../ledger/offline/create-or-queue";
+import { PreferencesDialog } from "../ledger/PreferencesDialog";
+import { TicketsDialog } from "../ledger/TicketsDialog";
+import {
+  TopBar,
+  type ManagementSection,
+} from "../ledger/TopBar";
+import type { TransactionFormValues } from "../ledger/TransactionForm";
+import type {
+  CreateAccountInput,
+  CreateCategoryInput,
+  ReviseAccountInput,
+} from "../ledger/types";
 import {
   persistRailCollapsed,
   railCollapsedPreference,
@@ -71,12 +105,11 @@ import {
   formatReportPercent,
   monthName,
 } from "./format";
-import { navigateToPanel } from "./route";
+import { navigateToPanel, navigateToReports } from "./route";
 
 /** Desktop breakpoint shared with the ledger artboard (S12-6). */
 const DESKTOP_QUERY = "(min-width:960px)";
 const AUTO_MINI_QUERY = "(min-width:960px) and (max-width:1179.98px)";
-const HEADER_HEIGHT = 56;
 
 /** Years offered by the period selector: a little history, no future. */
 function yearOptions(now: Date): number[] {
@@ -1134,15 +1167,20 @@ type ReportSectionKey = "cashFlow" | "categories" | "avoidable" | "savings";
 /**
  * Reports page (reports-monthly T7, S7, CA-013): the four monthly
  * reports as tables behind a shared month/year + currency selector.
- * Reuses the ledger's Sidebar/MobileNav chrome with `active="reports"`;
- * the Gestión group is hidden here because the management dialogs live
- * on the ledger page.
+ * S15/T16: shares the app chrome with the ledger — TopBar (new
+ * movement + Gestión menu + theme/language), Sidebar (nav + Gestión
+ * group) and MobileNav (list navigation + movement FAB). The reports
+ * page renders the same shared dialogs (movement + management) wired
+ * to the same API calls as LedgerPage.
  */
 export function ReportsPage() {
   const { t, i18n } = useTranslation();
   const desktop = useMediaQuery(DESKTOP_QUERY);
   const autoMiniRail = useMediaQuery(AUTO_MINI_QUERY);
-  const { mode, toggleMode } = useThemeMode();
+  const [movementOpen, setMovementOpen] = useState(false);
+  const [management, setManagement] = useState<ManagementSection | null>(
+    null,
+  );
   const [railCollapsed, setRailCollapsed] = useState(storedRailCollapsed);
   const effectiveRailCollapsed =
     railCollapsedPreference() === null ? autoMiniRail : railCollapsed;
@@ -1154,6 +1192,21 @@ export function ReportsPage() {
   const currenciesQuery = useQuery({
     queryKey: ["currencies"],
     queryFn: listCurrencies,
+  });
+  // Shared-chrome data (T16): the movement dialog and the management
+  // dialogs read the same query keys as the ledger page.
+  const categoriesQuery = useQuery({
+    queryKey: ["categories"],
+    queryFn: listCategories,
+  });
+  const accountsQuery = useQuery({
+    queryKey: ["accounts"],
+    queryFn: () => listAccounts({ includeArchived: true }),
+  });
+  const catalogQuery = useQuery({
+    queryKey: ["currencies", "catalog"],
+    queryFn: listCurrencyCatalog,
+    enabled: management === "currencies",
   });
 
   const now = new Date();
@@ -1245,6 +1298,105 @@ export function ReportsPage() {
   const exportDisabled =
     !enabled || reportsFetching || exportMutation.isPending;
 
+  // --- Shared-chrome mutations (T16, same wiring as LedgerPage) ---
+
+  const categories = categoriesQuery.data ?? [];
+  const allAccounts = accountsQuery.data ?? [];
+  const accounts = allAccounts.filter((a) => a.archivedAt === null);
+  const currencies = currenciesQuery.data ?? [];
+  const exponentOf = currencyExponentResolver(currencies);
+
+  // A new movement changes the reports (and the ledger caches), so
+  // every affected query is invalidated on confirm — same set as
+  // LedgerPage plus the reports keys this page renders.
+  const invalidateAfterMovement = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["reports"] }),
+      queryClient.invalidateQueries({ queryKey: ["transactions"] }),
+      queryClient.invalidateQueries({ queryKey: ["balance"] }),
+      queryClient.invalidateQueries({ queryKey: ["categories"] }),
+    ]);
+
+  const createMutation = useMutation({
+    mutationFn: createTransactionOrQueue,
+    onSuccess: async () => {
+      await invalidateAfterMovement();
+      setMovementOpen(false);
+    },
+  });
+
+  const onSubmit = (values: TransactionFormValues) => {
+    createMutation.mutate({ ...values, idempotencyKey: crypto.randomUUID() });
+  };
+
+  // Inline create from the category selector (same helper as
+  // LedgerPage): post, refresh categories, hand the created category
+  // back so the select auto-selects it.
+  const createCategoryInline = async (input: CreateCategoryInput) => {
+    const category = await createCategory(input);
+    await queryClient.invalidateQueries({ queryKey: ["categories"] });
+    return category;
+  };
+
+  const accountMutation = useMutation({
+    mutationFn: async (
+      action:
+        | { kind: "create"; input: CreateAccountInput }
+        | { kind: "revise"; id: string; input: ReviseAccountInput }
+        | { kind: "archive"; id: string }
+        | { kind: "unarchive"; id: string },
+    ) => {
+      if (action.kind === "create") return createAccount(action.input);
+      if (action.kind === "revise") return reviseAccount(action.id, action.input);
+      if (action.kind === "unarchive") return unarchiveAccount(action.id);
+      return archiveAccount(action.id);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      await queryClient.invalidateQueries({ queryKey: ["balance"] });
+    },
+  });
+
+  const categoryMutation = useMutation({
+    mutationFn: async (
+      action:
+        | { kind: "create"; input: { label: string; nature: string } }
+        | { kind: "revise"; id: string; input: { label?: string; nature?: string } }
+        | { kind: "archive"; id: string },
+    ) => {
+      if (action.kind === "create") return createCategory(action.input);
+      if (action.kind === "revise") return reviseCategory(action.id, action.input);
+      return archiveCategory(action.id);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+
+  const currencyMutation = useMutation({
+    mutationFn: async (
+      action:
+        | { kind: "add"; code: string }
+        | { kind: "revise"; id: string; code: string }
+        | { kind: "archive"; id: string },
+    ) => {
+      if (action.kind === "add") return addCurrency({ code: action.code });
+      if (action.kind === "revise")
+        return reviseCurrency(action.id, { code: action.code });
+      return archiveCurrency(action.id);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["currencies"] });
+    },
+  });
+
+  const settingsMutation = useMutation({
+    mutationFn: updateWorkspace,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["workspace"] });
+    },
+  });
+
   const toggleRail = () => {
     const next = !effectiveRailCollapsed;
     persistRailCollapsed(next);
@@ -1300,8 +1452,9 @@ export function ReportsPage() {
         <Sidebar
           collapsed={effectiveRailCollapsed}
           onToggleCollapsed={toggleRail}
+          onOpenManagement={setManagement}
           onNavigateList={navigateToPanel}
-          onNavigateReports={() => {}}
+          onNavigateReports={navigateToReports}
           active="reports"
         />
       ) : null}
@@ -1314,85 +1467,17 @@ export function ReportsPage() {
           flexDirection: "column",
         }}
       >
-        <Box
-          component="header"
-          sx={{
-            position: "sticky",
-            top: 0,
-            zIndex: 70,
-            height: HEADER_HEIGHT,
-            flexShrink: 0,
-            display: "flex",
-            alignItems: "center",
-            gap: 1.25,
-            px: { xs: 1.75, md: 2.75 },
-            bgcolor: "background.paper",
-            borderBottom: "1px solid",
-            borderColor: "divider",
-          }}
-        >
-          {desktop ? (
-            <Box sx={{ minWidth: 0 }}>
-              <Typography component="h1" sx={{ fontSize: 16, fontWeight: 700 }}>
-                {t("app.brand")}{" "}
-                <Box
-                  component="span"
-                  sx={{
-                    fontWeight: 500,
-                    color: "text.secondary",
-                    fontSize: 13,
-                  }}
-                >
-                  · {t("nav.reports")}
-                </Box>
-              </Typography>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                noWrap
-                sx={{ display: "block" }}
-              >
-                {t("app.tagline")}
-              </Typography>
-            </Box>
-          ) : (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <BrandMark />
-              <Typography
-                sx={{
-                  fontWeight: 750,
-                  fontSize: 15,
-                  whiteSpace: "nowrap",
-                  display: { xs: "none", sm: "block" },
-                }}
-              >
-                {t("app.brand")}
-              </Typography>
-            </Box>
-          )}
-
-          <Box
-            sx={{ ml: "auto", display: "flex", alignItems: "center", gap: 1 }}
-          >
-            <IconButton
-              onClick={toggleMode}
-              aria-pressed={mode === "dark"}
-              aria-label={
-                mode === "dark"
-                  ? t("topbar.themeToLight")
-                  : t("topbar.themeToDark")
-              }
-              sx={{ border: "1px solid", borderColor: "divider" }}
-            >
-              {mode === "dark" ? (
-                <MoonIcon sx={{ fontSize: 19 }} />
-              ) : (
-                <SunIcon sx={{ fontSize: 19 }} />
-              )}
-            </IconButton>
-            <LanguageSwitcher />
-          </Box>
-        </Box>
+        {/* S15/T16: the shared TopBar carries brand, the new-movement
+            action, the Gestión menu and the theme/language controls —
+            the reports page keeps no header of its own. pendingCount
+            is 0: the outbox badge is a ledger-list concern. */}
+        <TopBar
+          crumbKey="nav.reports"
+          pendingCount={0}
+          desktop={desktop}
+          onNewMovement={() => setMovementOpen(true)}
+          onOpenManagement={setManagement}
+        />
 
         <Box
           sx={{
@@ -1579,10 +1664,118 @@ export function ReportsPage() {
       {desktop ? null : (
         <MobileNav
           onNavigateList={navigateToPanel}
-          onNavigateReports={() => {}}
+          onNavigateReports={navigateToReports}
+          onNewMovement={() => setMovementOpen(true)}
           active="reports"
         />
       )}
+
+      {/* S15/T16: the same shared dialogs LedgerPage owns — a new
+          movement or a management change also lands in the reports. */}
+      <NewMovementDialog
+        open={movementOpen}
+        categories={categories}
+        accounts={accounts}
+        defaultCurrency={workspace?.defaultCurrency ?? "PEN"}
+        currencies={currencyCodes}
+        timezone={workspace?.timezone}
+        exponentOf={exponentOf}
+        submitting={createMutation.isPending}
+        error={
+          createMutation.error ? errorMessage(createMutation.error, t) : null
+        }
+        onClose={() => setMovementOpen(false)}
+        onSubmit={onSubmit}
+        onCreateCategory={createCategoryInline}
+        onReceiptConfirmed={() => {
+          void invalidateAfterMovement().then(() => setMovementOpen(false));
+        }}
+        onVoiceConfirmed={() => {
+          void invalidateAfterMovement().then(() => setMovementOpen(false));
+        }}
+      />
+      <AccountsDialog
+        open={management === "accounts"}
+        accounts={allAccounts}
+        currencies={
+          currencyCodes.length
+            ? currencyCodes
+            : [workspace?.defaultCurrency ?? "PEN"]
+        }
+        submitting={accountMutation.isPending}
+        error={
+          accountMutation.error ? errorMessage(accountMutation.error, t) : null
+        }
+        onClose={() => setManagement(null)}
+        onCreate={(input) =>
+          accountMutation.mutate({ kind: "create", input })
+        }
+        onRevise={(id, input) =>
+          accountMutation.mutate({ kind: "revise", id, input })
+        }
+        onArchive={(id) => accountMutation.mutate({ kind: "archive", id })}
+        onUnarchive={(id) =>
+          accountMutation.mutate({ kind: "unarchive", id })
+        }
+      />
+      <CategoriesDialog
+        open={management === "categories"}
+        categories={categories}
+        submitting={categoryMutation.isPending}
+        error={
+          categoryMutation.error
+            ? errorMessage(categoryMutation.error, t)
+            : null
+        }
+        onClose={() => setManagement(null)}
+        onCreate={(input) =>
+          categoryMutation.mutate({ kind: "create", input })
+        }
+        onRevise={(id, input) =>
+          categoryMutation.mutate({ kind: "revise", id, input })
+        }
+        onArchive={(id) => categoryMutation.mutate({ kind: "archive", id })}
+      />
+      <CurrenciesDialog
+        open={management === "currencies"}
+        currencies={currencies}
+        catalog={catalogQuery.data ?? []}
+        submitting={currencyMutation.isPending}
+        error={
+          currencyMutation.error
+            ? errorMessage(currencyMutation.error, t)
+            : null
+        }
+        loadError={(() => {
+          const queryError =
+            currenciesQuery.error ??
+            (management === "currencies" ? catalogQuery.error : null);
+          return queryError ? errorMessage(queryError, t) : null;
+        })()}
+        onClose={() => setManagement(null)}
+        onAdd={(code) => currencyMutation.mutate({ kind: "add", code })}
+        onRevise={(id, input) =>
+          currencyMutation.mutate({ kind: "revise", id, code: input.code })
+        }
+        onArchive={(id) => currencyMutation.mutate({ kind: "archive", id })}
+      />
+      <TicketsDialog
+        open={management === "tickets"}
+        onClose={() => setManagement(null)}
+      />
+      <PreferencesDialog
+        open={management === "preferences"}
+        workspace={workspace}
+        currencies={currencyCodes}
+        submitting={settingsMutation.isPending}
+        error={
+          settingsMutation.error
+            ? errorMessage(settingsMutation.error, t)
+            : null
+        }
+        onClose={() => setManagement(null)}
+        onPatch={(patch) => settingsMutation.mutate(patch)}
+      />
 
       <Dialog
         open={closeDialogOpen}

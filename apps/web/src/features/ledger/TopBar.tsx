@@ -42,6 +42,8 @@ export type ManagementSection =
 export const TOPBAR_HEIGHT = 56;
 
 interface Props {
+  /** Desktop brand crumb after the app name; defaults to "nav.panel". */
+  crumbKey?: string;
   pendingCount: number;
   desktop: boolean;
   onNewMovement: () => void;
@@ -54,6 +56,7 @@ interface Props {
  * toggle persisted as tfm-theme-mode (S12-7) and the ES/EN switcher.
  */
 export function TopBar({
+  crumbKey = "nav.panel",
   pendingCount,
   desktop,
   onNewMovement,
@@ -99,7 +102,7 @@ export function TopBar({
               component="span"
               sx={{ fontWeight: 500, color: "text.secondary", fontSize: 13 }}
             >
-              · {t("nav.panel")}
+              · {t(crumbKey)}
             </Box>
           </Typography>
           <Typography
