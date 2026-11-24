@@ -24,9 +24,13 @@ import {
   DEMO_ACCOUNTS,
   DEMO_CURRENCY,
   DEMO_TIMEZONE,
+  demoWindowMonths,
   type DemoAccountKey,
   type DemoTransaction,
+  type DemoWindowMonth,
 } from "./seed-demo-data.js";
+import { ClosePeriodUseCase } from "../modules/reports/application/close-period.use-case.js";
+import { DrizzlePeriodCloseRepository } from "../modules/reports/infrastructure/drizzle-period-close.repository.js";
 import { DrizzleAccountRepository } from "../modules/accounts/infrastructure/drizzle-account.repository.js";
 import { CreateAccountUseCase } from "../modules/accounts/application/create-account.use-case.js";
 import { DrizzleCurrencyRepository } from "../modules/currencies/infrastructure/drizzle-currency.repository.js";
@@ -417,6 +421,63 @@ export async function recordDemoTransactions(
 }
 
 /**
+ * demo-seed-six-months T5 (S6): seeds the period closes a real user
+ * would have made — one `reports_period_closes` row per fully-ended
+ * window month (callers pass the months to close: every window month
+ * except the running one, which a real user hasn't finished).
+ *
+ * Goes through {@link ClosePeriodUseCase} — the same domain path as
+ * POST /periods/:year/:month/close — so the seeded rows satisfy every
+ * close invariant (PEN currency, calendar-month bounds, workspace
+ * timezone snapshot, the required integrity declaration, one active
+ * close per period) and `findActiveByPeriod`/`resolveReportPeriod`
+ * resolve them `closed` for the monthly reports. The clock is bound
+ * to the seed's `now` seam: closes land dated at the anchor instant
+ * and the finished-month check is deterministic under it.
+ *
+ * Call AFTER the period's transactions are recorded: recording into a
+ * closed period invalidates the close (stale), which is exactly the
+ * real-world flow this mirrors.
+ */
+export async function seedDemoPeriodCloses(
+  tx: DrizzleDb,
+  args: {
+    readonly workspaceId: WorkspaceId;
+    /** Window months to close — fully ended calendar months only. */
+    readonly months: readonly DemoWindowMonth[];
+    /** Clock seam anchoring `closedAt` and the finished-month check. */
+    readonly now: Date;
+  },
+): Promise<number> {
+  const closePeriod = new ClosePeriodUseCase(
+    new DrizzlePeriodCloseRepository(tx),
+    { now: () => args.now },
+    new CryptoIdGenerator(),
+  );
+  let closed = 0;
+  for (const month of args.months) {
+    const [year, monthNumber] = month.key.split("-").map(Number);
+    const closedPeriod = await closePeriod.execute({
+      workspaceId: args.workspaceId,
+      currency: DEMO_CURRENCY,
+      year: year!,
+      month: monthNumber!,
+      timezone: DEMO_TIMEZONE,
+      integrityConfirmed: true,
+      actor: DEMO_ACTOR,
+    });
+    if (!closedPeriod.ok) {
+      throw new Error(
+        `ClosePeriod failed for ${month.key}: ` +
+          `${closedPeriod.error.code} — ${closedPeriod.error.message}`,
+      );
+    }
+    closed += 1;
+  }
+  return closed;
+}
+
+/**
  * The demo workspace reset (S4/S6): wipes the workspace-scoped ledger,
  * accounts, pending outbox events, notifications, receipt scans,
  * voice notes, voice consents and period closes — in FK-safe order
@@ -532,6 +593,15 @@ export async function seedDemoWorkspaceInTransaction(
     transactions: plan.transactions,
     accountIdByKey,
     categoryIdByKey,
+  });
+
+  // S6 (demo-seed-six-months T5, L12): close the three oldest window
+  // months — the running month and the two most recent stay open,
+  // like a real user's workspace.
+  await seedDemoPeriodCloses(tx, {
+    workspaceId,
+    months: demoWindowMonths(now).slice(3),
+    now,
   });
 
   return {

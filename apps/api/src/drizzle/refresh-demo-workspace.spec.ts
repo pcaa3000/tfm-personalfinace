@@ -21,6 +21,8 @@ import {
   refreshDemoWorkspace,
 } from "./refresh-demo-workspace.js";
 import type { CallerIdentity } from "../modules/identity-workspace/index.js";
+import { DrizzlePeriodCloseRepository } from "../modules/reports/infrastructure/drizzle-period-close.repository.js";
+import { WorkspaceId } from "../modules/shared-kernel/index.js";
 
 /**
  * demo-maria-session T2 (S2/S3/S4) + S6: the shared single demo
@@ -100,6 +102,18 @@ function monthRange(month: string): { from: Date; to: Date } {
     from: new Date(Date.UTC(year, mon - 1, 1)),
     to: new Date(Date.UTC(year, mon, 1)),
   };
+}
+
+/** Last calendar day of a "YYYY-MM" month as YYYY-MM-DD. */
+function monthLastDay(month: string): string {
+  const [year = 0, mon = 1] = month.split("-").map(Number);
+  return new Date(Date.UTC(year, mon, 0)).toISOString().slice(0, 10);
+}
+
+function workspaceIdOrThrow(value: string): WorkspaceId {
+  const created = WorkspaceId.create(value);
+  if (!created.ok) throw created.error;
+  return created.value;
 }
 
 async function transactionRows(
@@ -342,12 +356,15 @@ describe("refreshDemoWorkspace (integration, real Postgres — T2)", () => {
       provider: "whisper",
       grantedAt: new Date(),
     });
+    // A period OUTSIDE the seeded window (T5/S6 seeds active closes
+    // for the past five window months — the partial unique index would
+    // reject a second active close for one of those periods).
     await db.insert(periodCloses).values({
       id: "demo-refresh-period-close",
       workspaceId: WORKSPACE_ID,
       currency: "PEN",
-      periodStart: new Date("2026-02-01T00:00:00Z"),
-      periodEnd: new Date("2026-02-28T00:00:00Z"),
+      periodStart: new Date("2024-06-01T00:00:00Z"),
+      periodEnd: new Date("2024-06-30T00:00:00Z"),
       timezone: "America/Lima",
       integrityDeclared: true,
       closedAt: new Date(),
@@ -411,6 +428,73 @@ describe("refreshDemoWorkspace (integration, real Postgres — T2)", () => {
         ),
       );
     expect(rows.length).toBeGreaterThan(0);
+  });
+
+  // demo-seed-six-months T5 (S6): the refreshed dataset carries the
+  // period closes a real user would have made — every past window month
+  // resolves `closed`, the running month stays provisional.
+  it("closes the three oldest window months and leaves the running month and the two most recent open (S6)", async () => {
+    await refresh(db);
+    const closes = new DrizzlePeriodCloseRepository(db);
+    const workspaceId = workspaceIdOrThrow(WORKSPACE_ID);
+    const months = demoWindowMonths(NOW);
+
+    // The running month must NOT be closed — a real user hasn't
+    // finished it, so reports keep it provisional.
+    expect(
+      await closes.findActiveByPeriod(
+        workspaceId,
+        "PEN",
+        months[0]!.start,
+      ),
+    ).toBeNull();
+
+    for (const month of months.slice(1, 3)) {
+      expect(
+        await closes.findActiveByPeriod(workspaceId, "PEN", month.start),
+        `no close for ${month.key}`,
+      ).toBeNull();
+    }
+    for (const month of months.slice(3)) {
+      const close = await closes.findActiveByPeriod(
+        workspaceId,
+        "PEN",
+        month.start,
+      );
+      expect(close, `active close for ${month.key}`).not.toBeNull();
+      expect(close!.stale).toBe(false);
+      expect(close!.periodStart).toBe(month.start);
+      expect(close!.periodEnd).toBe(monthLastDay(month.key));
+      expect(close!.timezone).toBe("America/Lima");
+      expect(close!.integrityDeclared).toBe(true);
+      expect(close!.supersededAt).toBeNull();
+      expect(close!.invalidatedAt).toBeNull();
+    }
+  });
+
+  // demo-seed-six-months T5 (S6): the wipe drops the seeded closes and
+  // the re-seed creates fresh ones — refresh restores the full seed
+  // state, closes included, without leaving stale history rows behind.
+  it("re-creates the past-month closes on every refresh (S6)", async () => {
+    await refresh(db);
+    await refresh(db);
+
+    const closes = new DrizzlePeriodCloseRepository(db);
+    const workspaceId = workspaceIdOrThrow(WORKSPACE_ID);
+    const active = await closes.listActive(workspaceId, "PEN");
+    expect(active.map((close) => close.periodStart).sort()).toEqual(
+      demoWindowMonths(NOW)
+        .slice(3)
+        .map((month) => month.start)
+        .sort(),
+    );
+    expect(active.every((close) => !close.stale)).toBe(true);
+    // Exactly the three fresh rows — the wiped closes did not leak.
+    const rows = await db
+      .select({ id: periodCloses.id })
+      .from(periodCloses)
+      .where(eq(periodCloses.workspaceId, WORKSPACE_ID));
+    expect(rows).toHaveLength(3);
   });
 
   it("is idempotent — every run reseeds the same deterministic window dataset (S6)", async () => {

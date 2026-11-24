@@ -26,6 +26,8 @@ import {
   type SeedDemoSessionWorkspaceResult,
 } from "./demo-session-workspaces.js";
 import { DrizzleDemoSessionService } from "../modules/demo/infrastructure/drizzle-demo-session.service.js";
+import { DrizzlePeriodCloseRepository } from "../modules/reports/infrastructure/drizzle-period-close.repository.js";
+import { WorkspaceId } from "../modules/shared-kernel/index.js";
 
 /**
  * demo-maria-session T6+T7 (L10, modelo por-sid restaurado): per-session
@@ -297,6 +299,76 @@ describe("seedDemoSessionWorkspace (integration, real Postgres — T6)", () => {
       .from(accounts)
       .where(eq(accounts.workspaceId, WORKSPACE_ID));
     expect(accountRows).toHaveLength(4);
+  });
+
+  // demo-seed-six-months T5 (S6): the async session seed also lands
+  // the period closes for the workspace's own past months — each in
+  // the same commit as that month's transactions — while the running
+  // month stays open.
+  it("closes the three oldest window months it seeded and leaves the current and two most recent open (S6)", async () => {
+    await db.insert(workspaces).values({
+      id: WORKSPACE_ID,
+      identityKey: IDENTITY_KEY,
+      kind: "demo",
+      timezone: "America/Lima",
+      defaultCurrency: "PEN",
+    });
+
+    await seedSessionWorkspace(db, {
+      identityKey: IDENTITY_KEY,
+      workspaceId: WORKSPACE_ID,
+      now: NOW,
+    });
+
+    const closes = new DrizzlePeriodCloseRepository(db);
+    const created = WorkspaceId.create(WORKSPACE_ID);
+    if (!created.ok) throw created.error;
+    const workspaceId = created.value;
+    const months = demoWindowMonths(NOW);
+
+    // Running month open.
+    expect(
+      await closes.findActiveByPeriod(workspaceId, "PEN", months[0]!.start),
+    ).toBeNull();
+    // Months -1 and -2 stay provisional; months -3..-5 closed with a
+    // fresh, non-stale close (L12: only the three oldest).
+    for (const month of months.slice(1, 3)) {
+      expect(
+        await closes.findActiveByPeriod(workspaceId, "PEN", month.start),
+        `no close for ${month.key}`,
+      ).toBeNull();
+    }
+    for (const month of months.slice(3)) {
+      const close = await closes.findActiveByPeriod(
+        workspaceId,
+        "PEN",
+        month.start,
+      );
+      expect(close, `active close for ${month.key}`).not.toBeNull();
+      expect(close!.stale).toBe(false);
+      expect(close!.integrityDeclared).toBe(true);
+      expect(close!.timezone).toBe("America/Lima");
+    }
+
+    // Re-seed (wipe + regenerate) restores the closes exactly: three
+    // active rows, none stale, no leftover history rows.
+    await seedSessionWorkspace(db, {
+      identityKey: IDENTITY_KEY,
+      workspaceId: WORKSPACE_ID,
+      now: NOW,
+    });
+    const active = await closes.listActive(workspaceId, "PEN");
+    expect(active.map((close) => close.periodStart).sort()).toEqual(
+      months
+        .slice(3)
+        .map((month) => month.start)
+        .sort(),
+    );
+    const rows = await db
+      .select({ id: periodCloses.id })
+      .from(periodCloses)
+      .where(eq(periodCloses.workspaceId, WORKSPACE_ID));
+    expect(rows).toHaveLength(3);
   });
 
   // R1-001: a missing pre-inserted row means the session was ended — abort, never resurrect it.

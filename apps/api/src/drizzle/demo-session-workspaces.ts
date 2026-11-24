@@ -23,6 +23,7 @@ import {
   demoCategoryIdByKey,
   ensureDemoAccounts,
   recordDemoTransactions,
+  seedDemoPeriodCloses,
   wipeDemoWorkspaceState,
   type DemoWorkspaceTarget,
 } from "./seed-demo-workspace.js";
@@ -288,7 +289,9 @@ export async function seedDemoSessionWorkspace(
   let insertedTransactions = 0;
   // Spec order (S3): current month first so the web gets data soon,
   // then -1..-5. Each month commits independently.
-  for (const month of demoWindowMonths(now)) {
+  const windowMonths = demoWindowMonths(now);
+  for (let index = 0; index < windowMonths.length; index += 1) {
+    const month = windowMonths[index]!;
     const inserted = await db.transaction(async (tx) => {
       await tx.execute(advisoryLock);
       // Abort remaining months when the session workspace was deleted
@@ -311,6 +314,19 @@ export async function seedDemoSessionWorkspace(
         accountIdByKey: scaffolding.accountIdByKey,
         categoryIdByKey: scaffolding.categoryIdByKey,
       });
+      // S6 (demo-seed-six-months T5): each past month commits already
+      // closed — its period close lands in the same transaction as its
+      // transactions, after them (recording into a closed period would
+      // invalidate it). Only the three oldest window months (index
+      // >= 3) are closed — the running month and the two most recent
+      // stay open, like a real user's workspace.
+      if (index >= 3) {
+        await seedDemoPeriodCloses(tx, {
+          workspaceId: scaffolding.workspaceId,
+          months: [month],
+          now,
+        });
+      }
       return counts.income + counts.expense + counts.transfer;
     });
     if (inserted > 0) {

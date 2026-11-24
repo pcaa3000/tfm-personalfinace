@@ -8,6 +8,7 @@ import {
   demoCategoryIdByKey,
   ensureDemoAccounts,
   recordDemoTransactions,
+  seedDemoPeriodCloses,
   wipeDemoWorkspaceState,
   type DemoWorkspaceTarget,
 } from "./seed-demo-workspace.js";
@@ -107,6 +108,15 @@ export async function refreshDemoWorkspace(
       transactions: plan.transactions,
       accountIdByKey,
       categoryIdByKey,
+    });
+    // S6 (demo-seed-six-months T5): the refresh restores the full
+    // seed state — the wiped closes come back with the re-seed, one
+    // per oldest window month (-3..-5); the running month and the
+    // two most recent stay open.
+    await seedDemoPeriodCloses(tx, {
+      workspaceId,
+      months: months.slice(3),
+      now,
     });
     const generatedMonths = months
       .filter((month) =>

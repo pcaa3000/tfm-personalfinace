@@ -1,10 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 
+import { createDrizzleDb } from "./db.js";
+import { outboxEvents } from "./schema.js";
+import { deleteWorkspacesCascade } from "./demo-session-workspaces.js";
 import {
   buildDemoPlan,
   demoWindowMonths,
   demoWindowStart,
 } from "./seed-demo-data.js";
+import { seedDemoWorkspace } from "./seed-demo-workspace.js";
+import { DrizzlePeriodCloseRepository } from "../modules/reports/infrastructure/drizzle-period-close.repository.js";
+import { WorkspaceId } from "../modules/shared-kernel/index.js";
 
 /**
  * reports-monthly T11 (S10): the demo seed must materialize detectable
@@ -12,7 +19,9 @@ import {
  * subscriptions) plus shared explicit merchants — so the avoidable-expenses
  * report never renders empty on the demo workspace.
  *
- * Pure unit check on the generated plan; no database required.
+ * The plan specs are pure unit checks — no database required. The last
+ * describe exercises the `db:seed:demo` path (`seedDemoWorkspace`) end to
+ * end against real Postgres for the seeded period closes (S6).
  */
 
 // Midday UTC keeps the America/Lima "today" identical to the UTC date.
@@ -136,5 +145,66 @@ describe("buildDemoPlan six-month window (demo-seed-six-months T1, S1/S2)", () =
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys[0]).toBe("demo-maria-0001");
     expect(keys.every((key) => /^demo-maria-\d{4,}$/.test(key))).toBe(true);
+  });
+});
+
+/**
+ * demo-seed-six-months T5 (S6): the `db:seed:demo` full re-seed
+ * (`seedDemoWorkspace` → `seedDemoWorkspaceInTransaction`) also lands the
+ * period closes — every past window month resolves `closed` for the
+ * monthly reports while the running month stays open. Spec-scoped
+ * workspace target: never the real `local|demo-maria` row.
+ */
+describe("seedDemoWorkspace period closes (integration, real Postgres — T5/S6)", () => {
+  const DATABASE_URL =
+    process.env.DATABASE_URL ??
+    "postgresql://tfm:tfm-local-dev@localhost:5432/personal_finance";
+  const IDENTITY_KEY = "demo-seed-spec|maria";
+  const WORKSPACE_ID = "ws-demo-seed-spec";
+  const { db, pool } = createDrizzleDb(DATABASE_URL);
+
+  afterAll(async () => {
+    await deleteWorkspacesCascade(db, [WORKSPACE_ID]);
+    await pool.end();
+  });
+
+  it("closes the three oldest window months and leaves the running month and the two most recent open", async () => {
+    const result = await seedDemoWorkspace(db, {
+      identityKey: IDENTITY_KEY,
+      workspaceId: WORKSPACE_ID,
+      now: NOW,
+    });
+    expect(result.totalTransactions).toBeGreaterThan(0);
+
+    const closes = new DrizzlePeriodCloseRepository(db);
+    const created = WorkspaceId.create(WORKSPACE_ID);
+    if (!created.ok) throw created.error;
+    const months = demoWindowMonths(NOW);
+
+    expect(
+      await closes.findActiveByPeriod(created.value, "PEN", months[0]!.start),
+    ).toBeNull();
+    for (const month of months.slice(1, 3)) {
+      expect(
+        await closes.findActiveByPeriod(created.value, "PEN", month.start),
+        `no close for ${month.key}`,
+      ).toBeNull();
+    }
+    for (const month of months.slice(3)) {
+      const close = await closes.findActiveByPeriod(
+        created.value,
+        "PEN",
+        month.start,
+      );
+      expect(close, `active close for ${month.key}`).not.toBeNull();
+      expect(close!.stale).toBe(false);
+      expect(close!.integrityDeclared).toBe(true);
+    }
+
+    // Hygiene: drop the pending outbox rows the seed just wrote (same
+    // convention as refresh-demo-workspace.spec).
+    await db
+      .delete(outboxEvents)
+      .where(eq(outboxEvents.workspaceId, WORKSPACE_ID));
   });
 });
