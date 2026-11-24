@@ -337,7 +337,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // T6 (S7): the demo account's password is shared infrastructure —
     // refuse before it reaches Supabase Auth (defense in depth; the
     // menu item is already hidden).
-    if (demoEmail() !== null && session?.user.email === demoEmail()) {
+    const demo = demoEmail();
+    if (
+      demo !== null &&
+      session?.user.email?.toLowerCase() === demo.toLowerCase()
+    ) {
       throw new Error("Password change is not available in the demo session");
     }
     const { error } = await getSupabaseClient().auth.updateUser({

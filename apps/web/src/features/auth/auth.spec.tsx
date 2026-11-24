@@ -28,6 +28,7 @@ afterEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   queryClient.clear();
   await ledgerDb.pendingTransactions.clear();
 });

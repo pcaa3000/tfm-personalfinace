@@ -23,6 +23,7 @@ beforeAll(async () => {
 afterEach(() => {
   cleanup();
   isAuthBypassed.mockReturnValue(false);
+  vi.unstubAllEnvs();
 });
 
 function makeClient(overrides: Record<string, unknown> = {}) {
