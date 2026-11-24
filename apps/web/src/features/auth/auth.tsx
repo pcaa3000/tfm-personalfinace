@@ -41,6 +41,12 @@ export interface AuthContextValue {
    * the async seed is still generating data.
    */
   demoPending: boolean;
+  /**
+   * demo-seed-six-months T6 (S7): the session belongs to the demo
+   * account — the UI hides credentials actions (password change) that
+   * would mutate the shared demo identity.
+   */
+  isDemoSession: boolean;
   session: Session | null;
   signIn: (email: string, password: string) => Promise<void>;
   /**
@@ -70,6 +76,7 @@ const defaultValue: AuthContextValue = {
   misconfigured: false,
   loading: false,
   demoPending: false,
+  isDemoSession: false,
   session: null,
   signIn: async () => {
     throw new Error("Auth is not configured");
@@ -327,11 +334,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updatePassword = useCallback(async (newPassword: string) => {
+    // T6 (S7): the demo account's password is shared infrastructure —
+    // refuse before it reaches Supabase Auth (defense in depth; the
+    // menu item is already hidden).
+    if (demoEmail() !== null && session?.user.email === demoEmail()) {
+      throw new Error("Password change is not available in the demo session");
+    }
     const { error } = await getSupabaseClient().auth.updateUser({
       password: newPassword,
     });
     if (error) throw error;
-  }, []);
+  }, [session]);
 
   // T1 (S1–S4): auto signOut after 10 idle minutes; the hook is inert
   // without a session, so bypass/misconfigured states stay unaffected.
@@ -344,6 +357,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       misconfigured,
       loading,
       demoPending: isDemoSession && !demoReady,
+      isDemoSession,
       session,
       signIn,
       signInDemo,

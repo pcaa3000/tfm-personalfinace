@@ -385,6 +385,57 @@ describe("AuthProvider", () => {
     });
   });
 
+  // demo-seed-six-months T6 (S7): the demo account cannot change its
+  // password — the context exposes isDemoSession and updatePassword
+  // rejects before reaching Supabase.
+  it("exposes isDemoSession and updatePassword rejects in a demo session (S7)", async () => {
+    vi.stubEnv("VITE_DEMO_EMAIL", "mariademo@example.com");
+    isAuthConfigured.mockReturnValue(true);
+    const client = makeClient({
+      getSession: vi.fn(async () => ({
+        data: {
+          session: {
+            access_token: "demo-tok",
+            user: { id: "demo-1", email: "mariademo@example.com" },
+          },
+        },
+        error: null,
+      })),
+    });
+    getSupabaseClient.mockReturnValue(client);
+
+    let exposed: boolean | null = null;
+    let caught: unknown = null;
+    function DemoProbe() {
+      const { updatePassword, isDemoSession } = useAuth();
+      exposed = isDemoSession;
+      return (
+        <button
+          onClick={async () => {
+            try {
+              await updatePassword("new-secret-1");
+            } catch (error) {
+              caught = error;
+            }
+          }}
+        >
+          go
+        </button>
+      );
+    }
+    render(
+      <AuthProvider>
+        <DemoProbe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => expect(exposed).toBe(true));
+    fireEvent.click(await screen.findByRole("button", { name: "go" }));
+
+    await waitFor(() => expect(caught).toBeTruthy());
+    expect(client.auth.updateUser).not.toHaveBeenCalled();
+  });
+
   it("updatePassword rethrows the auth error", async () => {
     isAuthConfigured.mockReturnValue(true);
     const failure = new Error("New password should be different");

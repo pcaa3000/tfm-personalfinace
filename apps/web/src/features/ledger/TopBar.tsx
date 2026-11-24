@@ -63,7 +63,7 @@ export function TopBar({
   onOpenManagement,
 }: Props) {
   const { t } = useTranslation();
-  const { session, signOut } = useAuth();
+  const { session, signOut, isDemoSession } = useAuth();
   const { mode, toggleMode } = useThemeMode();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(
@@ -237,15 +237,17 @@ export function TopBar({
                 </Typography>
               </Box>
               <Divider />
-              <MenuItem
-                onClick={() => {
-                  setUserMenuAnchor(null);
-                  setPasswordOpen(true);
-                }}
-              >
-                <LockIcon fontSize="small" sx={{ mr: 1.25 }} />
-                {t("account.changePassword")}
-              </MenuItem>
+              {!isDemoSession ? (
+                <MenuItem
+                  onClick={() => {
+                    setUserMenuAnchor(null);
+                    setPasswordOpen(true);
+                  }}
+                >
+                  <LockIcon fontSize="small" sx={{ mr: 1.25 }} />
+                  {t("account.changePassword")}
+                </MenuItem>
+              ) : null}
               <MenuItem
                 onClick={() => {
                   setUserMenuAnchor(null);

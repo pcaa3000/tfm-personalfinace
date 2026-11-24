@@ -190,4 +190,35 @@ describe("TopBar user menu (T29, L38)", () => {
     expect(screen.getByLabelText("Nueva contraseña")).toBeTruthy();
     expect(screen.getByLabelText("Confirmar contraseña")).toBeTruthy();
   });
+
+  // demo-seed-six-months T6 (S7): the demo account must not change its
+  // password — the menu item is hidden while logout stays available.
+  it("hides the change-password item for the demo session but keeps logout (S7)", async () => {
+    vi.stubEnv("VITE_DEMO_EMAIL", "mariademo@example.com");
+    const client = makeClient({
+      getSession: vi.fn(async () => ({
+        data: {
+          session: {
+            access_token: "demo-tok",
+            user: { id: "demo-1", email: "mariademo@example.com" },
+          },
+        },
+        error: null,
+      })),
+    });
+    getSupabaseClient.mockReturnValue(client);
+    isAuthConfigured.mockReturnValue(true);
+
+    renderTopBar();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Menú de cuenta" }),
+    );
+
+    expect(
+      screen.queryByRole("menuitem", { name: "Cambiar contraseña" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("menuitem", { name: "Cerrar sesión" }),
+    ).toBeTruthy();
+  });
 });
