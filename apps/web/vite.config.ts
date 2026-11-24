@@ -13,7 +13,7 @@ import { VitePWA } from "vite-plugin-pwa";
  */
 const CSP_CONTENT =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-  "img-src 'self' data:; connect-src 'self' https://*.supabase.co " +
+  "img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co " +
   "wss://*.supabase.co http://localhost:3000";
 
 function cspMetaTag(): Plugin {
