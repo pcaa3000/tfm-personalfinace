@@ -4,11 +4,34 @@ packages:
 
 onlyBuiltDependencies:
   - esbuild
+allowBuilds:
+  esbuild: true
+
+# drizzle-orm declares @prisma/client and prisma as OPTIONAL peers for
+# its prisma-compat APIs; we use drizzle repositories only, so these
+# peers stay missing — pnpm must not auto-install them (drops prisma,
+# effect and deepmerge-ts from the lockfile). ignoreMissing alone did
+# not prevent auto-install in this pnpm version; autoInstallPeers off
+# is the documented switch. If another package needs an auto peer it
+# must be declared explicitly in its package.json.
+autoInstallPeers: false
+peerDependencyRules:
+  ignoreMissing:
+    - "@prisma/client"
+    - prisma
+# Transitional: the store still carries prisma binaries from the old
+# lockfile; ignore their build scripts instead of approving them —
+# with autoInstallPeers off and no declaring package, fresh resolution
+# drops them entirely.
+ignoredBuiltDependencies:
   - "@prisma/client"
   - "@prisma/engines"
   - prisma
-allowBuilds:
-  esbuild: true
-  "@prisma/client": true
-  "@prisma/engines": true
-  prisma: true
+
+# Vulnerability pins (Dependabot Dec-2026): scoped, never global —
+# they fix one consumer's transitive dep without forcing the major on
+# packages that legitimately need the old line.
+overrides:
+  exceljs>uuid: "^11.1.1"
+  workbox-build>glob: "^14.0.2"
+  "@esbuild-kit/core-utils>esbuild": "^0.25.0"
