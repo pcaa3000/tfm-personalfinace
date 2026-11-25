@@ -13,7 +13,7 @@ La propuesta utiliza TypeScript en web y API, PostgreSQL como fuente de verdad y
 - **Identidad:** OpenID Connect mediante Supabase Auth (usuario/contraseña, Google, Facebook, passkeys); la pareja issuer–subject aísla al proveedor.
 - **Aislamiento:** un workspace financiero personal por identidad y uno efímero por sesión demo.
 - **Demo:** misma API/casos de uso con semilla y adaptadores mock; medios reales permanecen en el navegador; los cambios no persisten al terminar la sesión.
-- **OCR y voz:** Azure AI Document Intelligence y Azure AI Speech en capa gratuita F0, detrás de puertos propios.
+- **OCR y voz:** Gemini (extracción + categorización + transcripción en una llamada, free tier ~500 RPD) como adaptador inicial implementado — **desviación documentada** de la decisión original Azure F0 (`odd/tasks/receipt-scan-drafts.md` D1, `odd/tasks/voice-drafts.md` D1); Azure sigue como adaptador alterno detrás de los mismos puertos.
 - **Analítica:** consultas y agregados en PostgreSQL, con políticas deterministas.
 - **Despliegue inicial:** web en hosting estático gratuito (**Netlify** — desplegado 2026-11; honra `public/_headers` y proxy `/api` same-origin), API en un servicio contenerizado gratuito (**Render**), worker diferido o en instancia gratuita (Koyeb/Fly), datos en Supabase. Sin Redis, Keycloak, MinIO ni Kubernetes en esta etapa.
 
@@ -252,13 +252,13 @@ Las capacidades concretas de passkeys y MFA dependen del soporte vigente del pro
 
 ### OCR
 
-Azure AI Document Intelligence con el modelo preconstruido de tickets es el adaptador inicial porque devuelve comercio, fecha, totales, impuestos, partidas y confianza por campo con amplia cobertura de idiomas.
+Azure AI Document Intelligence con el modelo preconstruido de tickets fue el adaptador planeado; el implementado hoy es **Gemini** (visión → JSON de ítems + categorización en la misma llamada, `responseSchema` nativo — desviación documentada en `odd/tasks/receipt-scan-drafts.md` D1). El puerto propio sigue neutral: cambiar de proveedor no toca aplicación ni dominio.
 
 El puerto propio recibe una referencia privada al activo y devuelve un resultado neutral. Claves, IDs del proveedor, tipos SDK y respuesta bruta permanecen en infraestructura.
 
 ### Voz
 
-Azure AI Speech convierte clips cortos en texto. Un adaptador de normalización limita duración y transforma formatos del navegador a un formato aceptado con límites de CPU, memoria y tiempo.
+El adaptador implementado es **Gemini audio-directo** (transcripción + extracción + categorización en una llamada — `odd/tasks/voice-drafts.md` D1); Azure AI Speech queda como alterno detrás del mismo puerto. Un adaptador de normalización limita duración y transforma formatos del navegador a un formato aceptado con límites de CPU, memoria y tiempo.
 
 La transcripción no crea una transacción. Un analizador determinista por locale intenta reconocer tipo, importe, moneda, fecha, comercio y categoría; cualquier campo no justificable queda vacío.
 

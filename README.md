@@ -4,7 +4,7 @@ Aplicación web y PWA móvil orientada a registrar ingresos y gastos (manualment
 
 ## Estado
 
-El proyecto se encuentra en fase de definición. Este repositorio contiene únicamente la documentación de producto y arquitectura; todavía no existe implementación ni configuración ejecutable.
+Monorepo pnpm con implementación en curso del MVP: `apps/api` (Hono + Drizzle + pg-boss, Clean Architecture por módulos) y `apps/web` (React + Vite + MUI, PWA). Ya implementado: ledger de ingresos/gastos con splits por categoría, escaneo de tickets y dictado por voz vía Gemini (borrador + confirmación del usuario), catálogo de categorías, reportes mensuales (cash flow, gastos por categoría, gastos hormiga, ahorro, exportación `.xlsx`, cierre de período), retención de medios a 30 días con depuración manual, sesión demo efímera (María) y cola offline de registros manuales. El seguimiento por features vive en `odd/tasks/`.
 
 ## Decisión principal
 
@@ -42,13 +42,13 @@ La solución comenzará como un **monolito modular con Clean Architecture y prin
 
 | Capa | Etapa 1: MVP (free tier, <20 usuarios) | Etapa 2: producción y escalado (AWS) |
 |---|---|---|
-| Web y PWA | TypeScript, React, Vite, Material UI, Recharts, Workbox + IndexedDB (Dexie), alojado en **Vercel free** | Amazon S3 + CloudFront |
-| API y worker | Node.js LTS, Hono (API REST + worker en un proceso), alojado en **Render / Koyeb free** | AWS ECS Fargate / App Runner (API y worker separados) |
+| Web y PWA | TypeScript, React, Vite, Material UI, Recharts, Workbox + IndexedDB (Dexie), alojado en **Netlify free** (Vercel descartado: sus functions no sostienen el proceso del worker) | Amazon S3 + CloudFront |
+| API y worker | Node.js LTS, Hono (API REST; worker pg-boss separado o dispatcher `inline` en el mismo proceso), alojado en **Render / Koyeb free** | AWS ECS Fargate / App Runner (API y worker separados) |
 | Base de datos | **Supabase PostgreSQL** (free tier) + Drizzle ORM como adaptador | Amazon RDS / Aurora PostgreSQL |
 | Cola asíncrona | **pg-boss** sobre el mismo PostgreSQL (sin Redis en el MVP) | Amazon SQS o BullMQ sobre Amazon ElastiCache (Redis) |
 | Archivos | **Supabase Storage** (API S3-compatible, privado, ciclo de vida ≤30 días) | Amazon S3 con políticas de ciclo de vida |
 | Identidad | **Supabase Auth** (email/contraseña, Google, Facebook, passkeys; OIDC) | Amazon Cognito o proveedor OIDC dedicado |
-| OCR y voz | **Azure AI Document Intelligence** y **Azure AI Speech** (capa gratuita F0) | Azure en plan estándar o Amazon Textract / Transcribe |
+| OCR y voz | **Gemini** (extracción + categorización + transcripción en una llamada, free tier ~500 RPD; Azure queda como adaptador alterno detrás del mismo puerto — desviación documentada en `odd/tasks/receipt-scan-drafts.md` D1 y `odd/tasks/voice-drafts.md` D1) | Azure en plan estándar o Amazon Textract / Transcribe |
 | Exportación | Reportes en **`.csv` y `.xlsx`** (ExcelJS) | Procesamiento asíncrono en worker dedicado si crece el volumen |
 
 La justificación técnica del stack, la comparación entre TypeScript, Python y Go y la ruta de migración se detallan en [Stack tecnológico](docs/02-stack-tecnologico.md).
