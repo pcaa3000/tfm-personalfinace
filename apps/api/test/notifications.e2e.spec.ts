@@ -82,18 +82,25 @@ describe("outbox → queue → notifications pipeline (worker-pgboss S2)", () =>
     // worker-side: drain the outbox into the queue dispatcher, then run
     // the consumer over the dispatched job (same code src/worker.ts runs).
     const sent: LedgerEventJob[] = [];
-    const drained = await drainOutboxOnce(db, {
-      send: async (queue, job) => {
+    const dispatcher = {
+      send: async (queue: string, job: LedgerEventJob) => {
         expect(queue).toBe(LEDGER_EVENTS_QUEUE);
         sent.push(job);
         return "job-test";
       },
-    });
+    };
+    // The drain takes the OLDEST 50 pending rows; parallel spec files
+    // may insert their own pending rows ahead of ours, so drain in
+    // bounded rounds until OUR event reaches the head of the queue.
+    let mine: LedgerEventJob | undefined;
+    let drained = 0;
+    for (let round = 0; round < 100 && !mine; round += 1) {
+      drained += await drainOutboxOnce(db, dispatcher);
+      mine = sent.find(
+        (j) => j.payload.transactionId === tx.body.id,
+      );
+    }
     expect(drained).toBeGreaterThanOrEqual(1);
-
-    const mine = sent.find(
-      (j) => j.payload.transactionId === tx.body.id,
-    );
     expect(mine).toBeTruthy();
     await handleLedgerEvent(db, mine!);
 

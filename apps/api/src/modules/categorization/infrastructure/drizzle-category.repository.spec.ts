@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, like, or } from "drizzle-orm";
 
 import { createDrizzleDb, type DrizzleDb } from "../../../drizzle/db.js";
 import { categories } from "../../../drizzle/schema.js";
@@ -94,6 +94,23 @@ async function cleanupAll(db: DrizzleDb): Promise<void> {
     await db.delete(categories).where(inArray(categories.id, GLOBAL_IDS));
     GLOBAL_IDS.length = 0;
   }
+  // Stale globals from crashed/partial runs survive GLOBAL_IDS (they
+  // belong to a previous process). ensureSeedCategories copies ANY
+  // global into WS_A, so a leftover `cat_seed_*`/`spec_*`/`e2e-*` row
+  // silently re-enters the workspace and collides with later saves.
+  // These prefixes are spec-only; real seed keys never use them.
+  await db
+    .delete(categories)
+    .where(
+      and(
+        isNull(categories.workspaceId),
+        or(
+          like(categories.key, "cat_seed_%"),
+          like(categories.key, "spec_%"),
+          like(categories.key, "e2e-%"),
+        ),
+      ),
+    );
 }
 
 describe("DrizzleCategoryRepository (integration, real Postgres)", () => {

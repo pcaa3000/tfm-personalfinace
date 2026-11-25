@@ -34,6 +34,33 @@ afterAll(async () => {
   await pool.end();
 });
 
+/**
+ * The drain takes the OLDEST 50 pending rows globally, and spec files
+ * running in parallel keep inserting their own pending rows into the
+ * shared dev DB — a fresh event can sit beyond the first batch. Loop
+ * bounded rounds until every rowId is processed (each round clears up
+ * to 50 older rows, so our newest row always reaches the head).
+ */
+async function drainUntilProcessed(
+  db: DrizzleDb,
+  dispatcher: OutboxDispatcher,
+  rowIds: string[],
+  maxRounds = 100,
+): Promise<number> {
+  let total = 0;
+  for (let round = 0; round < maxRounds; round += 1) {
+    total += await drainOutboxOnce(db, dispatcher);
+    const rows = await db
+      .select({ processedAt: outboxEvents.processedAt })
+      .from(outboxEvents)
+      .where(inArray(outboxEvents.id, rowIds));
+    if (rows.length === rowIds.length && rows.every((r) => r.processedAt !== null)) {
+      return total;
+    }
+  }
+  return total;
+}
+
 describe("drainOutboxOnce (T3)", () => {
   it("dispatches pending events and marks them processed", async () => {
     await insertOutboxEvent(db, {
@@ -50,7 +77,7 @@ describe("drainOutboxOnce (T3)", () => {
     )!;
     const dispatcher: OutboxDispatcher = { send: vi.fn(async () => "job-1") };
 
-    const drained = await drainOutboxOnce(db, dispatcher);
+    const drained = await drainUntilProcessed(db, dispatcher, [ours.id]);
 
     // the drain also picks up any other pending rows in the shared dev DB;
     // assert OUR event was dispatched and marked, not the global count
@@ -69,12 +96,41 @@ describe("drainOutboxOnce (T3)", () => {
   });
 
   it("does not redispatch already processed events (at-least-once dedup at drain)", async () => {
-    const dispatcher: OutboxDispatcher = { send: vi.fn(async () => "job-2") };
+    // Other spec files keep pending rows in the shared DB, so a global
+    // `drained === 0` assertion is racy. The unit under test is narrower:
+    // OUR processed row must never be dispatched again.
+    await insertOutboxEvent(db, {
+      workspaceId: WS,
+      type: "transaction.confirmed",
+      payload: { transactionId: "tx-drain-processed", concept: "Ya visto" },
+    });
+    const rowsBefore = await db
+      .select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.workspaceId, WS));
+    const ours = rowsBefore.find(
+      (r) =>
+        (r.payload as Record<string, unknown>).transactionId ===
+        "tx-drain-processed",
+    )!;
+    const firstPass: OutboxDispatcher = { send: vi.fn(async () => "job-2a") };
+    await drainUntilProcessed(db, firstPass, [ours.id]);
+    expect(
+      vi.mocked(firstPass.send).mock.calls.some(
+        ([, job]) => job.outboxEventId === ours.id,
+      ),
+    ).toBe(true);
 
-    const drained = await drainOutboxOnce(db, dispatcher);
+    // Second drain: no send for OUR already-processed row — foreign
+    // pending rows may still be dispatched, that is not under test.
+    const secondPass: OutboxDispatcher = { send: vi.fn(async () => "job-2b") };
+    await drainOutboxOnce(db, secondPass);
 
-    expect(drained).toBe(0);
-    expect(dispatcher.send).not.toHaveBeenCalled();
+    expect(
+      vi.mocked(secondPass.send).mock.calls.some(
+        ([, job]) => job.outboxEventId === ours.id,
+      ),
+    ).toBe(false);
   });
 
   it("skips a row whose send fails without aborting the batch (R3-drain-send-inside-tx)", async () => {
@@ -111,7 +167,9 @@ describe("drainOutboxOnce (T3)", () => {
       }),
     };
 
-    const drained = await drainOutboxOnce(db, dispatcher);
+    const drained = await drainUntilProcessed(db, dispatcher, [
+      good.id,
+    ]);
 
     // the sibling row WAS sent and marked processed; the poison row stays pending
     expect(drained).toBeGreaterThanOrEqual(1);

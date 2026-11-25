@@ -225,10 +225,17 @@ export function ReceiptFlow({
   const acceptFile = (picked: File) => {
     setFile(picked);
     if (previewRef.current) URL.revokeObjectURL(previewRef.current);
-    previewRef.current =
-      typeof URL.createObjectURL === "function"
-        ? URL.createObjectURL(picked)
-        : null;
+    previewRef.current = null;
+    // URL.createObjectURL may exist yet throw on non-native Blobs
+    // (jsdom File under vitest 4 → Node's URL impl reads _buffer).
+    // A failed preview must not abort the upload.
+    try {
+      if (typeof URL.createObjectURL === "function") {
+        previewRef.current = URL.createObjectURL(picked);
+      }
+    } catch {
+      previewRef.current = null;
+    }
     setPreviewUrl(previewRef.current);
     startScan(picked);
   };
